@@ -1,5 +1,5 @@
 import { NO_TRANSPORT_CODE } from '@ugula/billing';
-import type { GraphDef } from '@ugula/graph';
+import type { GraphDef, ValueType } from '@ugula/graph';
 import { slot } from '../builder.ts';
 import { hcpcsDescriptions } from '../codes.ts';
 import type { SeedGraph } from '../graphs.ts';
@@ -7,14 +7,26 @@ import {
   asRule,
   asStage,
   CHARGE_LINES,
+  condition,
   d,
   exit,
   FEES,
   field,
+  firstOf,
+  fixed,
+  getField,
   is,
-  oneOf,
+  joinText,
+  listItem,
+  makeList,
+  makeObject,
+  orElse,
   P,
+  type Port,
+  pureSlot,
+  reasonsOf,
   rule,
+  select,
   shared,
   stage,
   T,
@@ -23,6 +35,10 @@ import {
 } from './shared.ts';
 
 const NO_TRANSPORT = ['treatNoTransport', 'refusal'];
+
+const LINE = T.lines.list;
+
+const CHARGE_LINE = listItem(CHARGE_LINES);
 
 const LINES_OUT = d('lines', CHARGE_LINES, 'Charge Lines', 'HCPCS codes and units to price.');
 
@@ -33,37 +49,58 @@ const baseRateCode = (): GraphDef => {
     [P.classification(), P.service()],
     [CODE_OUT, P.reasons('this base rate was billed')]
   );
-  g.add('service', 'billing.service.break');
+  g.add('service', 'billing.service.break', { label: 'Service' });
+  const deceased: [ValueType, Port] = ['boolean', 'service.deceased'];
+  const special = [
+    {
+      id: 'deadEmergency',
+      label: 'Dead on an Emergency',
+      reason: 'Pronounced dead before loading, emergency response',
+      code: 'A0429',
+      when: condition(
+        g,
+        'deadOnEmergency',
+        'Pronounced Dead Before Loading on an Emergency',
+        { deceased, emergency: ['boolean', 'service.emergency'] },
+        [
+          { field: 'deceased', op: 'is', value: true },
+          { field: 'emergency', op: 'is', value: true }
+        ]
+      )
+    },
+    {
+      id: 'dead',
+      label: 'Dead Before Loading',
+      reason: 'Pronounced dead before loading',
+      code: 'A0428',
+      when: condition(g, 'deadBeforeLoading', 'Pronounced Dead Before Loading', { deceased }, [
+        { field: 'deceased', op: 'is', value: true }
+      ])
+    },
+    {
+      id: 'noTransport',
+      label: 'Treated Only',
+      reason: 'Treated without transport',
+      code: NO_TRANSPORT_CODE,
+      when: condition(
+        g,
+        'treatedOnly',
+        'Treated Without Transport',
+        { classification: ['string', 'entry.classification'] },
+        [{ field: 'classification', op: 'oneOf', value: NO_TRANSPORT }]
+      )
+    }
+  ];
   g.add('base', 'std.table.decide', {
     label: 'Base Rate',
     config: shared.decision(
       'billing.base-rate',
       'Base Rate',
-      'Picks the HCPCS base rate code from the classification, level of service and emergency status; a patient pronounced dead before loading is billed at the BLS rate.',
+      'Picks the HCPCS base rate code from the level of service and emergency status.',
       table(
+        [field('level', 'string', 'Level of Service'), field('emergency', 'boolean', 'Emergency')],
+        [field('code', { code: 'hcpcs' }, 'HCPCS Code')],
         [
-          field('classification', 'string', 'Classification'),
-          field('level', 'string', 'Level of service'),
-          field('emergency', 'boolean', 'Emergency'),
-          field('deceased', 'boolean', 'Pronounced dead before loading')
-        ],
-        [field('code', { code: 'hcpcs' }, 'HCPCS code')],
-        [
-          {
-            label: 'Pronounced dead before loading, emergency response',
-            when: { deceased: is(true), emergency: is(true) },
-            set: { code: 'A0429' }
-          },
-          {
-            label: 'Pronounced dead before loading',
-            when: { deceased: is(true) },
-            set: { code: 'A0428' }
-          },
-          {
-            label: 'Treated without transport',
-            when: { classification: oneOf(...NO_TRANSPORT) },
-            set: { code: NO_TRANSPORT_CODE }
-          },
           { label: 'Specialty care transport', when: { level: is('SCT') }, set: { code: 'A0434' } },
           { label: 'ALS2', when: { level: is('ALS2') }, set: { code: 'A0433' } },
           {
@@ -78,14 +115,39 @@ const baseRateCode = (): GraphDef => {
       )
     )
   });
+  const code = firstOf(
+    g,
+    'code',
+    'Special Case, Else the Base Rate',
+    { code: 'hcpcs' },
+    special.map((c) => ({
+      id: `${c.id}Code`,
+      label: `${c.label} Code`,
+      when: c.when,
+      value: fixed(c.code)
+    })),
+    'base.code'
+  );
+  const held = reasonsOf(
+    g,
+    'special',
+    'Special Cases That Held',
+    special.map((c) => ({
+      id: `${c.id}Reason`,
+      label: `${c.label} Reason`,
+      when: c.when,
+      reason: c.reason
+    }))
+  );
+  g.add('reasons', 'std.list.concat', { label: 'Special Cases, Then Base Rates' });
   g.ret('return');
   g.wire('entry.service', 'service.service');
-  g.wire('entry.classification', 'base.classification');
   g.wire('service.level', 'base.level');
   g.wire('service.emergency', 'base.emergency');
-  g.wire('service.deceased', 'base.deceased');
-  g.wire('base.code', 'return.code');
-  g.wire('base.rules', 'return.reasons');
+  g.wire(code, 'return.code');
+  g.wire(held, 'reasons.list');
+  g.wire('base.rules', 'reasons.other');
+  g.wire('reasons.list', 'return.reasons');
   return g.def;
 };
 
@@ -102,92 +164,152 @@ const mileageLines = (): GraphDef => {
       P.reasons('miles were or were not billed')
     ]
   );
-  g.add('service', 'billing.service.break');
-  g.add('mileage', 'std.table.decide', {
-    label: 'Mileage',
-    config: shared.decision(
-      'billing.mileage-code',
-      'Mileage',
-      'Picks the HCPCS mileage code for trips that transported the patient, for the loaded miles that are covered.',
-      table(
-        [
-          field('classification', 'string', 'Classification'),
-          field('loadedMiles', 'number', 'Covered loaded miles')
-        ],
-        [field('code', { code: 'hcpcs' }, 'HCPCS code')],
-        [
-          {
-            label: 'Loaded miles transported',
-            when: {
-              classification: { op: 'notOneOf', value: NO_TRANSPORT },
-              loadedMiles: { op: 'gt', value: 0 }
-            },
-            set: { code: 'A0425' }
-          }
-        ]
-      )
-    )
-  });
-  g.add('nonCoveredOrZero', 'std.logic.coalesce', {
-    label: 'Non-Covered Miles or 0',
-    values: { fallback: 0 }
-  });
+  g.add('service', 'billing.service.break', { label: 'Service' });
+  const transported = condition(
+    g,
+    'transported',
+    'The Trip Transported the Patient',
+    { classification: ['string', 'entry.classification'] },
+    [{ field: 'classification', op: 'notOneOf', value: NO_TRANSPORT }]
+  );
+  const nonCoveredOrZero = orElse(
+    g,
+    'nonCoveredOrZero',
+    'Non-Covered Miles, Else 0',
+    'service.nonCoveredMiles',
+    fixed(0),
+    'number'
+  );
   g.add('less', 'std.math.subtract', { label: 'Loaded Miles Less Non-Covered Miles' });
   g.add('covered', 'std.math.round', { label: 'Covered Miles', values: { digits: 2 } });
-  g.add('miles', 'std.logic.coalesce', { label: 'Covered Miles or 0', values: { fallback: 0 } });
-  g.add('line', 'billing.line.make', { label: 'Mileage Line' });
-  g.add('keep', 'std.logic.select', { label: 'Only When Miles Are Billed' });
-  g.add('nonCovered', 'std.table.decide', {
-    label: 'Non-Covered Mileage',
-    config: shared.decision(
-      'billing.non-covered-mileage-code',
-      'Non-Covered Mileage',
-      'Picks the HCPCS code for miles beyond the nearest appropriate facility, billed on their own line.',
-      table(
-        [
-          field('classification', 'string', 'Classification'),
-          field('nonCoveredMiles', 'number', 'Non-covered miles')
-        ],
-        [field('code', { code: 'hcpcs' }, 'HCPCS code')],
-        [
-          {
-            label: 'Miles beyond the nearest appropriate facility',
-            when: {
-              classification: { op: 'notOneOf', value: NO_TRANSPORT },
-              nonCoveredMiles: { op: 'gt', value: 0 }
-            },
-            set: { code: 'A0888' }
-          }
-        ]
-      )
-    )
+  const miles = orElse(g, 'miles', 'Covered Miles, Else 0', 'covered.result', fixed(0), 'number');
+  const billed = (id: string, label: string, miles: Port) =>
+    condition(g, id, label, { transported: ['boolean', transported], miles: ['number', miles] }, [
+      { field: 'transported', op: 'is', value: true },
+      { field: 'miles', op: 'gt', value: 0 }
+    ]);
+  const covered = billed('coveredBilled', 'Covered Loaded Miles on a Transport', 'covered.result');
+  const nonCovered = billed(
+    'nonCoveredBilled',
+    'Miles Beyond the Nearest Appropriate Facility',
+    'service.nonCoveredMiles'
+  );
+  g.add('line', 'billing.line.make', { label: 'Mileage Line', values: { code: 'A0425' } });
+  const keep = select(g, 'keep', 'Mileage Line When Miles Are Billed', covered, 'line.line');
+  g.add('excess', 'billing.line.make', {
+    label: 'Non-Covered Mileage Line',
+    values: { code: 'A0888' }
   });
-  g.add('excess', 'billing.line.make', { label: 'Non-Covered Mileage Line' });
-  g.add('keepExcess', 'std.logic.select', { label: 'Only When Non-Covered Miles Are Billed' });
-  g.add('lines', 'std.list.make', { label: 'As a List', config: { count: 2 } });
-  g.add('reasons', 'std.list.concat', { label: 'Both Tables' });
+  const keepExcess = select(
+    g,
+    'keepExcess',
+    'Non-Covered Line When Non-Covered Miles Are Billed',
+    nonCovered,
+    'excess.line'
+  );
+  const lines = makeList(g, 'lines', 'Mileage Lines', LINE, [keep, keepExcess]);
+  const reasons = reasonsOf(g, 'reasons', 'Mileage Billed', [
+    {
+      id: 'coveredReason',
+      label: 'Covered Miles Reason',
+      when: covered,
+      reason: 'Covered loaded miles on a transport'
+    },
+    {
+      id: 'nonCoveredReason',
+      label: 'Non-Covered Miles Reason',
+      when: nonCovered,
+      reason: 'Miles beyond the nearest appropriate facility'
+    }
+  ]);
   g.ret('return');
   g.wire('entry.service', 'service.service');
-  g.wire('entry.classification', 'mileage.classification', 'nonCovered.classification');
   g.wire('service.loadedMiles', 'less.a');
-  g.wire('service.nonCoveredMiles', 'nonCoveredOrZero.value', 'nonCovered.nonCoveredMiles');
-  g.wire('nonCoveredOrZero.result', 'less.b');
-  g.wire('less.result', 'covered.value');
   g.wire('service.nonCoveredMiles', 'excess.units');
-  g.wire('covered.result', 'mileage.loadedMiles', 'miles.value');
-  g.wire('mileage.code', 'line.code');
-  g.wire('miles.result', 'line.units');
-  g.wire('mileage.matched', 'keep.condition');
-  g.wire('line.line', 'keep.whenTrue');
-  g.wire('nonCovered.code', 'excess.code');
-  g.wire('nonCovered.matched', 'keepExcess.condition');
-  g.wire('excess.line', 'keepExcess.whenTrue');
-  g.wire('keep.result', 'lines.item1');
-  g.wire('keepExcess.result', 'lines.item2');
-  g.wire('lines.list', 'return.lines');
-  g.wire('mileage.rules', 'reasons.list');
-  g.wire('nonCovered.rules', 'reasons.other');
-  g.wire('reasons.list', 'return.reasons');
+  g.wire(nonCoveredOrZero, 'less.b');
+  g.wire('less.result', 'covered.value');
+  g.wire(miles, 'line.units');
+  g.wire(lines, 'return.lines');
+  g.wire(reasons, 'return.reasons');
+  return g.def;
+};
+
+const ROUNDING = {
+  wholeFrom: 'Whole Units From',
+  wholeDigits: 'Decimals from There',
+  belowDigits: 'Decimals Below'
+} as const;
+
+const MILEAGE_ROUNDING = shared.lookup(
+  'billing.unit-rounding',
+  'Unit Rounding',
+  'How units are rounded up before they are priced and billed, as Medicare asks for mileage: below Whole Units From (100) to Decimals Below (1, tenths of a mile), and from there to Decimals from There (0, whole miles).',
+  {
+    type: 'integer',
+    rows: [
+      { key: ROUNDING.wholeFrom, value: 100 },
+      { key: ROUNDING.wholeDigits, value: 0 },
+      { key: ROUNDING.belowDigits, value: 1 }
+    ]
+  }
+);
+
+const billedUnits = (): GraphDef => {
+  const g = rule(
+    [d('units', 'number', 'Units', 'The units charged, such as loaded miles.', true)],
+    [d('units', 'number', 'Billed Units', 'The units rounded up to what is billed.', true)]
+  );
+  const setting = (id: keyof typeof ROUNDING) => {
+    g.add(id, 'std.table.lookup', {
+      label: ROUNDING[id],
+      config: MILEAGE_ROUNDING,
+      values: { key: ROUNDING[id] }
+    });
+    return `${id}.value` as const;
+  };
+  const whole = condition(
+    g,
+    'whole',
+    'At or Above Whole Units From',
+    { units: ['number', 'entry.units'], from: ['integer', setting('wholeFrom')] },
+    [{ field: 'units', op: 'gte', input: 'from' }]
+  );
+  const up = (id: string, label: string, digits: Port) => {
+    g.add(id, 'std.math.round', { label, config: { direction: 'up' } });
+    g.wire('entry.units', `${id}.value`);
+    g.wire(digits, `${id}.digits`);
+    return `${id}.result` as const;
+  };
+  g.ret('return');
+  g.wire(
+    select(
+      g,
+      'billed',
+      'Whole Units, Else Tenths',
+      whole,
+      up('upWhole', 'Rounded Up from There', setting('wholeDigits')),
+      up('upBelow', 'Rounded Up Below', setting('belowDigits'))
+    ),
+    'return.units'
+  );
+  return g.def;
+};
+
+const billedLine = (): GraphDef => {
+  const g = rule(
+    [d('line', CHARGE_LINE, 'Charge Line', 'An HCPCS code and the units charged.')],
+    [d('line', CHARGE_LINE, 'Billed Line', 'The line with its units rounded up to what is billed.')]
+  );
+  g.add('billed', 'billing.billed-units', { label: 'Billed Units' });
+  g.add('set', 'std.object.set-field', {
+    label: 'Line with Billed Units',
+    config: { record: CHARGE_LINE, path: 'units' }
+  });
+  g.ret('return');
+  g.wire(getField(g, 'units', 'Units', CHARGE_LINE, 'units', 'entry.line'), 'billed.units');
+  g.wire('entry.line', 'set.record');
+  g.wire('billed.units', 'set.value');
+  g.wire('set.record', 'return.line');
   return g.def;
 };
 
@@ -195,15 +317,14 @@ const mapCharges = (): GraphDef => {
   const g = rule([P.classification(), P.service()], [LINES_OUT]);
   g.add('base', 'billing.base-rate-code', { label: 'Base Rate Code' });
   g.add('baseLine', 'billing.line.make', { label: 'Base Rate Line', values: { units: 1 } });
-  g.add('baseLines', 'std.list.make', { label: 'Base Rate First', config: { count: 1 } });
+  const baseLines = makeList(g, 'baseLines', 'Base Rate First', LINE, ['baseLine.line']);
   g.add('mileage', 'billing.mileage-lines', { label: 'Mileage Lines' });
   g.add('lines', 'std.list.concat', { label: 'Then Mileage' });
   g.ret('return');
   g.wire('entry.classification', 'base.classification', 'mileage.classification');
   g.wire('entry.service', 'base.service', 'mileage.service');
   g.wire('base.code', 'baseLine.code');
-  g.wire('baseLine.line', 'baseLines.item1');
-  g.wire('baseLines.list', 'lines.list');
+  g.wire(baseLines, 'lines.list');
   g.wire('mileage.lines', 'lines.other');
   g.wire('lines.list', 'return.lines');
   return g.def;
@@ -227,10 +348,11 @@ const pricePrecedence = (): GraphDef => {
       P.reasons('each code got its price')
     ]
   );
-  const none = { values: { fallback: {} } };
-  g.add('defaults', 'std.logic.coalesce', { label: 'Default Prices or None', ...none });
-  g.add('payer', 'std.logic.coalesce', { label: 'Payer Prices or None', ...none });
-  g.add('claim', 'std.logic.coalesce', { label: 'Claim Prices or None', ...none });
+  const none = (id: string, label: string, fees: Port) =>
+    orElse(g, id, label, fees, fixed({}), FEES);
+  const defaults = none('defaults', 'Default Prices, Else None', 'entry.defaultFees');
+  const payer = none('payer', 'Payer Prices, Else None', 'entry.payerFees');
+  const claim = none('claim', 'Claim Prices, Else None', 'entry.claimFees');
   g.add('payerOverDefault', 'std.object.merge', { label: 'Payer, Else Default' });
   g.add('fees', 'std.object.merge', { label: 'Claim, Else Payer, Else Default' });
   g.add('codes', 'std.object.keys', { label: 'Codes Priced' });
@@ -239,13 +361,12 @@ const pricePrecedence = (): GraphDef => {
     config: { rule: 'billing.price-source', version: 1, item: 'code' }
   });
   g.ret('return');
-  g.wire('entry.defaultFees', 'defaults.value');
-  g.wire('entry.payerFees', 'payer.value', 'reasons.payerFees');
-  g.wire('entry.claimFees', 'claim.value', 'reasons.claimFees');
-  g.wire('defaults.result', 'payerOverDefault.a');
-  g.wire('payer.result', 'payerOverDefault.b');
+  g.wire('entry.payerFees', 'reasons.payerFees');
+  g.wire('entry.claimFees', 'reasons.claimFees');
+  g.wire(defaults, 'payerOverDefault.a');
+  g.wire(payer, 'payerOverDefault.b');
   g.wire('payerOverDefault.object', 'fees.a');
-  g.wire('claim.result', 'fees.b');
+  g.wire(claim, 'fees.b');
   g.wire('fees.object', 'codes.object', 'return.fees');
   g.wire('codes.keys', 'reasons.list');
   g.wire('reasons.reason', 'return.reasons');
@@ -263,26 +384,31 @@ const priceSource = (): GraphDef => {
   );
   g.add('onClaim', 'std.object.has', { label: 'Set for This Claim' });
   g.add('onPayer', 'std.object.has', { label: 'On the Payer Schedule' });
-  g.add('payerOrDefault', 'std.logic.select', {
-    label: 'Payer, Else Default Schedule',
-    values: { whenTrue: 'payer fee schedule', whenFalse: 'default fee schedule' }
-  });
-  g.add('source', 'std.logic.select', {
-    label: 'Where the Price Came From',
-    values: { whenTrue: 'set for this claim' }
-  });
-  template(g, 'reason', 'Code and Source', '{code}: {source}', {
+  const schedule = select(
+    g,
+    'payerOrDefault',
+    'Payer, Else Default Schedule',
+    'onPayer.result',
+    fixed('payer fee schedule'),
+    fixed('default fee schedule')
+  );
+  const source = select(
+    g,
+    'source',
+    'Set for This Claim, Else the Schedule',
+    'onClaim.result',
+    fixed('set for this claim'),
+    schedule
+  );
+  const reason = template(g, 'reason', 'Code and Source', '{code}: {source}', {
     code: 'entry.code',
-    source: 'source.result'
+    source
   });
   g.ret('return');
   g.wire('entry.claimFees', 'onClaim.object');
   g.wire('entry.payerFees', 'onPayer.object');
   g.wire('entry.code', 'onClaim.key', 'onPayer.key');
-  g.wire('onPayer.result', 'payerOrDefault.condition');
-  g.wire('onClaim.result', 'source.condition');
-  g.wire('payerOrDefault.result', 'source.whenFalse');
-  g.wire('reason.text', 'return.reason');
+  g.wire(reason, 'return.reason');
   return g.def;
 };
 
@@ -302,14 +428,57 @@ const chargeCodeText = (): GraphDef => {
     meaning: 'meaning.value',
     code: 'entry.code'
   });
-  g.add('text', 'std.logic.choose', {
-    label: 'Meaning (Code), Else Code',
-    config: { mode: 'first', type: 'string', count: 2 }
+  g.ret('return');
+  g.wire('entry.code', 'meaning.key');
+  g.wire(
+    orElse(g, 'text', 'Meaning (Code), Else Code', 'described.text', 'entry.code'),
+    'return.text'
+  );
+  return g.def;
+};
+
+const MISSING: ValueType = { list: { code: 'hcpcs' } };
+
+const unpricedCodes = (): GraphDef => {
+  const g = rule(
+    [d('codes', MISSING, 'Codes Without a Price', 'The HCPCS codes no fee schedule prices.')],
+    [
+      d('named', { list: 'string' }, 'Codes Named', 'Each code with its meaning.'),
+      d('summary', 'string', 'Summary', 'What the biller is asked to price, naming the codes.')
+    ]
+  );
+  g.add('named', 'std.list.map-rule', {
+    label: 'Codes Named',
+    config: { rule: 'billing.charge-code-text', version: 1, item: 'code' }
+  });
+  g.add('count', 'std.list.length', { label: 'How Many Codes' });
+  const listed = joinText(g, 'listed', 'Codes Listed', '; ', 'named.text');
+  const several = template(
+    g,
+    'several',
+    'Several Codes Unpriced',
+    'No fee schedule prices {codes}; enter their unit prices or void the claim',
+    { codes: listed }
+  );
+  const one = template(
+    g,
+    'one',
+    'One Code Unpriced',
+    'No fee schedule prices {codes}; enter its unit price or void the claim',
+    { codes: listed }
+  );
+  g.add('summary', 'std.logic.choose', {
+    label: 'One or Several',
+    config: { mode: 'byCase', type: 'string', cases: [{ when: '0' }, { when: '1' }] },
+    values: { case1: 'A code on this claim has no price; enter its unit price or void the claim' }
   });
   g.ret('return');
-  g.wire('entry.code', 'meaning.key', 'text.option2');
-  g.wire('described.text', 'text.option1');
-  g.wire('text.value', 'return.text');
+  g.wire('entry.codes', 'named.list', 'count.list');
+  g.wire('named.text', 'return.named');
+  g.wire('count.length', 'summary.key');
+  g.wire(one, 'summary.case2');
+  g.wire(several, 'summary.otherwise');
+  g.wire('summary.value', 'return.summary');
   return g.def;
 };
 
@@ -343,56 +512,42 @@ const priceCharges = (): GraphDef => {
     PRICE_EXITS,
     [{ name: 'fees', type: FEES, default: {} }]
   );
+  g.add('billed', 'std.list.map-rule', {
+    label: 'Billed Units of Each Line',
+    config: { rule: 'billing.billed-line', version: 1, item: 'line' }
+  });
   g.add('claimFees', 'std.var.get', { label: 'Prices Set Here', config: { name: 'fees' } });
   g.add('find', 'billing.find-fees', { label: 'Find Fees' });
   g.add('precedence', 'billing.price-precedence', { label: 'Price Precedence' });
   g.add('price', 'billing.price-lines', { label: 'Price Lines' });
-  g.add('missingCount', 'std.list.length', { label: 'Codes Without a Price' });
-  g.add('allPriced', 'std.logic.equal', { label: 'None Missing', values: { b: 0 } });
+  const allPriced = condition(
+    g,
+    'allPriced',
+    'Every Code Has a Price',
+    { missing: [MISSING, 'price.missing'] },
+    [{ field: 'missing', op: 'empty' }]
+  );
   g.add('check', 'std.flow.branch', { label: 'Every Code Priced?' });
-  g.add('codeTexts', 'std.list.map-rule', {
-    label: 'Codes Named',
-    config: { rule: 'billing.charge-code-text', version: 1, item: 'code' }
+  g.add('unpriced', 'billing.unpriced-codes', { label: 'Unpriced Codes' });
+  const primaryPayer = orElse(
+    g,
+    'primaryPayer',
+    'Primary Payer, Else Default Schedule',
+    'entry.payerId',
+    fixed('No directory payer, so the default fee schedule'),
+    'any'
+  );
+  const context = makeObject(g, 'setContext', 'Missing Fees', {
+    codes: [{ list: 'string' }, 'unpriced.named'],
+    primaryPayer: ['any', primaryPayer],
+    claim: ['any', 'entry.context']
   });
-  g.add('primaryPayer', 'std.logic.choose', {
-    label: 'Primary Payer, Else Default Schedule',
-    config: { mode: 'first', type: 'any', count: 2 },
-    values: { option2: 'No directory payer, so the default fee schedule' }
-  });
-  g.add('setContext', 'std.object.make', {
-    label: 'Missing Fees',
-    config: {
-      fields: [
-        { name: 'codes', type: { list: 'string' } },
-        { name: 'primaryPayer', type: 'any' },
-        { name: 'claim', type: 'any' }
-      ]
-    }
-  });
-  g.add('codeChoices', 'std.object.make', {
-    label: 'Codes Without a Fee',
-    config: { fields: [{ name: 'code', type: { list: { code: 'hcpcs' } } }] }
+  const options = makeObject(g, 'codeChoices', 'Codes Without a Fee', {
+    code: [MISSING, 'price.missing']
   });
   g.add('missingFirst', 'std.list.first', { label: 'First Code Without a Fee' });
-  g.add('firstCode', 'std.object.make', {
-    label: 'First Code',
-    config: { fields: [{ name: 'code', type: { code: 'hcpcs' } }] }
-  });
-  g.add('codeList', 'std.text.join', { label: 'Codes Listed', values: { separator: '; ' } });
-  g.add('several', 'std.text.template', {
-    label: 'Several Codes Unpriced',
-    config: {
-      template: 'No fee schedule prices {codes}; enter their unit prices or void the claim'
-    }
-  });
-  g.add('one', 'std.text.template', {
-    label: 'One Code Unpriced',
-    config: { template: 'No fee schedule prices {codes}; enter its unit price or void the claim' }
-  });
-  g.add('setChargeSummary', 'std.logic.choose', {
-    label: 'Task Summary',
-    config: { mode: 'byCase', type: 'string', cases: [{ when: '0' }, { when: '1' }] },
-    values: { case1: 'A code on this claim has no price; enter its unit price or void the claim' }
+  const defaults = makeObject(g, 'firstCode', 'First Code', {
+    code: [{ code: 'hcpcs' }, 'missingFirst.item']
   });
   g.add('setCharge', 'std.human.task', {
     label: 'Set Charge',
@@ -421,39 +576,30 @@ const priceCharges = (): GraphDef => {
       prefill: 'suggested'
     }
   });
-  g.add('setFee', 'billing.set-fee');
+  g.add('setFee', 'billing.set-fee', { label: 'Set Fee' });
   g.add('keep', 'std.var.set', { label: 'Keep the Price', config: { name: 'fees' } });
   g.ret('pricedDone', 'priced');
   g.ret('voidedDone', 'voided');
   g.wire('entry.exec', 'find.exec');
-  g.wire('entry.lines', 'find.lines', 'price.lines');
-  g.wire('entry.payerId', 'find.payerId', 'primaryPayer.option1');
+  g.wire('entry.lines', 'billed.list');
+  g.wire('billed.line', 'find.lines', 'price.lines');
+  g.wire('entry.payerId', 'find.payerId');
   g.wire('claimFees.value', 'precedence.claimFees', 'setFee.fees');
   g.wire('find.payerFees', 'precedence.payerFees');
   g.wire('find.defaultFees', 'precedence.defaultFees');
   g.wire('precedence.fees', 'price.fees');
   g.wire('find.then', 'check.exec');
-  g.wire('price.missing', 'missingCount.list');
-  g.wire('missingCount.length', 'allPriced.a');
-  g.wire('allPriced.result', 'check.condition');
+  g.wire(allPriced, 'check.condition');
   g.wire('check.true', 'pricedDone.exec');
   g.wire('price.lines', 'pricedDone.lines');
   g.wire('price.totalCents', 'pricedDone.totalCents');
   g.wire('check.false', 'setCharge.exec');
-  g.wire('price.missing', 'codeTexts.list', 'codeChoices.code', 'missingFirst.list');
-  g.wire('codeTexts.text', 'setContext.codes', 'codeList.items');
-  g.wire('primaryPayer.value', 'setContext.primaryPayer');
-  g.wire('entry.context', 'setContext.claim');
-  g.wire('setContext.object', 'setCharge.context');
-  g.wire('codeChoices.object', 'setCharge.options');
-  g.wire('missingFirst.item', 'firstCode.code');
-  g.wire('firstCode.object', 'setCharge.defaults');
+  g.wire('price.missing', 'unpriced.codes', 'missingFirst.list');
+  g.wire(context, 'setCharge.context');
+  g.wire(options, 'setCharge.options');
+  g.wire(defaults, 'setCharge.defaults');
   g.wire('entry.subject', 'setCharge.subject');
-  g.wire('codeList.text', 'several.codes', 'one.codes');
-  g.wire('missingCount.length', 'setChargeSummary.key');
-  g.wire('one.text', 'setChargeSummary.case2');
-  g.wire('several.text', 'setChargeSummary.otherwise');
-  g.wire('setChargeSummary.value', 'setCharge.summary');
+  g.wire('unpriced.summary', 'setCharge.summary');
   g.wire('setCharge.price', 'setFee.exec');
   g.wire('setCharge.code', 'setFee.code');
   g.wire('setCharge.unitPrice', 'setFee.unitPrice');
@@ -471,7 +617,7 @@ const assignCharges = (): GraphDef => {
     PRICED_OUT,
     PRICE_EXITS
   );
-  g.add('charges', 'billing.map-charges', { label: 'Charges' });
+  g.add('charges', 'billing.map-charges', { label: 'Map Charges' });
   g.add('agency', 'billing.agency-charges', { label: 'Agency Charges' });
   g.add('price', 'billing.price-charges', { label: 'Price Charges' });
   g.ret('pricedDone', 'priced');
@@ -492,24 +638,14 @@ const assignCharges = (): GraphDef => {
 };
 
 const CHANGES = [
-  'classification',
-  'level',
-  'emergency',
-  'loadedMiles',
-  'deceased',
-  'nonCoveredMiles',
-  'payers'
+  ['classification', 'Classification', 'The classification changed'],
+  ['level', 'Level of Service', 'The level of service changed'],
+  ['emergency', 'Emergency Status', 'The emergency status changed'],
+  ['loadedMiles', 'Loaded Miles', 'The loaded miles changed'],
+  ['deceased', 'Pronounced Dead', 'Whether the patient was pronounced dead changed'],
+  ['nonCoveredMiles', 'Non-Covered Miles', 'The non-covered miles changed'],
+  ['payers', 'Payers', 'The payers changed']
 ] as const;
-
-const CHANGE_LABELS: Record<(typeof CHANGES)[number], string> = {
-  classification: 'Classification',
-  level: 'Level of service',
-  emergency: 'Emergency status',
-  loadedMiles: 'Loaded miles',
-  deceased: 'Pronounced dead',
-  nonCoveredMiles: 'Non-covered miles',
-  payers: 'Payers'
-};
 
 const repriceTriggers = (): GraphDef => {
   const g = rule(
@@ -518,7 +654,7 @@ const repriceTriggers = (): GraphDef => {
         'changes',
         { object: {} },
         'What Changed',
-        'Which claim fields an edit changed: classification, level, emergency, loadedMiles, deceased, nonCoveredMiles and payers.'
+        `Which claim fields an edit changed, each true or false, by these field names: ${CHANGES.map(([name]) => name).join(', ')}.`
       )
     ],
     [
@@ -528,31 +664,36 @@ const repriceTriggers = (): GraphDef => {
   );
   g.add('changes', 'std.object.break', {
     label: 'Changed Fields',
-    config: { fields: CHANGES.map((name) => ({ name, type: 'boolean' })) }
+    config: { fields: CHANGES.map(([name]) => ({ name, type: 'boolean' })) }
   });
-  g.add('decide', 'std.table.decide', {
-    label: 'Reprice Triggers',
-    config: shared.decision(
-      'billing.reprice-triggers',
-      'Reprice Triggers',
-      'Decides which claim edits map and price the charges again.',
-      table(
-        CHANGES.map((name) => field(name, 'boolean', `${CHANGE_LABELS[name]} changed`)),
-        [field('reprice', 'boolean', 'Reprice')],
-        CHANGES.map((name) => ({
-          label: `${CHANGE_LABELS[name]} changed`,
-          when: { [name]: is(true) },
-          set: { reprice: true }
-        })),
-        { reprice: false }
-      )
-    )
-  });
+  const reasons = reasonsOf(
+    g,
+    'reasons',
+    'What Changed',
+    CHANGES.map(([name, label, reason]) => ({
+      id: `${name}Reason`,
+      label: `${label} Reason`,
+      when: condition(
+        g,
+        `${name}Changed`,
+        `${label} Changed`,
+        { [name]: ['boolean', `changes.${name}`] },
+        [{ field: name, op: 'is', value: true }]
+      ),
+      reason
+    }))
+  );
+  const reprice = condition(
+    g,
+    'reprice',
+    'Any Change That Reprices',
+    { reasons: [{ list: 'string' }, reasons] },
+    [{ field: 'reasons', op: 'present' }]
+  );
   g.ret('return');
   g.wire('entry.changes', 'changes.object');
-  for (const name of CHANGES) g.wire(`changes.${name}`, `decide.${name}`);
-  g.wire('decide.reprice', 'return.reprice');
-  g.wire('decide.rules', 'return.reasons');
+  g.wire(reprice, 'return.reprice');
+  g.wire(reasons, 'return.reasons');
   return g.def;
 };
 
@@ -562,7 +703,7 @@ const repriceClaim = (): GraphDef => {
     [],
     {
       repriced: exit('Repriced', 'The new charge lines are saved on the claim.'),
-      voided: exit('Voided', 'A biller voided the claim instead of pricing a code.')
+      voided: PRICE_EXITS.voided
     }
   );
   g.add('charges', 'billing.assign-charges', { label: 'Assign Charges' });
@@ -586,10 +727,8 @@ export const chargeGraphs: SeedGraph[] = [
     'billing.agency-charges',
     'Agency Charges',
     'An agency rule after the base charges: add, change or drop charge lines before they are priced. Passes the lines through unchanged until an agency overrides it.',
-    {
-      execIn: [],
-      execOut: [],
-      inputs: [
+    pureSlot(
+      [
         d('lines', CHARGE_LINES, 'Charge Lines', 'The HCPCS lines the base rules charged.'),
         d('classification', 'string', 'Classification', 'The confirmed classification.', true),
         d(
@@ -600,20 +739,32 @@ export const chargeGraphs: SeedGraph[] = [
           true
         )
       ],
-      outputs: [d('lines', CHARGE_LINES, 'Charge Lines', 'The lines to price and bill.')]
-    }
+      [d('lines', CHARGE_LINES, 'Charge Lines', 'The lines to price and bill.')]
+    )
   ),
   asRule(
     'billing.base-rate-code',
     'Base Rate Code',
-    'Picks the HCPCS base rate by classification, level and emergency (Base Rate table): A0429/A0428 when pronounced dead before loading, A0998 without transport, A0434 SCT, A0433 ALS2, A0427/A0426 ALS1, A0429/A0428 BLS.',
+    'Picks the HCPCS base rate code: A0429 or A0428 when the patient was pronounced dead before loading (emergency or not), A0998 when treated without transport, else the Base Rate table by level of service and emergency status: A0434 for SCT, A0433 for ALS2, A0427 or A0426 for ALS1, and A0429 or A0428 for BLS.',
     baseRateCode()
   ),
   asRule(
     'billing.mileage-lines',
     'Mileage Lines',
-    'Bills A0425 for the covered loaded miles of trips that transported the patient (Mileage table), and A0888 for miles beyond the nearest appropriate facility (Non-Covered Mileage table); units are rounded up to the tenth, or to the whole mile from 100 miles, when priced.',
+    'Bills A0425 for the covered loaded miles of trips that transported the patient, and A0888 for miles beyond the nearest appropriate facility; Billed Units rounds them up when they are priced.',
     mileageLines()
+  ),
+  asRule(
+    'billing.billed-units',
+    'Billed Units',
+    'Rounds units up to what is billed (Unit Rounding table): to the tenth of a mile below 100, and to the whole mile from 100.',
+    billedUnits()
+  ),
+  asRule(
+    'billing.billed-line',
+    'Billed Line',
+    'Rounds the units of a charge line up to what is billed, with Billed Units.',
+    billedLine()
   ),
   asRule(
     'billing.map-charges',
@@ -639,10 +790,16 @@ export const chargeGraphs: SeedGraph[] = [
     'Names an HCPCS code as its meaning followed by the code in parentheses, or the code alone when its meaning is not known.',
     chargeCodeText()
   ),
+  asRule(
+    'billing.unpriced-codes',
+    'Unpriced Codes',
+    'Names the codes no fee schedule prices, each with its meaning (Charge Code Text), and says what the biller is asked to price.',
+    unpricedCodes()
+  ),
   asStage(
     'billing.price-charges',
     'Price Charges',
-    'Finds the fee schedules for the lines, prices them by Price Precedence, and asks a biller for the price of any code without one (optionally saving it to the default schedule) before going on, or voids.',
+    'Rounds each line to its Billed Units, finds the fee schedules for the lines, prices them by Price Precedence, and asks a biller for the price of any code without one (optionally saving it to the default schedule) before going on, or voids.',
     priceCharges()
   ),
   asStage(
@@ -654,7 +811,7 @@ export const chargeGraphs: SeedGraph[] = [
   asRule(
     'billing.reprice-triggers',
     'Reprice Triggers',
-    'Decides whether a claim edit maps and prices the charges again (Reprice Triggers table): a changed classification, level, emergency status, loaded or non-covered miles, pronounced-dead status or payers does.',
+    'Decides whether a claim edit maps and prices the charges again: a changed classification, level, emergency status, loaded or non-covered miles, pronounced-dead status or payers does.',
     repriceTriggers()
   ),
   asStage(

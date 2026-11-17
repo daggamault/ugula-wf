@@ -6,7 +6,7 @@ import type { RunQueueClient } from '@ugula/run-queue';
 import type { CompiledQuery } from 'kysely';
 import type { RuleRunner } from '../../shared/rules.ts';
 import { recordAnnouncements } from '../../shared/testing.ts';
-import { CLAIM_CHECKS_RULE, createClaimService, NEXT_CLAIM_STEP_RULE } from './service.ts';
+import { CLAIM_ISSUES_RULE, createClaimService, NEXT_CLAIM_STEP_RULE } from './service.ts';
 
 const MEDICARE = '01a16617-7704-7ba6-b9b5-000000000001';
 
@@ -230,7 +230,7 @@ describe('claim service', () => {
       [
         ['t', MAP_837P_RULE],
         ['t', NEXT_CLAIM_STEP_RULE],
-        ['t', CLAIM_CHECKS_RULE]
+        ['t', CLAIM_ISSUES_RULE]
       ]
     );
     assert.deepEqual(found.value.billing, {
@@ -241,6 +241,7 @@ describe('claim service', () => {
     const [, , inputs] = ruled[1] ?? [];
     const { ledger } = inputs as { ledger: Record<string, unknown> };
     assert.deepEqual([ledger.coverageId, ledger.contacted], [MEDICARE, true]);
+    assert.deepEqual(Object.keys(ruled[2]?.[2] ?? {}), ['record']);
     const paid = await setup({ row: { ...claim, status: 'paid' } }).service.find('t', 'c1');
     assert.equal(paid.ok && paid.value.progress, null);
     const draft = await setup({ row: { ...claim, status: 'draft' } }).service.find('t', 'c1');

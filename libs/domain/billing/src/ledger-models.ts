@@ -1,4 +1,4 @@
-import { f, model } from './model-kit.ts';
+import { ADJUSTMENT_TYPE, f, model } from './model-kit.ts';
 
 export const CLAIM_LEDGER = model(
   'billing.claim-ledger',
@@ -45,7 +45,7 @@ export const DENIAL_FACTS = model(
     f('coverageId', { id: 'coverage' }, 'Payer that denied (coverage ID)'),
     f('payer', 'string', 'Payer that denied'),
     f('payerKind', 'string', 'Claim filing indicator of the payer'),
-    f('route', 'string', 'How Remittance Routing routed it: denial, appeal or fix'),
+    f('route', 'string', 'How Route Remittance routed it: denial, appeal or fix'),
     f('note', 'string', 'What the routing said'),
     f('codes', { list: 'string' }, 'Group and reason codes of the denial (CO-50)'),
     f('remarks', { list: { code: 'rarc' } }, 'Remark codes (RARC) of the denial (MA130)'),
@@ -90,10 +90,11 @@ export const PATIENT_BALANCE_FACTS = model(
   [
     f('balanceCents', 'integer', 'Balance (cents)'),
     f(
-      'costShareCents',
-      'integer',
-      'Patient responsibility the payers stated (PR adjustments, cents)'
+      'adjustments',
+      { list: ADJUSTMENT_TYPE },
+      'Adjustments the last payer that answered sent, as it sent them'
     ),
+    f('claimFilings', { list: 'string' }, 'Claim filing indicators of the payers on the claim'),
     f('state', 'string', 'State of the pickup'),
     f('serviceDate', 'string', 'Date of service (YYYY-MM-DD)'),
     f(
@@ -103,11 +104,6 @@ export const PATIENT_BALANCE_FACTS = model(
     ),
     f('payerKind', 'string', 'Claim filing indicator of the last payer, or patient'),
     f(
-      'dualEligible',
-      'boolean',
-      'Medicare and Medicaid are both on the claim, so the patient may be a QMB'
-    ),
-    f(
       'protectedCents',
       'integer',
       'Already taken off the balance by balance-billing protection (cents)'
@@ -115,20 +111,91 @@ export const PATIENT_BALANCE_FACTS = model(
   ]
 );
 
+const DEADLINE_CLAIM = [
+  f('claimId', { id: 'claim' }, 'Claim'),
+  f('patientId', { id: 'patient' }, 'Patient'),
+  f('reference', 'string', 'Claim number and patient')
+];
+
+const DUE_FIELDS = [
+  f('kind', 'string', 'timelyFiling, appeal, records, refund, task or pcs'),
+  ...DEADLINE_CLAIM,
+  f('coverageId', { id: 'coverage' }, 'Payer (coverage ID)'),
+  f('dueOn', 'string', 'Due date (YYYY-MM-DD)'),
+  f('taskId', { id: 'task' }, 'The open task the deadline belongs to, if any'),
+  f('priority', 'integer', 'Priority of that task')
+];
+
+export const FILING_FACTS = model(
+  'billing.filing-facts',
+  'filing',
+  'Filing Facts',
+  'a claim its next payer has not been billed for yet, with what sets its filing limit',
+  [
+    ...DEADLINE_CLAIM,
+    f('coverageId', { id: 'coverage' }, 'Payer not billed yet (coverage ID)'),
+    f('claimFiling', 'string', 'Claim filing indicator of that payer in the payer directory'),
+    f('filingLimitDays', 'integer', 'Days the payer directory allows to file, if set'),
+    f('serviceDate', 'string', 'Date of service (YYYY-MM-DD)')
+  ]
+);
+
+export const CERTIFICATION_FACTS = model(
+  'billing.certification-facts',
+  'certification',
+  'Certification Facts',
+  "a patient's last scheduled trip that has a physician certification on file",
+  [
+    ...DEADLINE_CLAIM,
+    f('signedOn', 'string', 'Date the physician certification was signed (YYYY-MM-DD)'),
+    f('serviceDate', 'string', 'Date of the last scheduled trip (YYYY-MM-DD)')
+  ]
+);
+
+export const REMINDER_FACTS = model(
+  'billing.reminder-facts',
+  'reminder',
+  'Reminder Facts',
+  'a deadline reminder already opened on a claim, open or done',
+  [
+    f('kind', 'string', 'The deadline it reminds of: timelyFiling or pcs'),
+    f('claimId', { id: 'claim' }, 'Claim'),
+    f('patientId', { id: 'patient' }, 'Patient'),
+    f('dueOn', 'string', 'Due date it reminds of (YYYY-MM-DD)'),
+    f('openedOn', 'string', 'Date it was opened (YYYY-MM-DD)')
+  ]
+);
+
+export const TASK_DUE = model(
+  'billing.task-due',
+  'task',
+  'Task Due',
+  'an open task on a claim with a due date, and the workflow that opened it',
+  [
+    f('workflow', 'string', 'Key of the workflow that opened the task'),
+    ...DEADLINE_CLAIM,
+    f('dueOn', 'string', 'Due date (YYYY-MM-DD)'),
+    f('taskId', { id: 'task' }, 'The open task'),
+    f('priority', 'integer', 'Priority of the task')
+  ]
+);
+
+export const DUE_DATE = model(
+  'billing.due-date',
+  'due',
+  'Due Date',
+  'a claim deadline and the day it falls on: timely filing, an appeal, a records request, a refund or a physician certification',
+  DUE_FIELDS
+);
+
 export const DEADLINE = model(
   'billing.deadline',
   'deadline',
   'Deadline',
-  'a claim deadline coming up: timely filing, an appeal, a records request, a refund or a physician certification',
+  'a claim deadline coming up, with the days left and whether a reminder was already opened',
   [
-    f('kind', 'string', 'timelyFiling, appeal, records, refund or pcs'),
-    f('claimId', { id: 'claim' }, 'Claim'),
-    f('coverageId', { id: 'coverage' }, 'Payer (coverage ID)'),
-    f('reference', 'string', 'Claim number and patient'),
-    f('dueOn', 'string', 'Due date (YYYY-MM-DD)'),
+    ...DUE_FIELDS,
     f('daysLeft', 'integer', 'Days left (negative once passed)'),
-    f('taskId', { id: 'task' }, 'The open task the deadline belongs to, if any'),
-    f('priority', 'integer', 'Priority of that task'),
     f('reminded', 'boolean', 'A reminder for this deadline was already opened')
   ]
 );

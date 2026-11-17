@@ -18,7 +18,7 @@ describe('createBillingNodes', () => {
         'billing.find-fees@1',
         'billing.price-lines@1',
         'billing.set-fee@1',
-        'billing.read-claim-checks@1',
+        'billing.read-claim@1',
         'billing.fix-claim-form@1',
         'billing.patch-claim@1',
         'billing.open-claim@1',
@@ -55,7 +55,6 @@ describe('createBillingNodes', () => {
         'billing.send-270@1',
         'billing.send-276@1',
         'billing.latest-claim-status@1',
-        'billing.read-signature@1',
         'billing.issue-when@1',
         'billing.issue-for-each@1',
         'billing.read-denial@1',
@@ -71,7 +70,7 @@ describe('createBillingNodes', () => {
         'billing.build-appeal-packet@1',
         'billing.with-frequency@1',
         'billing.agency-today@1',
-        'billing.find-deadlines@1',
+        'billing.read-deadlines@1',
         'billing.raise-task@1',
         'billing.issue-facility-invoices@1'
       ]

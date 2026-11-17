@@ -81,7 +81,7 @@ describe('recoveryNodes', () => {
     await assert.rejects(() => run('read-refund', { claimId: 'other' }), /does not exist/);
   });
 
-  it('adds up what a payer paid and allowed across its responses', async () => {
+  it('reads what a payer paid and every adjustment it sent across its responses', async () => {
     const { claims, run } = setup();
     claims.events.push(
       event({
@@ -99,9 +99,10 @@ describe('recoveryNodes', () => {
     });
     assert.deepEqual(response.outputs, {
       paidCents: 43_000,
-      patientCents: 11_000,
-      allowedCents: 54_900,
-      reasonCoded: true
+      adjustments: [
+        { group: 'PR', reason: '2', cents: 11_000 },
+        { group: 'CO', reason: '253', cents: 900 }
+      ]
     });
   });
 

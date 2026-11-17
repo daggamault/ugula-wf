@@ -1,26 +1,84 @@
 import { CLASSIFICATION_FIELD } from '@ugula/billing';
-import type { GraphDef, Json } from '@ugula/graph';
+import type { GraphDef, ValueType } from '@ugula/graph';
 import { slot } from '../builder.ts';
 import type { SeedGraph } from '../graphs.ts';
 import {
-  above,
   asRule,
   asStage,
-  atLeast,
+  type Builder,
+  codeSet,
+  condition,
   d,
   exit,
-  field,
-  is,
-  notOneOf,
-  oneOf,
+  firstOf,
+  fixed,
+  keepListed,
+  makeList,
+  makeObject,
+  orElse,
   P,
+  type Port,
+  pureSlot,
+  reasonsOf,
   rule,
-  shared,
+  select,
   stage,
   summary,
   T,
-  table
+  type Test
 } from './shared.ts';
+
+type Held = { id: string; label: string; reason: string; tests: Test[] };
+
+type Inputs = Record<string, [ValueType, Port]>;
+
+const heldRules = (g: Builder, inputs: Inputs, rules: Held[]) =>
+  Object.fromEntries(
+    rules.map((r) => [
+      r.id,
+      condition(
+        g,
+        r.id,
+        r.label,
+        Object.fromEntries(
+          Object.entries(inputs).filter(([name]) => r.tests.some((t) => t.field === name))
+        ),
+        r.tests
+      )
+    ])
+  ) as Record<string, Port>;
+
+const anyHeld = (
+  g: Builder,
+  id: string,
+  label: string,
+  rules: Held[],
+  held: Record<string, Port>
+) =>
+  condition(
+    g,
+    id,
+    label,
+    Object.fromEntries(rules.map((r) => [r.id, ['boolean', held[r.id] as Port]])),
+    rules.map((r) => ({ field: r.id, op: 'is', value: true })),
+    'any'
+  );
+
+const reasonsHeld = (g: Builder, rules: Held[], held: Record<string, Port>) =>
+  reasonsOf(
+    g,
+    'reasons',
+    'Rules That Held',
+    rules.map((r) => ({
+      id: `${r.id}Reason`,
+      label: r.label,
+      when: held[r.id] as Port,
+      reason: r.reason
+    }))
+  );
+
+const tripInputs = (...pins: string[]): Inputs =>
+  Object.fromEntries(pins.map((p) => [p, ['string', `trip.${p}`]]));
 
 const INTERFACILITY = ['2205005', '2205015', '2205017', '2205019'];
 
@@ -48,139 +106,196 @@ const CLASSIFICATION_OUT = d(
   'The classification to bill the report as.'
 );
 
+const NOT_BILLABLE: Held[] = [
+  {
+    id: 'cancelled',
+    label: 'Cancelled, or No Patient Contact',
+    reason: 'Cancelled, or no patient contact',
+    tests: [{ field: 'incidentDisposition', op: 'oneOf', value: ['4212007', '4212009', '4212011'] }]
+  },
+  {
+    id: 'assist',
+    label: 'Assist, Standby or Non-Patient Transport',
+    reason: 'Assist, standby or non-patient transport',
+    tests: [
+      {
+        field: 'incidentDisposition',
+        op: 'oneOf',
+        value: ['4212001', '4212003', '4212005', '4212039', '4212041', '4212043']
+      }
+    ]
+  },
+  {
+    id: 'unitCancelled',
+    label: 'Unit Cancelled, Made No Patient Contact, or Had No Patient',
+    reason: 'Unit cancelled, made no patient contact, or had no patient',
+    tests: [
+      {
+        field: 'unitDisposition',
+        op: 'oneOf',
+        value: ['4227003', '4227005', '4227007', '4227009', '4227011']
+      }
+    ]
+  },
+  {
+    id: 'nonPatientTransport',
+    label: 'Non-Patient Transport',
+    reason: 'Non-patient transport',
+    tests: [{ field: 'transportDisposition', op: 'is', value: '4230011' }]
+  },
+  {
+    id: 'nonPatientService',
+    label: 'Non-Patient Service Requested and Nobody Transported',
+    reason: 'Non-patient service requested and nobody transported',
+    tests: [
+      { field: 'serviceType', op: 'oneOf', value: [...NON_PATIENT_SERVICES] },
+      { field: 'incidentDisposition', op: 'notOneOf', value: TRANSPORTED_INCIDENTS },
+      { field: 'transportDisposition', op: 'notOneOf', value: TRANSPORTED }
+    ]
+  }
+];
+
+const REFUSAL: Held[] = [
+  {
+    id: 'refusedCare',
+    label: 'Patient Refused Care',
+    reason: 'Patient refused care',
+    tests: [{ field: 'incidentDisposition', op: 'is', value: '4212025' }]
+  },
+  {
+    id: 'refusedTransport',
+    label: 'Patient Refused Care and Transport',
+    reason: 'Patient refused care and transport',
+    tests: [
+      { field: 'patientEvaluation', op: 'oneOf', value: ['4228003', '4228007'] },
+      { field: 'transportDisposition', op: 'oneOf', value: ['4230009', '4230013'] }
+    ]
+  }
+];
+
+const NO_TRANSPORT: Held[] = [
+  {
+    id: 'treated',
+    label: 'Patient Treated and Not Transported',
+    reason: 'Patient treated and not transported',
+    tests: [
+      {
+        field: 'incidentDisposition',
+        op: 'oneOf',
+        value: [
+          '4212015',
+          '4212019',
+          '4212021',
+          '4212027',
+          '4212029',
+          '4212031',
+          '4212035',
+          '4212037'
+        ]
+      }
+    ]
+  },
+  {
+    id: 'notTransportedByUnit',
+    label: 'Patient Not Transported by This Unit',
+    reason: 'Patient not transported by this unit',
+    tests: [
+      {
+        field: 'transportDisposition',
+        op: 'oneOf',
+        value: ['4230005', '4230007', '4230009', '4230013']
+      }
+    ]
+  }
+];
+
+const SCHEDULED: Held = {
+  id: 'scheduledTransport',
+  label: 'Scheduled or Interfacility Transport',
+  reason: 'Scheduled or interfacility transport',
+  tests: [{ field: 'serviceType', op: 'oneOf', value: [...INTERFACILITY, '2205007'] }]
+};
+
+const EMERGENCY: Held[] = [
+  {
+    id: 'emergencyResponse',
+    label: 'Emergency Response',
+    reason: 'Emergency response',
+    tests: [{ field: 'serviceType', op: 'oneOf', value: ['2205001', '2205003', '2205009'] }]
+  },
+  {
+    id: 'treatedAndTransported',
+    label: 'Patient Treated and Transported by This Unit',
+    reason: 'Patient treated and transported by this unit',
+    tests: [{ field: 'incidentDisposition', op: 'oneOf', value: [...TRANSPORTED_INCIDENTS] }]
+  },
+  {
+    id: 'transported',
+    label: 'Patient Transported by This Unit',
+    reason: 'Patient transported by this unit',
+    tests: [{ field: 'transportDisposition', op: 'oneOf', value: [...TRANSPORTED] }]
+  }
+];
+
 const classification = (): GraphDef => {
   const g = rule(
     [d('trip', T.trip, 'Trip Facts', 'The dispositions and type of service of the trip.')],
     [CLASSIFICATION_OUT, P.reason(), P.reasons('the classification was chosen')]
   );
-  g.add('trip', 'billing.trip-facts.break');
-  g.add('decide', 'std.table.decide', {
-    label: 'Classification',
-    config: shared.decision(
-      'billing.classification',
-      'Classification',
-      'Decides the classification from the report dispositions and the type of service.',
-      table(
-        [
-          field('incidentDisposition', 'string', 'Incident/patient disposition · eDisposition.12'),
-          field('unitDisposition', 'string', 'Unit disposition · eDisposition.27'),
-          field('patientEvaluation', 'string', 'Patient evaluation/care · eDisposition.28'),
-          field('transportDisposition', 'string', 'Transport disposition · eDisposition.30'),
-          field('serviceType', 'string', 'Type of service requested · eResponse.05')
-        ],
-        [field('classification', 'string', 'Classification')],
-        [
-          {
-            label: 'Cancelled, or no patient contact',
-            when: { incidentDisposition: oneOf('4212007', '4212009', '4212011') },
-            set: { classification: 'notBillable' }
-          },
-          {
-            label: 'Assist, standby or non-patient transport',
-            when: {
-              incidentDisposition: oneOf(
-                '4212001',
-                '4212003',
-                '4212005',
-                '4212039',
-                '4212041',
-                '4212043'
-              )
-            },
-            set: { classification: 'notBillable' }
-          },
-          {
-            label: 'Unit cancelled, made no patient contact, or had no patient',
-            when: { unitDisposition: oneOf('4227003', '4227005', '4227007', '4227009', '4227011') },
-            set: { classification: 'notBillable' }
-          },
-          {
-            label: 'Non-patient transport',
-            when: { transportDisposition: oneOf('4230011') },
-            set: { classification: 'notBillable' }
-          },
-          {
-            label: 'Non-patient service requested and nobody transported',
-            when: {
-              serviceType: oneOf(...NON_PATIENT_SERVICES),
-              incidentDisposition: notOneOf(...TRANSPORTED_INCIDENTS),
-              transportDisposition: notOneOf(...TRANSPORTED)
-            },
-            set: { classification: 'notBillable' }
-          },
-          {
-            label: 'Patient refused care',
-            when: { incidentDisposition: oneOf('4212025') },
-            set: { classification: 'refusal' }
-          },
-          {
-            label: 'Patient refused care and transport',
-            when: {
-              patientEvaluation: oneOf('4228003', '4228007'),
-              transportDisposition: oneOf('4230009', '4230013')
-            },
-            set: { classification: 'refusal' }
-          },
-          {
-            label: 'Patient treated and not transported',
-            when: {
-              incidentDisposition: oneOf(
-                '4212015',
-                '4212019',
-                '4212021',
-                '4212027',
-                '4212029',
-                '4212031',
-                '4212035',
-                '4212037'
-              )
-            },
-            set: { classification: 'treatNoTransport' }
-          },
-          {
-            label: 'Patient not transported by this unit',
-            when: { transportDisposition: oneOf('4230005', '4230007', '4230009', '4230013') },
-            set: { classification: 'treatNoTransport' }
-          },
-          {
-            label: 'Scheduled or interfacility transport',
-            when: { serviceType: oneOf(...INTERFACILITY, '2205007') },
-            set: { classification: 'scheduled' }
-          },
-          {
-            label: 'Emergency response',
-            when: { serviceType: oneOf('2205001', '2205003', '2205009') },
-            set: { classification: 'emergency' }
-          },
-          {
-            label: 'Patient treated and transported by this unit',
-            when: { incidentDisposition: oneOf(...TRANSPORTED_INCIDENTS) },
-            set: { classification: 'emergency' }
-          },
-          {
-            label: 'Patient transported by this unit',
-            when: { transportDisposition: oneOf(...TRANSPORTED) },
-            set: { classification: 'emergency' }
-          }
-        ],
-        { classification: 'emergency' }
-      )
-    )
-  });
-  g.ret('return');
+  g.add('trip', 'billing.trip-facts.break', { label: 'Trip Facts' });
   g.wire('entry.trip', 'trip.trip');
-  for (const pin of [
-    'incidentDisposition',
-    'unitDisposition',
-    'patientEvaluation',
-    'transportDisposition',
-    'serviceType'
-  ]) {
-    g.wire(`trip.${pin}`, `decide.${pin}`);
-  }
-  g.wire('decide.classification', 'return.classification');
-  g.wire('decide.rule', 'return.reason');
-  g.wire('decide.rules', 'return.reasons');
+  const rules = [...NOT_BILLABLE, ...REFUSAL, ...NO_TRANSPORT, SCHEDULED, ...EMERGENCY];
+  const held = heldRules(
+    g,
+    tripInputs(
+      'incidentDisposition',
+      'unitDisposition',
+      'patientEvaluation',
+      'transportDisposition',
+      'serviceType'
+    ),
+    rules
+  );
+  const classified = firstOf(
+    g,
+    'classification',
+    'First Classification That Holds, Else Emergency',
+    'string',
+    [
+      {
+        id: 'asNotBillable',
+        label: 'Not Billable When a Not-Billable Rule Holds',
+        when: anyHeld(g, 'notBillable', 'A Not-Billable Rule Holds', NOT_BILLABLE, held),
+        value: fixed('notBillable')
+      },
+      {
+        id: 'asRefusal',
+        label: 'Refusal When a Refusal Rule Holds',
+        when: anyHeld(g, 'refusal', 'A Refusal Rule Holds', REFUSAL, held),
+        value: fixed('refusal')
+      },
+      {
+        id: 'asTreatNoTransport',
+        label: 'Treat, No Transport When a No-Transport Rule Holds',
+        when: anyHeld(g, 'noTransport', 'A No-Transport Rule Holds', NO_TRANSPORT, held),
+        value: fixed('treatNoTransport')
+      },
+      {
+        id: 'asScheduled',
+        label: 'Scheduled When Scheduled or Interfacility',
+        when: held[SCHEDULED.id] as Port,
+        value: fixed('scheduled')
+      }
+    ],
+    fixed('emergency')
+  );
+  const reasons = reasonsHeld(g, rules, held);
+  g.add('first', 'std.list.first', { label: 'First Rule That Held' });
+  g.wire(reasons, 'first.list');
+  g.ret('return');
+  g.wire(classified, 'return.classification');
+  g.wire('first.item', 'return.reason');
+  g.wire(reasons, 'return.reasons');
   return g.def;
 };
 
@@ -189,28 +304,36 @@ const classifyTrip = (): GraphDef => {
     [P.facts()],
     [CLASSIFICATION_OUT, P.reason(), P.reasons('the classification was chosen')]
   );
-  g.add('facts', 'billing.encounter-facts.break');
+  g.add('facts', 'billing.encounter-facts.break', { label: 'Encounter Facts' });
   g.add('base', 'billing.classification', { label: 'Classification' });
   g.add('agency', 'billing.agency-classification', { label: 'Agency Classification' });
   g.add('unchanged', 'std.logic.equal', { label: 'Agency Kept the Classification' });
-  g.add('agencyReason', 'std.logic.coalesce', {
-    label: 'Agency Reason, Else Changed by a Rule',
-    values: { fallback: 'Changed by an agency rule' }
-  });
-  g.add('agencyReasons', 'std.list.append', { label: 'As a List' });
-  g.add('reasons', 'std.logic.select', { label: 'Reasons for the Classification Billed' });
+  const agencyReason = orElse(
+    g,
+    'agencyReason',
+    'Agency Reason, Else Changed by an Agency Rule',
+    'agency.reason',
+    fixed('Changed by an agency rule')
+  );
+  const agencyReasons = makeList(g, 'agencyReasons', 'Agency Reason as a List', 'string', [
+    agencyReason
+  ]);
+  const reasons = select(
+    g,
+    'reasons',
+    'Base Reasons When Kept, Else the Agency Reason',
+    'unchanged.result',
+    'base.reasons',
+    agencyReasons
+  );
   g.ret('return');
   g.wire('entry.facts', 'facts.facts', 'agency.facts');
   g.wire('facts.trip', 'base.trip');
   g.wire('base.classification', 'agency.classification', 'unchanged.b');
   g.wire('base.reason', 'agency.reason');
   g.wire('agency.classification', 'return.classification', 'unchanged.a');
-  g.wire('agency.reason', 'return.reason', 'agencyReason.value');
-  g.wire('agencyReason.result', 'agencyReasons.item');
-  g.wire('unchanged.result', 'reasons.condition');
-  g.wire('base.reasons', 'reasons.whenTrue');
-  g.wire('agencyReasons.list', 'reasons.whenFalse');
-  g.wire('reasons.result', 'return.reasons');
+  g.wire('agency.reason', 'return.reason');
+  g.wire(reasons, 'return.reasons');
   return g.def;
 };
 
@@ -224,14 +347,11 @@ const decideClaim = (): GraphDef => {
   });
   g.add('classify', 'billing.classify-trip', { label: 'Classify Trip' });
   g.add('needed', 'std.flow.switch', {
-    label: 'Claim Needed?',
+    label: 'Classified as Not Billable?',
     config: { cases: ['notBillable'] }
   });
   g.add('trip', 'billing.trip-summary', { label: 'Trip Summary' });
-  g.add('context', 'std.object.make', {
-    label: 'Trip Context',
-    config: { fields: [{ name: 'trip', type: { object: {} } }] }
-  });
+  const context = makeObject(g, 'context', 'Task Details', { trip: [{ object: {} }, 'trip.trip'] });
   g.add('subject', 'billing.pcr-subject', { label: 'Task Subject' });
   g.add('notBillable', 'std.human.task', {
     label: 'Confirm Not Billable',
@@ -257,10 +377,9 @@ const decideClaim = (): GraphDef => {
   g.wire('classify.classification', 'classified.classification', 'skipped.classification');
   g.wire('classify.reason', 'trip.reason', 'classified.reason');
   g.wire('classify.reason', 'confirmed.reason', 'skipped.reason');
-  g.wire('trip.trip', 'context.trip');
   g.wire('needed.default', 'classified.exec');
   g.wire('needed.notBillable', 'notBillable.exec');
-  g.wire('context.object', 'notBillable.context');
+  g.wire(context, 'notBillable.context');
   g.wire('subject.subject', 'notBillable.subject');
   summary(
     g,
@@ -302,33 +421,18 @@ const loadedMiles = (): GraphDef => {
       )
     ]
   );
-  g.add('scene', 'std.logic.coalesce', { label: 'Scene Odometer or 0', values: { fallback: 0 } });
-  g.add('destination', 'std.logic.coalesce', {
-    label: 'Destination Odometer or 0',
-    values: { fallback: 0 }
-  });
   g.add('distance', 'std.math.subtract', { label: 'Destination Minus Scene' });
   g.add('positive', 'std.math.max', { label: 'Never Below Zero', values: { b: 0 } });
   g.add('rounded', 'std.math.round', {
-    label: 'Hundredths, Without Float Noise',
+    label: 'Loaded Miles to the Hundredth',
     values: { digits: 2 }
   });
-  g.add('noScene', 'std.logic.is-null', { label: 'No Scene Odometer' });
-  g.add('noDestination', 'std.logic.is-null', { label: 'No Destination Odometer' });
-  g.add('missing', 'std.logic.or', { label: 'Either Missing' });
-  g.add('miles', 'std.logic.select', { label: 'Miles When Both Are Recorded' });
   g.ret('return');
-  g.wire('entry.sceneOdometer', 'scene.value', 'noScene.value');
-  g.wire('entry.destinationOdometer', 'destination.value', 'noDestination.value');
-  g.wire('destination.result', 'distance.a');
-  g.wire('scene.result', 'distance.b');
+  g.wire('entry.destinationOdometer', 'distance.a');
+  g.wire('entry.sceneOdometer', 'distance.b');
   g.wire('distance.result', 'positive.a');
   g.wire('positive.result', 'rounded.value');
-  g.wire('noScene.result', 'missing.a');
-  g.wire('noDestination.result', 'missing.b');
-  g.wire('missing.result', 'miles.condition');
-  g.wire('rounded.result', 'miles.whenFalse');
-  g.wire('miles.result', 'return.loadedMiles');
+  g.wire('rounded.result', 'return.loadedMiles');
   return g.def;
 };
 
@@ -396,137 +500,211 @@ const ALS2_PROCEDURES = [
 
 const ALS_ASSESSMENT_YES = '9923003';
 
-const LEVEL_OUT = d('level', 'string', 'Level of Service', 'BLS, ALS1, ALS2 or SCT.');
+const IV_SOLUTION_SET = codeSet(
+  'billing.iv-solutions',
+  'IV Solutions',
+  'The coded medications (RxNorm) that are IV solutions, such as saline or dextrose, so giving them IV or IO does not count as an IV/IO medication for the level of service.',
+  Object.fromEntries(IV_SOLUTIONS.map((code) => [code, 'IV solution']))
+);
+
+const ALS2_PROCEDURE_SET = codeSet(
+  'billing.als2-procedures',
+  'ALS2 Procedures',
+  'The coded procedures (SNOMED CT) that make a trip ALS2, the ones CMS names for it: manual defibrillation or cardioversion, endotracheal intubation, a central venous line, cardiac pacing, chest decompression, a surgical airway or an intraosseous line.',
+  Object.fromEntries(ALS2_PROCEDURES.map((code) => [code, 'ALS2 procedure']))
+);
+
+const SCT: Held[] = [
+  {
+    id: 'criticalCare',
+    label: 'Critical Care Documented on an Interfacility Transport',
+    reason: 'Critical care documented on an interfacility transport',
+    tests: [
+      { field: 'levelOfCare', op: 'is', value: '4232009' },
+      { field: 'serviceType', op: 'oneOf', value: [...INTERFACILITY] }
+    ]
+  },
+  {
+    id: 'crewSct',
+    label: 'Crew Reported Specialty Care on an Interfacility Transport',
+    reason: 'Crew reported specialty care on an interfacility transport',
+    tests: [
+      { field: 'cmsServiceLevel', op: 'is', value: '2650015' },
+      { field: 'serviceType', op: 'oneOf', value: [...INTERFACILITY] }
+    ]
+  }
+];
+
+const ALS2: Held[] = [
+  {
+    id: 'procedureCoded',
+    label: 'ALS2 Procedure Coded',
+    reason: 'ALS2 procedure coded',
+    tests: [{ field: 'proceduresCoded', op: 'gte', value: 1 }]
+  },
+  {
+    id: 'procedureInNarrative',
+    label: 'ALS2 Procedures in the Narrative',
+    reason: 'ALS2 procedures in the narrative',
+    tests: [{ field: 'proceduresInNarrative', op: 'gte', value: 1 }]
+  },
+  {
+    id: 'threeMedicationsCoded',
+    label: 'Three or More IV/IO Medications Coded',
+    reason: 'Three or more IV/IO medications coded',
+    tests: [{ field: 'medicationsCoded', op: 'gte', value: 3 }]
+  },
+  {
+    id: 'threeDosesInNarrative',
+    label: 'Three or More IV/IO Doses in the Narrative',
+    reason: 'Three or more IV/IO doses in the narrative',
+    tests: [{ field: 'dosesInNarrative', op: 'gte', value: 3 }]
+  },
+  {
+    id: 'crewAls2',
+    label: 'Crew Reported ALS2',
+    reason: 'Crew reported ALS2',
+    tests: [{ field: 'cmsServiceLevel', op: 'is', value: '2650005' }]
+  }
+];
+
+const ALS1: Held[] = [
+  {
+    id: 'alsAssessed',
+    label: 'ALS Assessment Performed and Warranted',
+    reason: 'ALS assessment performed and warranted',
+    tests: [{ field: 'alsAssessment', op: 'is', value: ALS_ASSESSMENT_YES }]
+  },
+  {
+    id: 'crewAls1',
+    label: 'Crew Reported ALS1',
+    reason: 'Crew reported ALS1',
+    tests: [{ field: 'cmsServiceLevel', op: 'oneOf', value: ['2650001', '2650003'] }]
+  },
+  {
+    id: 'medicationCoded',
+    label: 'IV/IO Medications Coded',
+    reason: 'IV/IO medications coded',
+    tests: [{ field: 'medicationsCoded', op: 'gte', value: 1 }]
+  },
+  {
+    id: 'doseInNarrative',
+    label: 'IV/IO Doses in the Narrative',
+    reason: 'IV/IO doses in the narrative',
+    tests: [{ field: 'dosesInNarrative', op: 'gte', value: 1 }]
+  }
+];
+
+const BLS: Held = {
+  id: 'blsCare',
+  label: 'BLS Care Documented',
+  reason: 'BLS care documented',
+  tests: [{ field: 'levelOfCare', op: 'is', value: '4232001' }]
+};
+
+const LEVEL_OUT = d(
+  'level',
+  'string',
+  'Level of Service',
+  'The level of service: BLS, ALS1, ALS2 or SCT.'
+);
 
 const levelOfService = (): GraphDef => {
   const g = rule([P.facts(), P.findings(true)], [LEVEL_OUT, P.reasons('the level was chosen')]);
-  g.add('facts', 'billing.encounter-facts.break');
-  g.add('trip', 'billing.trip-facts.break');
-  g.add('clinical', 'billing.clinical-facts.break');
-  g.add('ivMedications', 'std.list.where', {
-    label: 'IV/IO Medications Coded',
+  g.add('facts', 'billing.encounter-facts.break', { label: 'Encounter Facts' });
+  g.add('trip', 'billing.trip-facts.break', { label: 'Trip Facts' });
+  g.add('clinical', 'billing.clinical-facts.break', { label: 'Clinical Facts' });
+  g.add('findings', 'billing.findings.break', { label: 'Narrative Findings' });
+  g.add('ivRoute', 'std.list.where', {
+    label: 'Medications Given IV or IO',
     config: { field: 'route', op: 'oneOf', value: IV_ROUTES }
   });
-  g.add('ivDrugs', 'std.list.where', {
-    label: 'Not IV Solutions',
-    config: { field: 'medication', op: 'notOneOf', value: IV_SOLUTIONS }
-  });
-  g.add('findings', 'billing.findings.break');
-  g.add('procedures', 'std.logic.coalesce', {
-    label: 'Narrative Procedures',
-    values: { fallback: [] }
-  });
+  keepListed(
+    g,
+    'ivDrugs',
+    'IV/IO Medications Other Than Solutions',
+    IV_SOLUTION_SET,
+    'ivRoute.list',
+    'medication',
+    'notListed'
+  );
+  keepListed(
+    g,
+    'codedProcedures',
+    'ALS2 Procedures Coded',
+    ALS2_PROCEDURE_SET,
+    'clinical.procedures',
+    'procedure'
+  );
   g.add('procedureCount', 'std.list.length', { label: 'How Many ALS2 Procedures' });
-  g.add('codedProcedures', 'std.list.where', {
-    label: 'ALS2 Procedures Coded',
-    config: { field: 'procedure', op: 'oneOf', value: ALS2_PROCEDURES }
-  });
-  g.add('level', 'std.table.decide', {
-    label: 'Level of Service',
-    config: shared.decision(
-      'billing.service-level',
-      'Level of Service',
-      'Decides BLS, ALS1, ALS2 or SCT from the level of care, CMS service level, IV/IO medications, ALS2 procedures and the ALS assessment. ALS crew staffing alone is not ALS1: CMS needs an ALS assessment or an ALS intervention (42 CFR 414.605).',
-      table(
-        [
-          field('levelOfCare', 'string', 'Level of care provided · eDisposition.32'),
-          field('cmsServiceLevel', 'string', 'CMS service level · ePayment.50'),
-          field('serviceType', 'string', 'Type of service requested · eResponse.05'),
-          field('codedIvMedications', 'integer', 'IV/IO medications coded'),
-          field('narrativeIvDoses', 'integer', 'IV/IO doses in the narrative'),
-          field('narrativeProcedures', 'integer', 'ALS2 procedures in the narrative'),
-          field('codedProcedures', 'integer', 'ALS2 procedures coded · eProcedures.03'),
-          field('alsAssessment', 'string', 'ALS assessment performed and warranted · ePayment.49')
-        ],
-        [field('level', 'string', 'Level of service')],
-        [
-          {
-            label: 'Critical care documented on an interfacility transport',
-            when: { levelOfCare: is('4232009'), serviceType: oneOf(...INTERFACILITY) },
-            set: { level: 'SCT' }
-          },
-          {
-            label: 'Crew reported specialty care on an interfacility transport',
-            when: { cmsServiceLevel: is('2650015'), serviceType: oneOf(...INTERFACILITY) },
-            set: { level: 'SCT' }
-          },
-          {
-            label: 'ALS2 procedure coded',
-            when: { codedProcedures: atLeast(1) },
-            set: { level: 'ALS2' }
-          },
-          {
-            label: 'ALS2 procedures in the narrative',
-            when: { narrativeProcedures: atLeast(1) },
-            set: { level: 'ALS2' }
-          },
-          {
-            label: 'Three or more IV/IO medications coded',
-            when: { codedIvMedications: atLeast(3) },
-            set: { level: 'ALS2' }
-          },
-          {
-            label: 'Three or more IV/IO doses in the narrative',
-            when: { narrativeIvDoses: atLeast(3) },
-            set: { level: 'ALS2' }
-          },
-          {
-            label: 'Crew reported ALS2',
-            when: { cmsServiceLevel: is('2650005') },
-            set: { level: 'ALS2' }
-          },
-          {
-            label: 'ALS assessment performed and warranted',
-            when: { alsAssessment: is(ALS_ASSESSMENT_YES) },
-            set: { level: 'ALS1' }
-          },
-          {
-            label: 'Crew reported ALS1',
-            when: { cmsServiceLevel: oneOf('2650001', '2650003') },
-            set: { level: 'ALS1' }
-          },
-          {
-            label: 'IV/IO medications coded',
-            when: { codedIvMedications: atLeast(1) },
-            set: { level: 'ALS1' }
-          },
-          {
-            label: 'IV/IO doses in the narrative',
-            when: { narrativeIvDoses: atLeast(1) },
-            set: { level: 'ALS1' }
-          },
-          {
-            label: 'BLS care documented',
-            when: { levelOfCare: is('4232001') },
-            set: { level: 'BLS' }
-          }
-        ],
-        { level: 'BLS' }
-      )
-    )
-  });
-  g.ret('return');
   g.wire('entry.facts', 'facts.facts');
   g.wire('entry.findings', 'findings.findings');
   g.wire('facts.trip', 'trip.trip');
   g.wire('facts.clinical', 'clinical.clinical');
-  g.wire('clinical.medications', 'ivMedications.list');
-  g.wire('findings.procedures', 'procedures.value');
-  g.wire('procedures.result', 'procedureCount.list');
-  g.wire('trip.levelOfCare', 'level.levelOfCare');
-  g.wire('trip.cmsServiceLevel', 'level.cmsServiceLevel');
-  g.wire('trip.serviceType', 'level.serviceType');
-  g.wire('ivMedications.list', 'ivDrugs.list');
-  g.wire('ivDrugs.count', 'level.codedIvMedications');
-  g.wire('findings.ivDoses', 'level.narrativeIvDoses');
-  g.wire('procedureCount.length', 'level.narrativeProcedures');
-  g.wire('clinical.procedures', 'codedProcedures.list');
-  g.wire('codedProcedures.count', 'level.codedProcedures');
-  g.wire('trip.alsAssessment', 'level.alsAssessment');
-  g.wire('level.level', 'return.level');
-  g.wire('level.rules', 'return.reasons');
+  g.wire('clinical.medications', 'ivRoute.list');
+  g.wire('findings.procedures', 'procedureCount.list');
+  const rules = [...SCT, ...ALS2, ...ALS1, BLS];
+  const held = heldRules(
+    g,
+    {
+      ...tripInputs('levelOfCare', 'cmsServiceLevel', 'serviceType', 'alsAssessment'),
+      medicationsCoded: ['integer', 'ivDrugs.count'],
+      dosesInNarrative: ['integer', 'findings.ivDoses'],
+      proceduresCoded: ['integer', 'codedProcedures.count'],
+      proceduresInNarrative: ['integer', 'procedureCount.length']
+    },
+    rules
+  );
+  const level = firstOf(
+    g,
+    'level',
+    'Highest Level That Holds, Else BLS',
+    'string',
+    [
+      {
+        id: 'asSct',
+        label: 'SCT When an SCT Rule Holds',
+        when: anyHeld(g, 'sct', 'An SCT Rule Holds', SCT, held),
+        value: fixed('SCT')
+      },
+      {
+        id: 'asAls2',
+        label: 'ALS2 When an ALS2 Rule Holds',
+        when: anyHeld(g, 'als2', 'An ALS2 Rule Holds', ALS2, held),
+        value: fixed('ALS2')
+      },
+      {
+        id: 'asAls1',
+        label: 'ALS1 When an ALS1 Rule Holds',
+        when: anyHeld(g, 'als1', 'An ALS1 Rule Holds', ALS1, held),
+        value: fixed('ALS1')
+      }
+    ],
+    fixed('BLS')
+  );
+  g.ret('return');
+  g.wire(level, 'return.level');
+  g.wire(reasonsHeld(g, rules, held), 'return.reasons');
   return g.def;
 };
+
+const EMERGENT: Held[] = [
+  {
+    id: 'immediate',
+    label: 'Immediate Response to the Call',
+    reason: 'Immediate response to the call',
+    tests: [{ field: 'responseMode', op: 'oneOf', value: ['2223001', '2223003', '2223007'] }]
+  },
+  {
+    id: 'crewEmergency',
+    label: 'No Response Mode, and the Crew Reported an Emergency Level',
+    reason: 'No response mode, and the crew reported an emergency level',
+    tests: [
+      { field: 'responseMode', op: 'empty' },
+      { field: 'cmsServiceLevel', op: 'oneOf', value: ['2650003', '2650009'] }
+    ]
+  }
+];
 
 const emergencyStatus = (): GraphDef => {
   const g = rule(
@@ -536,41 +714,12 @@ const emergencyStatus = (): GraphDef => {
       P.reasons('the trip is or is not an emergency')
     ]
   );
-  g.add('trip', 'billing.trip-facts.break');
-  g.add('emergency', 'std.table.decide', {
-    label: 'Emergency Response',
-    config: shared.decision(
-      'billing.emergency-response',
-      'Emergency Response',
-      'Decides whether a trip is billed as an emergency from the response mode and the CMS service level.',
-      table(
-        [
-          field('responseMode', 'string', 'Response mode to scene · eResponse.23'),
-          field('cmsServiceLevel', 'string', 'CMS service level · ePayment.50')
-        ],
-        [field('emergency', 'boolean', 'Emergency')],
-        [
-          {
-            label: 'Immediate response to the call',
-            when: { responseMode: oneOf('2223001', '2223003', '2223007') },
-            set: { emergency: true }
-          },
-          {
-            label: 'No response mode, and the crew reported an emergency level',
-            when: { responseMode: is(null), cmsServiceLevel: oneOf('2650003', '2650009') },
-            set: { emergency: true }
-          }
-        ],
-        { emergency: false }
-      )
-    )
-  });
-  g.ret('return');
+  g.add('trip', 'billing.trip-facts.break', { label: 'Trip Facts' });
   g.wire('entry.trip', 'trip.trip');
-  g.wire('trip.responseMode', 'emergency.responseMode');
-  g.wire('trip.cmsServiceLevel', 'emergency.cmsServiceLevel');
-  g.wire('emergency.emergency', 'return.emergency');
-  g.wire('emergency.rules', 'return.reasons');
+  const held = heldRules(g, tripInputs('responseMode', 'cmsServiceLevel'), EMERGENT);
+  g.ret('return');
+  g.wire(anyHeld(g, 'emergency', 'An Emergency Rule Holds', EMERGENT, held), 'return.emergency');
+  g.wire(reasonsHeld(g, EMERGENT, held), 'return.reasons');
   return g.def;
 };
 
@@ -580,6 +729,27 @@ const SERVICE_OUT = d(
   'Service',
   'The suggested level of service, emergency status and loaded miles, with the reasons for the level.'
 );
+
+const FARTHER_FACILITY: Held[] = [
+  {
+    id: 'chosenFarther',
+    label: "Patient's, Family's or Physician's Choice of a Farther Facility",
+    reason: "The patient's, family's or physician's choice of a farther facility",
+    tests: [
+      { field: 'destinationReason', op: 'oneOf', value: ['4220015', '4220005', '4220017'] },
+      { field: 'excessMiles', op: 'gt', value: 0 }
+    ]
+  },
+  {
+    id: 'patientChoseFarther',
+    label: 'The Patient Chose a Farther Facility',
+    reason: 'The patient chose a farther facility',
+    tests: [
+      { field: 'transportReason', op: 'oneOf', value: ['B', 'C'] },
+      { field: 'excessMiles', op: 'gt', value: 0 }
+    ]
+  }
+];
 
 const nonCoveredMiles = (): GraphDef => {
   const g = rule(
@@ -595,76 +765,73 @@ const nonCoveredMiles = (): GraphDef => {
       P.reasons('miles were or were not billed as non-covered')
     ]
   );
-  g.add('facts', 'billing.encounter-facts.break');
-  g.add('documentation', 'billing.documentation.break');
+  g.add('facts', 'billing.encounter-facts.break', { label: 'Encounter Facts' });
+  g.add('documentation', 'billing.documentation.break', { label: 'Documentation' });
   g.add('reason', 'billing.transport-reason', { label: 'Transport Reason' });
+  g.add('locations', 'billing.location-facts.break', { label: 'Location Facts' });
   g.add('beyond', 'std.math.subtract', { label: 'Loaded Miles Less Closest Hospital Miles' });
   g.add('excess', 'std.math.round', {
     label: 'Miles Past the Closest Hospital',
     values: { digits: 2 }
   });
-  g.add('decide', 'std.table.decide', {
-    label: 'Non-Covered Miles',
-    config: shared.decision(
-      'billing.non-covered-miles',
-      'Non-Covered Miles',
-      'Decides when the miles past the closest hospital (ePayment.48) are billed as non-covered (A0888 with GY): when the patient, the family or the physician chose a farther facility, by the transport reason or the reason for choosing the destination (eDisposition.20).',
-      table(
-        [
-          field('transportReason', 'string', 'Transport reason (CR104)'),
-          field(
-            'destinationReason',
-            'string',
-            'Reason for choosing the destination · eDisposition.20'
-          ),
-          field('excessMiles', 'number', 'Miles past the closest hospital')
-        ],
-        [field('nonCovered', 'boolean', 'Bill the excess as non-covered')],
-        [
-          {
-            label: "The patient's, family's or physician's choice of a farther facility",
-            when: {
-              destinationReason: oneOf('4220015', '4220005', '4220017'),
-              excessMiles: above(0)
-            },
-            set: { nonCovered: true }
-          },
-          {
-            label: 'The patient chose a farther facility',
-            when: { transportReason: oneOf('B', 'C'), excessMiles: above(0) },
-            set: { nonCovered: true }
-          }
-        ],
-        { nonCovered: false }
-      )
-    )
-  });
-  g.add('miles', 'std.logic.select', { label: 'Excess Miles When Non-Covered' });
-  g.ret('return');
   g.wire('entry.facts', 'facts.facts');
   g.wire('facts.documentation', 'documentation.documentation', 'reason.documentation');
-  g.wire('facts.locations', 'reason.locations');
+  g.wire('facts.locations', 'reason.locations', 'locations.locations');
   g.wire('entry.loadedMiles', 'beyond.a');
   g.wire('documentation.closestFacilityMiles', 'beyond.b');
   g.wire('beyond.result', 'excess.value');
-  g.wire('reason.transportReason', 'decide.transportReason');
-  g.add('locations', 'billing.location-facts.break');
-  g.wire('facts.locations', 'locations.locations');
-  g.wire('locations.destinationReason', 'decide.destinationReason');
-  g.wire('excess.result', 'decide.excessMiles', 'miles.whenTrue');
-  g.wire('decide.nonCovered', 'miles.condition');
-  g.wire('miles.result', 'return.nonCoveredMiles');
-  g.wire('decide.rules', 'return.reasons');
+  const held = heldRules(
+    g,
+    {
+      transportReason: ['string', 'reason.transportReason'],
+      destinationReason: ['string', 'locations.destinationReason'],
+      excessMiles: ['number', 'excess.result']
+    },
+    FARTHER_FACILITY
+  );
+  const nonCovered = anyHeld(
+    g,
+    'nonCovered',
+    'A Farther Facility Was Chosen',
+    FARTHER_FACILITY,
+    held
+  );
+  g.ret('return');
+  g.wire(
+    select(g, 'miles', 'Excess Miles When Non-Covered', nonCovered, 'excess.result'),
+    'return.nonCoveredMiles'
+  );
+  g.wire(reasonsHeld(g, FARTHER_FACILITY, held), 'return.reasons');
   return g.def;
 };
 
-const DEAD_AT_SCENE = ['4212013', '4212015', '4212017', '4212019'];
-
-const NOT_TRANSPORTED = ['4230005', '4230007', '4230009', '4230013'];
-
-const EXPIRED_IN_FIELD = '3018003';
-
-const ARREST_AFTER_LOADING = ['3018001', '3018005', '3018009'];
+const DEAD_BEFORE_LOADING: Held[] = [
+  {
+    id: 'deadAtScene',
+    label: 'Pronounced Dead at the Scene',
+    reason: 'Pronounced dead at the scene, whether or not the body was then transported',
+    tests: [
+      {
+        field: 'incidentDisposition',
+        op: 'oneOf',
+        value: ['4212013', '4212015', '4212017', '4212019']
+      }
+    ]
+  },
+  {
+    id: 'expiredInField',
+    label: 'Expired in the Field and Not Transported',
+    reason: 'Expired in the field and not transported',
+    tests: [
+      { field: 'arrestOutcome', op: 'is', value: '3018003' },
+      {
+        field: 'transportDisposition',
+        op: 'oneOf',
+        value: ['4230005', '4230007', '4230009', '4230013']
+      }
+    ]
+  }
+];
 
 const deceasedHandling = (): GraphDef => {
   const g = rule(
@@ -674,96 +841,81 @@ const deceasedHandling = (): GraphDef => {
     ],
     [SERVICE_OUT]
   );
-  g.add('trip', 'billing.trip-facts.break');
-  g.add('decide', 'std.table.decide', {
-    label: 'Pronounced Dead',
-    config: shared.decision(
-      'billing.pronounced-dead',
-      'Pronounced Dead',
-      'Decides whether the patient was pronounced dead after the ambulance was called and before being loaded, before or after it reached them, which Medicare pays as the BLS base rate with QL and no mileage (Benefit Policy Manual ch. 10 §10.2.6); a death after loading is billed as the service furnished.',
-      table(
-        [
-          field('incidentDisposition', 'string', 'Incident/patient disposition · eDisposition.12'),
-          field('transportDisposition', 'string', 'Transport disposition · eDisposition.30'),
-          field('arrestOutcome', 'string', 'End of the cardiac arrest event · eArrest.18')
-        ],
-        [field('deceased', 'boolean', 'Pronounced dead before loading')],
-        [
-          {
-            label: 'Resuscitation went on after loading (expired in the ED, ROSC or ongoing)',
-            when: { arrestOutcome: oneOf(...ARREST_AFTER_LOADING) },
-            set: { deceased: false }
-          },
-          {
-            label: 'Pronounced dead at the scene, whether or not the body was then transported',
-            when: { incidentDisposition: oneOf(...DEAD_AT_SCENE) },
-            set: { deceased: true }
-          },
-          {
-            label: 'Expired in the field and not transported',
-            when: {
-              arrestOutcome: is(EXPIRED_IN_FIELD),
-              transportDisposition: oneOf(...NOT_TRANSPORTED)
-            },
-            set: { deceased: true }
-          }
-        ],
-        { deceased: false }
-      )
-    )
-  });
+  g.add('trip', 'billing.trip-facts.break', { label: 'Trip Facts' });
+  g.wire('entry.trip', 'trip.trip');
+  const held = heldRules(
+    g,
+    tripInputs('incidentDisposition', 'transportDisposition', 'arrestOutcome'),
+    DEAD_BEFORE_LOADING
+  );
+  const notResuscitated = condition(
+    g,
+    'notResuscitated',
+    'Resuscitation Did Not Go On After Loading',
+    tripInputs('arrestOutcome'),
+    [{ field: 'arrestOutcome', op: 'notOneOf', value: ['3018001', '3018005', '3018009'] }]
+  );
+  g.add('deceased', 'std.logic.and', { label: 'Pronounced Dead Before Loading' });
+  g.wire(notResuscitated, 'deceased.a');
+  g.wire(
+    anyHeld(g, 'deadBeforeLoading', 'Dead Before Loading', DEAD_BEFORE_LOADING, held),
+    'deceased.b'
+  );
   g.add('suggested', 'billing.service.break', { label: 'Suggested Service' });
-  g.add('level', 'std.logic.select', {
-    label: 'BLS When Pronounced Dead',
-    values: { whenTrue: 'BLS' }
-  });
-  g.add('loadedMiles', 'std.logic.select', { label: 'No Loaded Miles When Pronounced Dead' });
-  g.add('nonCoveredMiles', 'std.logic.select', {
-    label: 'No Non-Covered Miles When Pronounced Dead'
-  });
   g.add('withQl', 'std.list.join', {
-    label: 'Reasons With QL',
+    label: 'Reasons with QL',
     config: { count: 3, type: 'string' },
     values: { list3: ['Billed as BLS with QL and no mileage'] }
   });
-  g.add('basis', 'std.logic.select', { label: 'Reasons' });
   g.add('service', 'billing.service.make', { label: 'BLS Without Miles When Pronounced Dead' });
+  const dead = 'deceased.result';
+  const pick = {
+    level: select(g, 'level', 'BLS When Pronounced Dead', dead, fixed('BLS'), 'suggested.level'),
+    loadedMiles: select(
+      g,
+      'loadedMiles',
+      'No Loaded Miles When Pronounced Dead',
+      dead,
+      undefined,
+      'suggested.loadedMiles'
+    ),
+    nonCoveredMiles: select(
+      g,
+      'nonCoveredMiles',
+      'No Non-Covered Miles When Pronounced Dead',
+      dead,
+      undefined,
+      'suggested.nonCoveredMiles'
+    ),
+    basis: select(
+      g,
+      'basis',
+      'Reasons with QL When Pronounced Dead',
+      dead,
+      'withQl.list',
+      'suggested.basis'
+    )
+  };
   g.ret('return');
-  g.wire('entry.trip', 'trip.trip');
-  for (const pin of ['incidentDisposition', 'transportDisposition', 'arrestOutcome']) {
-    g.wire(`trip.${pin}`, `decide.${pin}`);
-  }
   g.wire('entry.service', 'suggested.service');
-  g.wire(
-    'decide.deceased',
-    'level.condition',
-    'loadedMiles.condition',
-    'nonCoveredMiles.condition',
-    'basis.condition',
-    'service.deceased'
-  );
-  g.wire('suggested.level', 'level.whenFalse');
-  g.wire('suggested.loadedMiles', 'loadedMiles.whenFalse');
-  g.wire('suggested.nonCoveredMiles', 'nonCoveredMiles.whenFalse');
-  g.wire('suggested.basis', 'withQl.list1', 'basis.whenFalse');
-  g.wire('decide.rules', 'withQl.list2');
-  g.wire('withQl.list', 'basis.whenTrue');
+  g.wire(dead, 'service.deceased');
+  g.wire('suggested.basis', 'withQl.list1');
+  g.wire(reasonsHeld(g, DEAD_BEFORE_LOADING, held), 'withQl.list2');
   g.wire('suggested.emergency', 'service.emergency');
-  for (const pin of ['level', 'loadedMiles', 'nonCoveredMiles', 'basis'])
-    g.wire(`${pin}.result`, `service.${pin}`);
+  for (const [pin, port] of Object.entries(pick)) g.wire(port, `service.${pin}`);
   g.wire('service.service', 'return.service');
   return g.def;
 };
 
 const baseService = (): GraphDef => {
   const g = rule([P.facts(), P.findings(true)], [SERVICE_OUT]);
-  g.add('facts', 'billing.encounter-facts.break');
-  g.add('trip', 'billing.trip-facts.break');
+  g.add('facts', 'billing.encounter-facts.break', { label: 'Encounter Facts' });
+  g.add('trip', 'billing.trip-facts.break', { label: 'Trip Facts' });
   g.add('level', 'billing.level-of-service', { label: 'Level of Service' });
   g.add('emergency', 'billing.emergency-status', { label: 'Emergency Status' });
   g.add('miles', 'billing.loaded-miles', { label: 'Loaded Miles' });
   g.add('nonCovered', 'billing.non-covered-miles', { label: 'Non-Covered Miles' });
-  g.add('service', 'billing.service.make');
+  g.add('service', 'billing.service.make', { label: 'Service' });
   g.ret('return');
   g.wire('entry.facts', 'facts.facts', 'level.facts', 'nonCovered.facts');
   g.wire('entry.findings', 'level.findings');
@@ -779,39 +931,51 @@ const baseService = (): GraphDef => {
   return g.def;
 };
 
-const tripService = (fixed: Record<string, Json>): GraphDef => {
+const serviceWithoutMiles = (): GraphDef => {
+  const g = rule(
+    [d('service', T.service, 'Service', 'The service suggested for the trip.')],
+    [d('service', T.service, 'Service', 'The same service with no loaded or non-covered miles.')]
+  );
+  g.add('parts', 'billing.service.break', { label: 'Suggested Service' });
+  g.add('service', 'billing.service.make', {
+    label: 'Service Without Miles',
+    values: { loadedMiles: null, nonCoveredMiles: null }
+  });
+  g.ret('return');
+  g.wire('entry.service', 'parts.service');
+  for (const pin of ['level', 'emergency', 'basis', 'deceased'])
+    g.wire(`parts.${pin}`, `service.${pin}`);
+  g.wire('service.service', 'return.service');
+  return g.def;
+};
+
+const tripService = (withoutMiles: boolean): GraphDef => {
   const g = rule([P.facts(), P.findings(true)], [SERVICE_OUT]);
   g.add('suggested', 'billing.base-service', { label: 'Base Service' });
   g.ret('return');
   g.wire('entry.facts', 'suggested.facts');
   g.wire('entry.findings', 'suggested.findings');
-  if (!Object.keys(fixed).length) {
+  if (!withoutMiles) {
     g.wire('suggested.service', 'return.service');
     return g.def;
   }
-  g.add('parts', 'billing.service.break');
-  g.add('service', 'billing.service.make', { values: fixed });
-  g.wire('suggested.service', 'parts.service');
-  for (const pin of ['level', 'emergency', 'loadedMiles', 'basis', 'nonCoveredMiles'].filter(
-    (x) => !(x in fixed)
-  )) {
-    g.wire(`parts.${pin}`, `service.${pin}`);
-  }
+  g.add('service', 'billing.service-without-miles', { label: 'Service Without Miles' });
+  g.wire('suggested.service', 'service.service');
   g.wire('service.service', 'return.service');
   return g.def;
 };
 
 const TRIP_SERVICES = [
-  ['emergency', 'billing.trip-emergency'],
-  ['scheduled', 'billing.trip-scheduled'],
-  ['treatNoTransport', 'billing.trip-treat-no-transport'],
-  ['refusal', 'billing.trip-refusal']
+  ['emergency', 'billing.trip-emergency', 'Emergency Trip'],
+  ['scheduled', 'billing.trip-scheduled', 'Scheduled Trip'],
+  ['treatNoTransport', 'billing.trip-treat-no-transport', 'Treat, No Transport'],
+  ['refusal', 'billing.trip-refusal', 'Refusal']
 ] as const;
 
 const determineService = (): GraphDef => {
   const g = rule([P.classification(), P.facts(), P.findings(true)], [SERVICE_OUT]);
-  for (const [id, type] of TRIP_SERVICES) {
-    g.add(id, type);
+  for (const [id, type, label] of TRIP_SERVICES) {
+    g.add(id, type, { label });
     g.wire('entry.facts', `${id}.facts`);
     g.wire('entry.findings', `${id}.findings`);
   }
@@ -823,7 +987,7 @@ const determineService = (): GraphDef => {
       cases: [{ when: 'scheduled' }, { when: 'treatNoTransport' }, { when: 'refusal' }]
     }
   });
-  g.add('facts', 'billing.encounter-facts.break');
+  g.add('facts', 'billing.encounter-facts.break', { label: 'Encounter Facts' });
   g.add('deceased', 'billing.deceased-handling', { label: 'Deceased Handling (QL)' });
   g.add('agency', 'billing.agency-service', { label: 'Agency Service' });
   g.ret('return');
@@ -840,25 +1004,23 @@ const determineService = (): GraphDef => {
   return g.def;
 };
 
-const DIAGNOSES_OUT = d(
-  'diagnoses',
-  { list: { code: 'icd10' } },
-  'Diagnoses',
-  'ICD-10 diagnoses, primary first.'
-);
+const DIAGNOSES: ValueType = { list: { code: 'icd10' } };
+
+const DIAGNOSES_OUT = d('diagnoses', DIAGNOSES, 'Diagnoses', 'ICD-10 diagnoses, primary first.');
 
 const diagnosesFromImpressions = (): GraphDef => {
   const g = rule(
     [d('clinical', T.clinical, 'Clinical Facts', 'The primary and secondary impressions.')],
     [DIAGNOSES_OUT]
   );
-  g.add('clinical', 'billing.clinical-facts.break');
-  g.add('primary', 'std.list.make', { label: 'Primary Impression', config: { count: 1 } });
+  g.add('clinical', 'billing.clinical-facts.break', { label: 'Clinical Facts' });
+  const primary = makeList(g, 'primary', 'Primary Impression', { code: 'icd10' }, [
+    'clinical.primaryImpression'
+  ]);
   g.add('diagnoses', 'std.list.concat', { label: 'With Secondary Impressions' });
   g.ret('return');
   g.wire('entry.clinical', 'clinical.clinical');
-  g.wire('clinical.primaryImpression', 'primary.item1');
-  g.wire('primary.list', 'diagnoses.list');
+  g.wire(primary, 'diagnoses.list');
   g.wire('clinical.secondaryImpressions', 'diagnoses.other');
   g.wire('diagnoses.list', 'return.diagnoses');
   return g.def;
@@ -866,9 +1028,9 @@ const diagnosesFromImpressions = (): GraphDef => {
 
 const assignDiagnoses = (): GraphDef => {
   const g = rule([P.facts()], [DIAGNOSES_OUT]);
-  g.add('facts', 'billing.encounter-facts.break');
+  g.add('facts', 'billing.encounter-facts.break', { label: 'Encounter Facts' });
   g.add('impressions', 'billing.diagnoses-from-impressions', {
-    label: 'Diagnoses From Coded Impressions'
+    label: 'Diagnoses from Coded Impressions'
   });
   g.add('agency', 'billing.agency-diagnoses', { label: 'Agency Diagnoses' });
   g.ret('return');
@@ -878,13 +1040,6 @@ const assignDiagnoses = (): GraphDef => {
   g.wire('agency.diagnoses', 'return.diagnoses');
   return g.def;
 };
-
-const pureSlot = (inputs: ReturnType<typeof d>[], outputs: ReturnType<typeof d>[]) => ({
-  execIn: [],
-  execOut: [],
-  inputs,
-  outputs
-});
 
 const FACTS_CONTEXT = P.facts(true);
 
@@ -924,28 +1079,16 @@ export const serviceGraphs: SeedGraph[] = [
     'An agency rule after the diagnoses are assigned: add, drop or reorder ICD-10 codes. Passes the diagnoses through unchanged until an agency overrides it.',
     pureSlot(
       [
-        d(
-          'diagnoses',
-          { list: { code: 'icd10' } },
-          'Diagnoses',
-          'The diagnoses the base rules assigned.'
-        ),
+        d('diagnoses', DIAGNOSES, 'Diagnoses', 'The diagnoses the base rules assigned.'),
         FACTS_CONTEXT
       ],
-      [
-        d(
-          'diagnoses',
-          { list: { code: 'icd10' } },
-          'Diagnoses',
-          'The diagnoses to bill, primary first.'
-        )
-      ]
+      [d('diagnoses', DIAGNOSES, 'Diagnoses', 'The diagnoses to bill, primary first.')]
     )
   ),
   asRule(
     'billing.classification',
     'Classification',
-    'Decides the classification (emergency, scheduled, treatNoTransport, refusal or notBillable) from the dispositions and type of service with the Classification table, with the rule that matched.',
+    'Decides how the report is billed from its dispositions and type of service, with the rules that held: not billable when it was cancelled, an assist or standby, or a non-patient trip; else a refusal; else treated without transport; else scheduled for a scheduled or interfacility transport; else an emergency.',
     classification()
   ),
   asRule(
@@ -957,31 +1100,31 @@ export const serviceGraphs: SeedGraph[] = [
   asRule(
     'billing.loaded-miles',
     'Loaded Miles',
-    'Destination minus scene odometer, or nothing when either is missing. Fractions are billed rounded up to the next tenth of a mile when the claim is priced.',
+    'The destination odometer minus the scene odometer, never below zero, or nothing when either is missing. Pricing rounds the miles up to the next tenth of a mile.',
     loadedMiles()
   ),
   asRule(
     'billing.level-of-service',
     'Level of Service',
-    'Decides BLS, ALS1, ALS2 or SCT from the level of care, CMS service level, coded IV/IO medications other than IV solutions, coded ALS2 procedures and the narrative findings, with every reason that applied.',
+    'Decides SCT, else ALS2, else ALS1, else BLS from the level of care, the CMS service level, the ALS assessment, the coded medications given IV or IO that are not IV solutions (IV Solutions table), the coded ALS2 procedures (ALS2 Procedures table) and the narrative findings, with every rule that held. ALS crew staffing alone is not ALS1: CMS needs an ALS assessment or an ALS intervention (42 CFR 414.605).',
     levelOfService()
   ),
   asRule(
     'billing.emergency-status',
     'Emergency Status',
-    'Decides whether the trip is billed as an emergency from the response mode and CMS service level (Emergency Response table).',
+    "Decides whether the trip is billed as an emergency: the unit responded immediately, or no response mode was reported and the crew's CMS service level is an emergency one.",
     emergencyStatus()
   ),
   asRule(
     'billing.non-covered-miles',
     'Non-Covered Miles',
-    'The miles past the closest hospital (ePayment.48) billed as non-covered on A0888, when the Non-Covered Miles table says the patient chose a farther facility.',
+    'The miles past the closest hospital (ePayment.48) billed as non-covered on A0888 with GY, when the patient, the family or the physician chose a farther facility, by the transport reason or the reason for choosing the destination (eDisposition.20).',
     nonCoveredMiles()
   ),
   asRule(
     'billing.deceased-handling',
     'Deceased Handling (QL)',
-    'Bills a patient pronounced dead after the call and before loading (Pronounced Dead table) as BLS with no loaded or non-covered miles, so the base rate carries QL.',
+    'Bills a patient pronounced dead after the call and before loading, before or after the unit reached them, as BLS with no loaded or non-covered miles, so the base rate carries QL (Benefit Policy Manual ch. 10 §10.2.6); a death after loading, when resuscitation went on, is billed as the service furnished.',
     deceasedHandling()
   ),
   asRule(
@@ -991,28 +1134,34 @@ export const serviceGraphs: SeedGraph[] = [
     baseService()
   ),
   asRule(
+    'billing.service-without-miles',
+    'Service Without Miles',
+    'The same service with no loaded or non-covered miles, for trips that bill no mileage.',
+    serviceWithoutMiles()
+  ),
+  asRule(
     'billing.trip-emergency',
     'Emergency Trip',
-    'The service an emergency transport is billed for.',
-    tripService({})
+    'The service an emergency transport is billed for: the Base Service.',
+    tripService(false)
   ),
   asRule(
     'billing.trip-scheduled',
     'Scheduled Trip',
-    'The service a scheduled or interfacility transport is billed for: an emergency only when the unit responded immediately.',
-    tripService({})
+    'The service a scheduled or interfacility transport is billed for: the Base Service, the same as an emergency transport.',
+    tripService(false)
   ),
   asRule(
     'billing.trip-treat-no-transport',
     'Treat, No Transport',
-    'The service a trip where the crew treated but did not transport is billed for: no loaded or non-covered miles.',
-    tripService({ loadedMiles: null, nonCoveredMiles: null })
+    'The service a trip where the crew treated but did not transport is billed for: the Base Service without miles.',
+    tripService(true)
   ),
   asRule(
     'billing.trip-refusal',
     'Refusal',
-    'The service a trip where the patient refused care or transport is billed for: no loaded or non-covered miles.',
-    tripService({ loadedMiles: null, nonCoveredMiles: null })
+    'The service a trip where the patient refused care or transport is billed for: the Base Service without miles.',
+    tripService(true)
   ),
   asRule(
     'billing.determine-service',
@@ -1022,14 +1171,14 @@ export const serviceGraphs: SeedGraph[] = [
   ),
   asRule(
     'billing.diagnoses-from-impressions',
-    'Diagnoses From Coded Impressions',
+    'Diagnoses from Coded Impressions',
     'The primary impression, then the secondary impressions, as ICD-10 diagnoses.',
     diagnosesFromImpressions()
   ),
   asRule(
     'billing.assign-diagnoses',
     'Assign Diagnoses',
-    'Assigns the claim diagnoses: Diagnoses From Coded Impressions, then the Agency Diagnoses rule.',
+    'Assigns the claim diagnoses: Diagnoses from Coded Impressions, then the Agency Diagnoses rule.',
     assignDiagnoses()
   ),
   asStage(

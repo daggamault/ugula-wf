@@ -5,34 +5,41 @@ import {
   MIN_WAIT_MS,
   STEP_STATUSES
 } from '@ugula/billing';
-import type { GraphDef, Json, PinSpec, ValueType, VariableDef } from '@ugula/graph';
+import type { GraphDef, PinSpec, ValueType, VariableDef } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import { graph, p } from './glossary.ts';
 import {
-  above,
   asRule,
   asStage,
   asWorkflow,
-  atMost,
   type Builder,
-  below,
+  condition,
   d,
   exit,
   field,
-  is,
-  notOneOf,
+  firstOf,
+  fixed,
+  getField,
+  isListed,
+  joinText,
+  labelOf,
+  MEDICARE_CLAIM_FILINGS,
+  makeList,
+  makeObject,
+  money,
+  orElse,
   P,
+  type Port,
+  recordEvent,
   rule,
+  select,
   shared,
   summary,
   T,
+  type Test,
   table,
   template
 } from './shared.ts';
-
-type Port = `${string}.${string}`;
-
-type Test = { field: string; op: string; value?: Json };
 
 const ADDRESS: ValueType = {
   object: { addressLine: 'string', city: 'string', state: 'string', postalCode: 'string' }
@@ -47,66 +54,39 @@ const TASK_DETAILS: ValueType = {
   }
 };
 
-const MEDICARE_ALLOWED: ValueType = {
-  object: {
-    compared: 'boolean',
-    allowedCents: 'integer',
-    rurality: 'string',
-    carrier: 'string',
-    locality: 'string',
-    codesNotPriced: { list: { code: 'hcpcs' } },
-    payerAllowedCents: 'integer',
-    underpaidCents: 'integer',
-    underpaid: 'boolean'
-  }
+const ALLOWED_FIELDS: Record<string, ValueType> = {
+  compared: 'boolean',
+  allowedCents: 'integer',
+  rurality: 'string',
+  carrier: 'string',
+  locality: 'string',
+  codesNotPriced: { list: { code: 'hcpcs' } },
+  payerAllowedCents: 'integer',
+  underpaidCents: 'integer',
+  underpaid: 'boolean'
 };
+
+const MEDICARE_ALLOWED: ValueType = { object: ALLOWED_FIELDS };
 
 const CLAIM_PAYER: ValueType = {
   object: { coverageId: { id: 'coverage' }, claimFiling: 'string' }
 };
 
+const PRICED_LINES: ValueType = {
+  list: { object: { code: { code: 'hcpcs' }, units: 'number', chargeCents: 'integer' } }
+};
+
 const RURALITY_WORDS = { urban: 'urban', rural: 'rural', superRural: 'super-rural' };
 
-const when = (
-  g: Builder,
-  id: string,
-  label: string,
-  inputs: Record<string, ValueType>,
-  rules: Test[],
-  from: Record<string, Port>
-) => {
-  g.add(id, 'std.logic.condition', {
-    label,
-    config: {
-      inputs: Object.entries(inputs).map(([name, type]) => ({ name, type })),
-      rules
-    } as Json
-  });
-  for (const [pin, port] of Object.entries(from)) g.wire(port, `${id}.${pin}`);
-  return `${id}.result` as const;
-};
+const DETAILS_PIN = d(
+  'context',
+  TASK_DETAILS,
+  'Task Details',
+  'What tasks show a biller about the claim.',
+  true
+);
 
-const money = (g: Builder, id: string, label: string, cents: Port) => {
-  g.add(id, 'std.text.money', { label });
-  g.wire(cents, `${id}.cents`);
-  return `${id}.text` as const;
-};
-
-const orElse = (g: Builder, id: string, label: string, value: Port, fallback: Json) => {
-  g.add(id, 'std.logic.choose', {
-    label,
-    config: { mode: 'first', type: 'string', count: 2 },
-    values: { option2: fallback }
-  });
-  g.wire(value, `${id}.option1`);
-  return `${id}.value` as const;
-};
-
-const detail = (g: Builder, id: string, label: string, path: string, context: Port) => {
-  g.add(id, 'std.object.get-field', { label, config: { record: TASK_DETAILS, path } });
-  g.wire(context, `${id}.record`);
-  return `${id}.value` as const;
-};
+const SUMMARY_PIN = d('summary', 'string', 'Task Summary', 'The sentence the task shows a biller.');
 
 const pathOf = (g: Builder, id: string, label: string, path: string, object: Port) => {
   g.add(id, 'std.object.get', { label, values: { path } });
@@ -114,40 +94,42 @@ const pathOf = (g: Builder, id: string, label: string, path: string, object: Por
   return `${id}.value` as const;
 };
 
-const payerOr = (g: Builder, task: string, context: Port, fallback: string, label: string) =>
+const payerOr = (g: Builder, context: Port, fallback: string, label: string) =>
   orElse(
     g,
-    `${task}Payer`,
+    'payer',
     label,
-    template(g, `${task}PayerName`, 'Payer Name', '{context.payer}', { context }),
-    fallback
+    getField(g, 'payerName', 'Payer Name', TASK_DETAILS, 'payer', context),
+    fixed(fallback)
   );
 
-const makeObject = (
-  g: Builder,
-  id: string,
-  label: string,
-  fields: Record<string, [Port, ValueType]>
-) => {
-  g.add(id, 'std.object.make', {
-    label,
-    config: {
-      fields: Object.entries(fields).map(([name, [, type]]) => ({ name, type }))
-    } as Json
-  });
-  for (const [name, [port]] of Object.entries(fields)) g.wire(port, `${id}.${name}`);
-  return `${id}.object` as const;
-};
+const totalOf = (g: Builder, context: Port) =>
+  money(
+    g,
+    'total',
+    'Claim Total',
+    getField(g, 'totalCents', 'Claim Total (Cents)', TASK_DETAILS, 'claim.totalCents', context)
+  );
 
-const PATIENT_ADDRESS_FIELDS = ['AddressLine', 'City', 'State', 'PostalCode'].map((part) => ({
+const balanceOf = (g: Builder, context: Port) =>
+  money(
+    g,
+    'balance',
+    'Balance',
+    getField(g, 'balanceCents', 'Balance (Cents)', TASK_DETAILS, 'balanceCents', context)
+  );
+
+const PATIENT_ADDRESS_FIELDS = [
+  ['AddressLine', 'Street Address'],
+  ['City', 'City'],
+  ['State', 'State'],
+  ['PostalCode', 'ZIP Code']
+].map(([part, label]) => ({
   name: `patient${part}`,
   type: 'string',
-  label: `Patient ${part === 'AddressLine' ? 'street address' : part === 'PostalCode' ? 'ZIP code' : part.toLowerCase()}`,
+  label: `Patient ${label}`,
   required: ['save']
 }));
-
-const recordEvent = (g: Builder, id: string, kind: string, label: string) =>
-  g.add(id, 'billing.record-claim-event', { label, values: { kind } });
 
 const claimStep = (
   execOut: string[],
@@ -169,56 +151,60 @@ const claimStep = (
     variables
   );
 
-const reviewSummary = (g: Builder, context: Port) => {
-  const billed = payerOr(g, 'review', context, 'the patient', 'Payer, Else the Patient');
-  const totalCents = detail(g, 'totalCents', 'Claim Total (Cents)', 'claim.totalCents', context);
+const reviewSummary = (): GraphDef => {
+  const g = rule([DETAILS_PIN], [SUMMARY_PIN]);
+  const billed = payerOr(g, 'entry.context', 'the patient', 'Payer, Else the Patient');
   g.add('warnings', 'std.list.where', {
     label: 'Warnings',
     config: { field: 'severity', op: 'isNot', value: 'blocking' }
   });
-  g.add('warningMessages', 'std.list.pluck', {
-    label: 'Warning Messages',
-    values: { field: 'message' }
+  g.add('messages', 'std.list.pluck', { label: 'Warning Messages', values: { field: 'message' } });
+  g.add('preview', 'billing.list-preview', {
+    label: 'First Two Warnings',
+    values: { shown: 2, separator: '; ' }
   });
-  g.add('firstWarning', 'std.list.first', { label: 'First Warning' });
   g.add('orFix', 'std.logic.choose', {
-    label: 'Or Fix When No Warnings',
+    label: 'Or Fix, When No Warnings',
     config: { mode: 'byCase', type: 'string', cases: [{ when: '0' }] },
     values: { case1: ', or fix, skip or void the claim' }
   });
-  template(g, 'oneWarning', 'One Warning', 'warning: {message}', {
-    message: 'firstWarning.item'
+  const several = template(g, 'several', 'Several Warnings', 'its {count} warnings', {
+    count: 'preview.count'
   });
-  template(g, 'severalWarnings', 'Several Warnings', '{count} warnings, first: {message}', {
-    count: 'warnings.count',
-    message: 'firstWarning.item'
+  g.add('which', 'std.logic.choose', {
+    label: 'Its Warning or Warnings',
+    config: { mode: 'byCase', type: 'string', cases: [{ when: '0' }, { when: '1' }] },
+    values: { case2: 'its warning' }
   });
-  g.add('checking', 'std.logic.choose', {
-    label: 'Warnings to Check',
-    config: { mode: 'byCase', type: 'string', cases: [{ when: '0' }, { when: '1' }] }
-  });
-  template(
+  const approve = template(
     g,
-    'approveText',
+    'approve',
     'Approve Text',
-    'Approve billing {billed}[ {total}]{orFix}[ after checking its {checking}]',
+    'Approve billing {billed}[ for {total}]{orFix}[ after checking {which}: {listed}][; and {more} more]',
     {
       billed,
-      total: money(g, 'total', 'Claim Total', totalCents),
+      total: totalOf(g, 'entry.context'),
       orFix: 'orFix.value',
-      checking: 'checking.value'
+      which: 'which.value',
+      listed: 'preview.listed',
+      more: 'preview.more'
     }
   );
-  g.add('reviewSummary', 'billing.blocking-summary', { label: 'Task Summary' });
-  g.wire(detail(g, 'issues', 'Issues', 'issues', context), 'warnings.list', 'reviewSummary.issues');
-  g.wire('warnings.list', 'warningMessages.list');
-  g.wire('warningMessages.list', 'firstWarning.list');
-  g.wire('warnings.count', 'orFix.key', 'checking.key');
-  g.wire('oneWarning.text', 'checking.case2');
-  g.wire('severalWarnings.text', 'checking.otherwise');
-  g.wire(billed, 'reviewSummary.billed');
-  g.wire('approveText.text', 'reviewSummary.otherwise');
-  g.wire('reviewSummary.summary', 'review.summary');
+  g.add('blocking', 'billing.blocking-summary', { label: 'Blocking, Else Approve Text' });
+  g.ret('return');
+  g.wire(
+    getField(g, 'issues', 'Issues', TASK_DETAILS, 'issues', 'entry.context'),
+    'warnings.list',
+    'blocking.issues'
+  );
+  g.wire('warnings.list', 'messages.list');
+  g.wire('messages.list', 'preview.items');
+  g.wire('preview.count', 'orFix.key', 'which.key');
+  g.wire(several, 'which.otherwise');
+  g.wire(billed, 'blocking.billed');
+  g.wire(approve, 'blocking.otherwise');
+  g.wire('blocking.summary', 'return.summary');
+  return g.def;
 };
 
 const reviewClaim = (): GraphDef => {
@@ -242,15 +228,16 @@ const reviewClaim = (): GraphDef => {
       }
     }
   });
-  recordEvent(g, 'approve', 'approved', 'Approve');
-  recordEvent(g, 'skip', 'payer_skipped', 'Move to Next Payer');
+  g.add('reviewSummary', 'billing.review-summary', { label: 'Task Summary' });
+  recordEvent(g, 'approve', 'approved', 'Approve the Claim');
+  recordEvent(g, 'skip', 'payer_skipped', 'Move to the Next Payer');
   g.add('fix', 'billing.fix-claim', { label: 'Fix Claim Data on Request', values: { all: true } });
   g.ret('doneReturn', 'done');
   g.ret('voidReturn', 'void');
   g.wire('entry.exec', 'review.exec');
   g.wire('entry.subject', 'review.subject', 'fix.subject');
-  g.wire('entry.context', 'review.context', 'fix.context');
-  reviewSummary(g, 'entry.context');
+  g.wire('entry.context', 'review.context', 'fix.context', 'reviewSummary.context');
+  g.wire('reviewSummary.summary', 'review.summary');
   g.wire('entry.claimId', 'approve.claimId', 'skip.claimId', 'fix.claimId');
   g.wire('entry.coverageId', 'approve.coverageId', 'skip.coverageId');
   g.wire('review.approve', 'approve.exec');
@@ -317,14 +304,7 @@ const confirmPayers = (): GraphDef => {
     g,
     'confirm',
     'The report names no payer to bill[ for {total}]; add one from the directory with the member ID, or confirm the patient pays',
-    {
-      total: money(
-        g,
-        'total',
-        'Claim Total',
-        detail(g, 'totalCents', 'Claim Total (Cents)', 'claim.totalCents', 'entry.context')
-      )
-    }
+    { total: totalOf(g, 'entry.context') }
   );
   g.wire('subjectToReprice.subject', 'reprice.subject');
   g.wire('contextToReprice.context', 'reprice.context');
@@ -387,10 +367,16 @@ const submitToPayer = (): GraphDef => {
   g.add('frequency', 'billing.with-frequency', { label: 'Claim Frequency to File' });
   g.add('file', 'billing.file-837p', { label: 'File 837P Claim' });
   g.add('send', 'billing.send-837p', { label: 'Send 837P to Clearinghouse' });
-  g.add('why', 'std.var.set', { label: 'Why It Was Not Filed', config: { name: 'whyNotFiled' } });
-  g.add('reason', 'std.var.get', { label: 'Why Not Filed', config: { name: 'whyNotFiled' } });
+  g.add('why', 'std.var.set', {
+    label: 'Keep Why It Was Not Filed',
+    config: { name: 'whyNotFiled' }
+  });
+  g.add('reason', 'std.var.get', {
+    label: 'Why It Was Not Filed',
+    config: { name: 'whyNotFiled' }
+  });
   g.add('filingContext', 'std.object.set', {
-    label: 'Filing Context',
+    label: 'Details with Why It Was Not Filed',
     values: { path: 'whyNotFiled' }
   });
   g.add('submit', 'std.human.task', {
@@ -410,8 +396,8 @@ const submitToPayer = (): GraphDef => {
       }
     }
   });
-  recordEvent(g, 'submitted', 'submitted', 'Submitted Outside the App');
-  recordEvent(g, 'skip', 'payer_skipped', 'Move to Next Payer');
+  recordEvent(g, 'submitted', 'submitted', 'Mark Submitted Outside the App');
+  recordEvent(g, 'skip', 'payer_skipped', 'Move to the Next Payer');
   g.add('fix', 'billing.fix-claim', { label: 'Fix Claim Data on Request', values: { all: true } });
   g.ret('sentReturn', 'sent');
   g.ret('skippedReturn', 'skipped');
@@ -458,13 +444,13 @@ const submitToPayer = (): GraphDef => {
     'submit',
     'The 837P to {payer} could not be created: {reason}; fix it and try again, or skip the payer',
     {
-      payer: payerOr(g, 'submit', 'filingContext.object', 'the payer', 'Payer to Name'),
+      payer: payerOr(g, 'filingContext.object', 'the payer', 'Payer, Else the Payer'),
       reason: orElse(
         g,
         'reasonGiven',
         'Reason, Else None Given',
         'reason.value',
-        'no reason was given'
+        fixed('no reason was given')
       )
     }
   );
@@ -480,9 +466,60 @@ const submitToPayer = (): GraphDef => {
   return g.def;
 };
 
-const UNDERPAID_CENTS = 100;
+const UNDERPAID_PRIORITY = 2;
 
-const NOT_COMPARED = { compared: false, underpaid: false, priority: 0 };
+type Uncompared = {
+  id: string;
+  label: string;
+  reason: string;
+  inputs: Record<string, [ValueType, Port]>;
+  test: Test;
+};
+
+const UNCOMPARED: Uncompared[] = [
+  {
+    id: 'notMedicare',
+    label: 'The Payer Is Not Medicare',
+    reason: 'The payer is not Medicare',
+    inputs: { medicare: ['boolean', 'medicare.found'] },
+    test: { field: 'medicare', op: 'isNot', value: true }
+  },
+  {
+    id: 'secondary',
+    label: 'Medicare Pays After Another Payer',
+    reason: 'Medicare pays after another payer',
+    inputs: { primary: ['boolean', 'entry.primary'] },
+    test: { field: 'primary', op: 'is', value: false }
+  },
+  {
+    id: 'severalPatients',
+    label: 'Several Patients Shared the Trip',
+    reason: 'Several patients shared the trip (GM)',
+    inputs: { severalPatients: ['boolean', 'entry.severalPatients'] },
+    test: { field: 'severalPatients', op: 'is', value: true }
+  },
+  {
+    id: 'denialExpected',
+    label: 'Medicare Is Expected to Deny the Trip',
+    reason: 'Medicare is expected to deny the trip (GZ)',
+    inputs: { denialExpected: ['boolean', 'entry.denialExpected'] },
+    test: { field: 'denialExpected', op: 'is', value: true }
+  },
+  {
+    id: 'noReasonCodes',
+    label: 'No Reason Codes Came',
+    reason: 'The response came without reason codes',
+    inputs: { reasonCoded: ['boolean', 'entry.reasonCoded'] },
+    test: { field: 'reasonCoded', op: 'is', value: false }
+  },
+  {
+    id: 'notPriced',
+    label: 'No Fee Schedule for the Year',
+    reason: 'There is no fee schedule for the year of service',
+    inputs: { priced: ['boolean', 'priced.result'] },
+    test: { field: 'priced', op: 'is', value: false }
+  }
+];
 
 const underpayment = (): GraphDef => {
   const g = rule(
@@ -515,7 +552,7 @@ const underpayment = (): GraphDef => {
       d(
         'reasonCoded',
         'boolean',
-        'Sent Reason Codes',
+        'Reason Codes Sent',
         'The payer sent reason codes, so what it allowed can be worked out.'
       ),
       d(
@@ -550,86 +587,76 @@ const underpayment = (): GraphDef => {
     ]
   );
   g.add('difference', 'std.math.subtract', { label: 'Allowed Below the Fee Schedule' });
-  g.add('shortfall', 'std.math.max', { label: 'Shortfall', values: { b: 0 } });
-  when(
+  g.add('shortfall', 'std.math.max', { label: 'Shortfall, at Least Zero', values: { b: 0 } });
+  condition(
     g,
     'priced',
     'Fee Schedule Found',
-    { medicareAllowedCents: 'integer' },
-    [{ field: 'medicareAllowedCents', op: 'gt', value: 0 }],
-    { medicareAllowedCents: 'entry.medicareAllowedCents' }
+    { medicareAllowedCents: ['integer', 'entry.medicareAllowedCents'] },
+    [{ field: 'medicareAllowedCents', op: 'gt', value: 0 }]
   );
-  g.add('decide', 'std.table.decide', {
-    label: 'Underpayment',
-    config: shared.decision(
-      'billing.underpayment',
-      'Underpayment',
-      'Decides whether a payer response can be held against the Medicare ambulance fee schedule, and whether it allowed less by enough to work: an underpaid reconcile task is raised so it is handed out first.',
-      table(
-        [
-          field('payerKind', 'string', 'Payer kind'),
-          field('primary', 'boolean', 'Primary payer'),
-          field('severalPatients', 'boolean', 'Several patients'),
-          field('denialExpected', 'boolean', 'Denial expected'),
-          field('reasonCoded', 'boolean', 'Sent reason codes'),
-          field('priced', 'boolean', 'Fee schedule found'),
-          field('shortfallCents', 'integer', 'Allowed below the fee schedule (cents)')
-        ],
-        [
-          field('compared', 'boolean', 'Compared'),
-          field('underpaid', 'boolean', 'Underpaid'),
-          field('priority', 'integer', 'Task priority')
-        ],
-        [
-          { label: 'Not Medicare', when: { payerKind: notOneOf('MA', 'MB') }, set: NOT_COMPARED },
-          {
-            label: 'Medicare pays after another payer',
-            when: { primary: is(false) },
-            set: NOT_COMPARED
-          },
-          {
-            label: 'Several patients on the trip (GM)',
-            when: { severalPatients: is(true) },
-            set: NOT_COMPARED
-          },
-          {
-            label: 'Medicare is expected to deny (GZ)',
-            when: { denialExpected: is(true) },
-            set: NOT_COMPARED
-          },
-          {
-            label: 'Posted without reason codes',
-            when: { reasonCoded: is(false) },
-            set: NOT_COMPARED
-          },
-          {
-            label: 'No fee schedule for the year of service',
-            when: { priced: is(false) },
-            set: NOT_COMPARED
-          },
-          {
-            label: 'Allowed more than $1 below the Medicare fee schedule',
-            when: { shortfallCents: above(UNDERPAID_CENTS) },
-            set: { compared: true, underpaid: true, priority: 2 }
-          }
-        ],
-        { compared: true, underpaid: false, priority: 0 }
-      )
-    )
+  isListed(g, 'medicare', 'Medicare Payer', MEDICARE_CLAIM_FILINGS, 'entry.payerKind');
+  const exclusions = UNCOMPARED.map((u) => ({
+    ...u,
+    when: condition(g, u.id, u.label, u.inputs, [u.test])
+  }));
+  const compared = condition(
+    g,
+    'compared',
+    'Held Against the Fee Schedule',
+    Object.fromEntries(exclusions.map((u) => [u.id, ['boolean', u.when]])),
+    exclusions.map((u) => ({ field: u.id, op: 'is', value: false }))
+  );
+  g.add('threshold', 'std.table.lookup', {
+    label: 'Underpayment Threshold',
+    config: shared.lookup(
+      'billing.underpayment-limits',
+      'Underpayment Limits',
+      'How far below the Medicare fee schedule a Medicare primary payer may allow before a biller takes it up. Underpayment Threshold (Cents): a shortfall above it is an underpayment.',
+      { type: 'integer', rows: [{ key: 'Underpayment Threshold (Cents)', value: 100 }] }
+    ),
+    values: { key: 'Underpayment Threshold (Cents)' }
   });
+  const underpaid = condition(
+    g,
+    'underpaid',
+    'Allowed Too Far Below the Fee Schedule',
+    {
+      compared: ['boolean', compared],
+      shortfallCents: ['integer', 'shortfall.result'],
+      thresholdCents: ['integer', 'threshold.value']
+    },
+    [
+      { field: 'compared', op: 'is', value: true },
+      { field: 'shortfallCents', op: 'gt', input: 'thresholdCents' }
+    ]
+  );
+  const underpaidText = template(
+    g,
+    'underpaidText',
+    'Underpaid Reason',
+    'The payer allowed {shortfall} below the Medicare fee schedule, more than the {threshold} limit',
+    {
+      shortfall: money(g, 'shortfallText', 'Shortfall', 'shortfall.result'),
+      threshold: money(g, 'thresholdText', 'Limit', 'threshold.value')
+    }
+  );
+  const reasons = makeList(g, 'reasons', 'Reasons', 'string', [
+    ...exclusions.map((u) => select(g, `${u.id}Why`, `${u.label}, Why`, u.when, fixed(u.reason))),
+    select(g, 'underpaidWhy', 'Underpaid', underpaid, underpaidText)
+  ]);
   g.ret('return');
   g.wire('entry.medicareAllowedCents', 'difference.a');
   g.wire('entry.payerAllowedCents', 'difference.b');
   g.wire('difference.result', 'shortfall.a');
-  g.wire('shortfall.result', 'decide.shortfallCents', 'return.underpaidCents');
-  g.wire('priced.result', 'decide.priced');
-  for (const pin of ['payerKind', 'primary', 'severalPatients', 'denialExpected', 'reasonCoded']) {
-    g.wire(`entry.${pin}`, `decide.${pin}`);
-  }
-  g.wire('decide.compared', 'return.compared');
-  g.wire('decide.underpaid', 'return.underpaid');
-  g.wire('decide.priority', 'return.priority');
-  g.wire('decide.rules', 'return.reasons');
+  g.wire('shortfall.result', 'return.underpaidCents');
+  g.wire(compared, 'return.compared');
+  g.wire(underpaid, 'return.underpaid');
+  g.wire(
+    select(g, 'priority', 'Raised When Underpaid', underpaid, fixed(UNDERPAID_PRIORITY), fixed(0)),
+    'return.priority'
+  );
+  g.wire(reasons, 'return.reasons');
   return g.def;
 };
 
@@ -641,35 +668,59 @@ const payerIsCoverage = (): GraphDef => {
     ],
     [d('matches', 'boolean', 'Matches', 'Whether the payer is that coverage.')]
   );
-  g.add('payerCoverage', 'std.object.get-field', {
-    label: 'Coverage of the Payer',
-    config: { record: CLAIM_PAYER, path: 'coverageId' }
-  });
   g.add('matches', 'std.logic.equal', { label: 'Same Coverage' });
   g.ret('return');
-  g.wire('entry.payer', 'payerCoverage.record');
-  g.wire('payerCoverage.value', 'matches.a');
+  g.wire(
+    getField(g, 'payerCoverage', 'Coverage of the Payer', CLAIM_PAYER, 'coverageId', 'entry.payer'),
+    'matches.a'
+  );
   g.wire('entry.coverageId', 'matches.b');
   g.wire('matches.result', 'return.matches');
   return g.def;
 };
 
-const claimFacts = (g: Builder) => {
-  const claim = 'readClaim.claim';
-  const lines = pathOf(g, 'lines', 'Claim Lines', 'lines', claim);
+const feeScheduleFacts = (): GraphDef => {
+  const g = rule(
+    [
+      d('claim', { object: {} }, 'Claim', 'The saved claim, as Read Claim for Checks gives it.'),
+      d('coverageId', { id: 'coverage' }, 'Payer', 'The payer whose response is reconciled.', true)
+    ],
+    [
+      d(
+        'priceable',
+        'boolean',
+        'Can Be Priced',
+        'The claim has lines, a pickup ZIP code and a date of service, so the fee schedule can price it.'
+      ),
+      d('lines', PRICED_LINES, 'Charge Lines', "Each line's code, units and charge."),
+      d('pickupZip', 'string', 'Pickup ZIP Code', 'The ZIP code the trip started at.', true),
+      d('serviceDate', 'string', 'Date of Service', 'The date of the trip.', true),
+      d('payerKind', 'string', 'Payer Kind', 'The claim filing indicator of the payer.', true),
+      d('primary', 'boolean', 'Primary Payer', 'The payer is the first payer on the claim.'),
+      d(
+        'severalPatients',
+        'boolean',
+        'Several Patients',
+        'The trip carried more than one patient.'
+      ),
+      d('denialExpected', 'boolean', 'Denial Expected', 'Medicare is expected to deny the trip.')
+    ]
+  );
+  const claim = 'entry.claim';
+  const documentation = 'details.documentation';
+  const lines = pathOf(g, 'claimLines', 'Claim Lines', 'lines', claim);
   const zip = pathOf(g, 'pickupZip', 'Pickup ZIP Code', 'details.pickup.postalCode', claim);
   const date = pathOf(g, 'serviceDate', 'Date of Service', 'details.serviceDate', claim);
-  when(
+  const priceable = condition(
     g,
     'priceable',
-    'Lines, Pickup ZIP and Date of Service',
-    { lines: { list: 'any' }, pickupZip: 'string', serviceDate: 'string' },
+    'Lines, Pickup ZIP and Date of Service Are Known',
+    { lines: [{ list: 'any' }, lines], pickupZip: ['string', zip], serviceDate: ['string', date] },
     [
       { field: 'lines', op: 'present' },
       { field: 'pickupZip', op: 'present' },
       { field: 'serviceDate', op: 'present' }
-    ],
-    { lines, pickupZip: zip, serviceDate: date }
+    ]
   );
   g.add('chargeLines', 'std.list.reshape', {
     label: 'Charge Lines',
@@ -681,96 +732,90 @@ const claimFacts = (g: Builder) => {
       ]
     }
   });
-  g.wire(lines, 'chargeLines.list');
-  g.add('payerOfCoverage', 'std.list.find-rule', {
+  g.add('payer', 'std.list.find-rule', {
     label: 'Payer That Answered',
     config: { rule: 'billing.payer-is-coverage', version: 1, item: 'payer', test: 'matches' }
   });
-  g.wire(pathOf(g, 'payers', 'Claim Payers', 'payers', claim), 'payerOfCoverage.list');
-  g.wire('entry.coverageId', 'payerOfCoverage.coverageId');
-  g.add('payerKind', 'std.object.get-field', {
-    label: 'Payer Kind',
-    config: { record: CLAIM_PAYER, path: 'claimFiling' }
-  });
-  g.wire('payerOfCoverage.item', 'payerKind.record');
-  when(
+  const primary = condition(
     g,
     'primary',
-    'Primary Payer',
-    { position: 'integer' },
-    [{ field: 'position', op: 'is', value: 0 }],
-    { position: 'payerOfCoverage.index' }
+    'Payer Is First on the Claim',
+    { position: ['integer', 'payer.index'] },
+    [{ field: 'position', op: 'is', value: 0 }]
   );
-  const documentation = 'details.documentation';
-  when(
+  const severalPatients = condition(
     g,
     'severalPatients',
-    'Several Patients',
-    { patientCount: 'integer' },
-    [{ field: 'patientCount', op: 'gt', value: 1 }],
+    'More Than One Patient',
     {
-      patientCount: pathOf(
-        g,
-        'patientCount',
-        'Patient Count',
-        `${documentation}.patientCount`,
-        claim
-      )
-    }
+      patientCount: [
+        'integer',
+        pathOf(g, 'patientCount', 'Patient Count', `${documentation}.patientCount`, claim)
+      ]
+    },
+    [{ field: 'patientCount', op: 'gt', value: 1 }]
   );
-  when(
+  const denialExpected = condition(
     g,
     'denialExpected',
     'Denial Expected',
-    { denialExpected: 'boolean' },
-    [{ field: 'denialExpected', op: 'is', value: true }],
     {
-      denialExpected: pathOf(
-        g,
-        'denialFlag',
-        'Denial Expected Flag',
-        `${documentation}.denialExpected`,
-        claim
-      )
-    }
+      denialExpected: [
+        'boolean',
+        pathOf(g, 'denialFlag', 'Denial Expected Flag', `${documentation}.denialExpected`, claim)
+      ]
+    },
+    [{ field: 'denialExpected', op: 'is', value: true }]
   );
-  for (const id of ['primary', 'severalPatients', 'denialExpected']) {
-    g.wire(`${id}.result`, `underpayment.${id}`);
-  }
-  g.wire('payerKind.value', 'underpayment.payerKind');
-  return { zip, date };
+  g.ret('return');
+  g.wire(lines, 'chargeLines.list');
+  g.wire(pathOf(g, 'payers', 'Claim Payers', 'payers', claim), 'payer.list');
+  g.wire('entry.coverageId', 'payer.coverageId');
+  g.wire(
+    getField(g, 'payerKind', 'Payer Kind', CLAIM_PAYER, 'claimFiling', 'payer.item'),
+    'return.payerKind'
+  );
+  g.wire(priceable, 'return.priceable');
+  g.wire('chargeLines.list', 'return.lines');
+  g.wire(zip, 'return.pickupZip');
+  g.wire(date, 'return.serviceDate');
+  g.wire(primary, 'return.primary');
+  g.wire(severalPatients, 'return.severalPatients');
+  g.wire(denialExpected, 'return.denialExpected');
+  return g.def;
 };
 
-const reconcileSummary = (g: Builder, context: Port, allowed: Port) => {
-  const fact = (id: string, label: string, path: string) => {
-    g.add(id, 'std.object.get-field', { label, config: { record: MEDICARE_ALLOWED, path } });
-    g.wire(allowed, `${id}.record`);
-    return `${id}.value` as const;
-  };
-  const balance = money(
-    g,
-    'balance',
-    'Balance',
-    detail(g, 'balanceCents', 'Balance (Cents)', 'balanceCents', context)
+const reconcileSummary = (): GraphDef => {
+  const g = rule(
+    [
+      DETAILS_PIN,
+      d(
+        'medicareAllowed',
+        MEDICARE_ALLOWED,
+        'Medicare Allowed',
+        'What the Medicare fee schedule allows for the trip and how the payer compares, when Medicare pays first.',
+        true
+      )
+    ],
+    [SUMMARY_PIN]
   );
-  const total = money(
-    g,
-    'total',
-    'Claim Total',
-    detail(g, 'totalCents', 'Claim Total (Cents)', 'claim.totalCents', context)
-  );
-  template(g, 'balanceOfTotal', 'Balance of Total', '[{balance} of {total} is]', {
-    balance,
-    total
+  g.add('allowed', 'std.object.break', {
+    label: 'Medicare Allowed',
+    config: {
+      fields: Object.entries(ALLOWED_FIELDS).map(([name, type]) => ({ name, type }))
+    }
   });
-  template(g, 'balanceOnly', 'Balance Alone', '[{balance} is]', { balance });
+  const balance = balanceOf(g, 'entry.context');
+  const ofTotal = template(g, 'balanceOfTotal', 'Balance of Total', '[{balance} of {total} is]', {
+    balance,
+    total: totalOf(g, 'entry.context')
+  });
+  const alone = template(g, 'balanceAlone', 'Balance Alone', '[{balance} is]', { balance });
   g.add('open', 'std.logic.choose', {
     label: 'What Is Open',
     config: { mode: 'first', type: 'string', count: 3 },
     values: { option3: 'a balance is' }
   });
-  g.wire('balanceOfTotal.text', 'open.option1');
-  g.wire('balanceOnly.text', 'open.option2');
   g.add('rurality', 'std.table.lookup', {
     label: 'Kind of Trip',
     config: {
@@ -779,38 +824,22 @@ const reconcileSummary = (g: Builder, context: Port, allowed: Port) => {
       fallback: 'ambulance'
     }
   });
-  g.wire(fact('allowedRurality', 'Rurality', 'rurality'), 'rurality.key');
   const amounts = {
-    allowed: money(
-      g,
-      'allowedText',
-      'Medicare Allows',
-      fact('allowedCents', 'Medicare Allowed (Cents)', 'allowedCents')
-    ),
+    allowed: money(g, 'allowedText', 'Medicare Allows', 'allowed.allowedCents'),
     rurality: 'rurality.value' as const
   };
-  template(
+  const underpaidNote = template(
     g,
     'underpaidNote',
     'Underpaid Note',
     '; underpaid: the payer allowed {payerAllowed}, {underpaid} less than the {allowed} Medicare allows for this {rurality} trip; reopen or appeal it, or',
     {
       ...amounts,
-      payerAllowed: money(
-        g,
-        'payerAllowedText',
-        'Payer Allowed',
-        fact('payerAllowedCents', 'Payer Allowed (Cents)', 'payerAllowedCents')
-      ),
-      underpaid: money(
-        g,
-        'underpaidText',
-        'Underpaid',
-        fact('underpaidCents', 'Underpaid (Cents)', 'underpaidCents')
-      )
+      payerAllowed: money(g, 'payerAllowedText', 'Payer Allowed', 'allowed.payerAllowedCents'),
+      underpaid: money(g, 'underpaidText', 'Underpaid', 'allowed.underpaidCents')
     }
   );
-  template(
+  const allowsNote = template(
     g,
     'allowsNote',
     'Fee Schedule Note',
@@ -821,26 +850,34 @@ const reconcileSummary = (g: Builder, context: Port, allowed: Port) => {
     label: 'Underpaid or Fee Schedule Note',
     config: { mode: 'byCase', type: 'string', cases: [{ when: 'true' }] }
   });
-  g.wire(fact('underpaid', 'Underpaid', 'underpaid'), 'medicareNote.key');
-  g.wire('underpaidNote.text', 'medicareNote.case1');
-  g.wire('allowsNote.text', 'medicareNote.otherwise');
   g.add('medicare', 'std.logic.choose', {
     label: 'Medicare Note When Compared',
     config: { mode: 'byCase', type: 'string', cases: [{ when: 'true' }] },
     values: { otherwise: ';' }
   });
-  g.wire(fact('compared', 'Compared', 'compared'), 'medicare.key');
-  g.wire('medicareNote.value', 'medicare.case1');
-  summary(
+  const text = template(
     g,
-    'reconcile',
+    'text',
+    'Task Summary',
     '{payer} answered and {open} still open{medicare} reconcile it, move on or write it off',
     {
-      payer: payerOr(g, 'reconcile', context, 'The payer', 'Payer to Name'),
+      payer: payerOr(g, 'entry.context', 'The payer', 'Payer, Else the Payer'),
       open: 'open.value',
       medicare: 'medicare.value'
     }
   );
+  g.ret('return');
+  g.wire('entry.medicareAllowed', 'allowed.object');
+  g.wire(ofTotal, 'open.option1');
+  g.wire(alone, 'open.option2');
+  g.wire('allowed.rurality', 'rurality.key');
+  g.wire('allowed.underpaid', 'medicareNote.key');
+  g.wire(underpaidNote, 'medicareNote.case1');
+  g.wire(allowsNote, 'medicareNote.otherwise');
+  g.wire('allowed.compared', 'medicare.key');
+  g.wire('medicareNote.value', 'medicare.case1');
+  g.wire(text, 'return.summary');
+  return g.def;
 };
 
 const reconcilePayment = (): GraphDef => {
@@ -852,23 +889,24 @@ const reconcilePayment = (): GraphDef => {
       { name: 'priority', type: 'integer', default: 0 }
     ]
   );
-  g.add('readClaim', 'billing.read-claim-checks', { label: 'Read the Claim' });
+  g.add('readClaim', 'billing.read-claim', { label: 'Read the Claim' });
+  g.add('facts', 'billing.fee-schedule-facts', { label: 'Fee Schedule Facts' });
   g.add('price', 'std.flow.branch', { label: 'Can Medicare Price It?' });
   g.add('locality', 'billing.find-medicare-locality', { label: 'Pickup Locality' });
   g.add('allowed', 'billing.medicare-allowed', { label: 'Medicare Allowed' });
-  g.add('response', 'billing.read-payer-response', { label: 'What the Payer Allowed' });
+  g.add('response', 'billing.read-payer-response', { label: 'Read Payer Response' });
+  g.add('amounts', 'billing.payer-response-amounts', { label: 'What the Payer Allowed' });
   g.add('underpayment', 'billing.underpayment', { label: 'Underpayment' });
-  const { zip, date } = claimFacts(g);
   const allowedFacts = makeObject(g, 'allowedFacts', 'What Medicare Allows', {
-    compared: ['underpayment.compared', 'boolean'],
-    allowedCents: ['allowed.totalCents', 'integer'],
-    rurality: ['locality.rurality', 'string'],
-    carrier: ['locality.carrier', 'string'],
-    locality: ['locality.locality', 'string'],
-    codesNotPriced: ['allowed.missing', { list: { code: 'hcpcs' } }],
-    payerAllowedCents: ['response.allowedCents', 'integer'],
-    underpaidCents: ['underpayment.underpaidCents', 'integer'],
-    underpaid: ['underpayment.underpaid', 'boolean']
+    compared: ['boolean', 'underpayment.compared'],
+    allowedCents: ['integer', 'allowed.totalCents'],
+    rurality: ['string', 'locality.rurality'],
+    carrier: ['string', 'locality.carrier'],
+    locality: ['string', 'locality.locality'],
+    codesNotPriced: [{ list: { code: 'hcpcs' } }, 'allowed.missing'],
+    payerAllowedCents: ['integer', 'amounts.allowedCents'],
+    underpaidCents: ['integer', 'underpayment.underpaidCents'],
+    underpaid: ['boolean', 'underpayment.underpaid']
   });
   g.add('keepPriority', 'std.var.set', {
     label: 'Keep the Priority',
@@ -884,7 +922,7 @@ const reconcilePayment = (): GraphDef => {
     config: { name: 'medicareAllowed' }
   });
   g.add('taskContext', 'std.object.set', {
-    label: 'Context With Medicare Allowed',
+    label: 'Details with Medicare Allowed',
     values: { path: 'medicareAllowed' }
   });
   g.add('reconcile', 'std.human.task', {
@@ -905,6 +943,7 @@ const reconcilePayment = (): GraphDef => {
       }
     }
   });
+  g.add('reconcileSummary', 'billing.reconcile-summary', { label: 'Task Summary' });
   recordEvent(g, 'reconciled', 'reconciled', 'Mark the Response Reconciled');
   g.add('correct', 'billing.correct-claim', { label: 'Correct Claim' });
   g.ret('doneReturn', 'done');
@@ -912,35 +951,40 @@ const reconcilePayment = (): GraphDef => {
   g.ret('voidReturn', 'void');
   g.wire('entry.exec', 'readClaim.exec');
   g.wire('entry.claimId', 'readClaim.claimId', 'response.claimId');
-  g.wire('entry.coverageId', 'response.coverageId');
+  g.wire('entry.coverageId', 'response.coverageId', 'facts.coverageId');
+  g.wire('readClaim.claim', 'facts.claim');
   g.wire('readClaim.then', 'price.exec');
-  g.wire('priceable.result', 'price.condition');
+  g.wire('facts.priceable', 'price.condition');
   g.wire('price.true', 'locality.exec');
   g.wire('price.false', 'reconcile.exec');
-  g.wire(zip, 'locality.postalCode');
+  g.wire('facts.pickupZip', 'locality.postalCode');
   g.wire('locality.found', 'allowed.exec');
   g.wire('locality.notFound', 'reconcile.exec');
-  g.wire('chargeLines.list', 'allowed.lines');
-  g.wire(date, 'allowed.serviceDate');
+  g.wire('facts.lines', 'allowed.lines');
+  g.wire('facts.serviceDate', 'allowed.serviceDate');
   g.wire('locality.carrier', 'allowed.carrier');
   g.wire('locality.locality', 'allowed.locality');
   g.wire('locality.rurality', 'allowed.rurality');
+  for (const pin of ['payerKind', 'primary', 'severalPatients', 'denialExpected']) {
+    g.wire(`facts.${pin}`, `underpayment.${pin}`);
+  }
   g.wire('allowed.totalCents', 'underpayment.medicareAllowedCents');
   g.wire('allowed.then', 'response.exec');
   g.wire('response.then', 'keepAllowed.exec');
-  g.wire('response.allowedCents', 'underpayment.payerAllowedCents');
-  g.wire('response.reasonCoded', 'underpayment.reasonCoded');
+  g.wire('response.paidCents', 'amounts.paidCents');
+  g.wire('response.adjustments', 'amounts.adjustments');
+  g.wire('amounts.allowedCents', 'underpayment.payerAllowedCents');
+  g.wire('amounts.reasonCoded', 'underpayment.reasonCoded');
   g.wire('underpayment.priority', 'keepPriority.value');
   g.wire('priority.value', 'reconcile.priority');
   g.wire(allowedFacts, 'keepAllowed.value');
   g.wire('keepAllowed.then', 'keepPriority.exec');
   g.wire('keepPriority.then', 'reconcile.exec');
-  g.wire('medicareAllowed.value', 'taskContext.value');
-  g.wire('entry.context', 'taskContext.object');
+  g.wire('medicareAllowed.value', 'taskContext.value', 'reconcileSummary.medicareAllowed');
+  g.wire('entry.context', 'taskContext.object', 'correct.context');
   g.wire('entry.subject', 'reconcile.subject', 'correct.subject');
-  g.wire('entry.context', 'correct.context');
-  g.wire('taskContext.object', 'reconcile.context');
-  reconcileSummary(g, 'taskContext.object', 'medicareAllowed.value');
+  g.wire('taskContext.object', 'reconcile.context', 'reconcileSummary.context');
+  g.wire('reconcileSummary.summary', 'reconcile.summary');
   g.wire('entry.claimId', 'reconciled.claimId', 'correct.claimId');
   g.wire('entry.coverageId', 'reconciled.coverageId', 'correct.coverageId');
   g.wire('reconcile.continue', 'reconciled.exec');
@@ -959,29 +1003,38 @@ const FOLLOW_UPS = [
   [
     'keepWaiting',
     'follow_up',
-    'Keep Waiting on Payer',
+    'Keep Waiting on the Payer',
     'Keeps waiting on this payer; the claim is followed up again if it still does not answer.'
   ],
   [
     'nextPayer',
     'payer_skipped',
-    'Move On From the Payer',
+    'Move On from the Payer',
     'Moves on from this payer to the next payer, or to the patient when none is left.'
   ]
 ] as const;
 
-const STATUS_WAIT_MS = 86_400_000;
-
 const followUpPayer = (): GraphDef => {
-  const g = claimStep(['done', 'void']);
-  g.add('ask', 'billing.send-276', { label: 'Ask the Payer for Claim Status' });
+  const g = claimStep(
+    ['done', 'void'],
+    [
+      p('coverageId', { id: 'coverage' }, true),
+      d(
+        'statusWaitMs',
+        'integer',
+        'Claim Status Wait (Milliseconds)',
+        'How long to wait for the payer to answer the claim status request, from the Claim Policy.'
+      )
+    ]
+  );
+  g.add('ask', 'billing.send-276', { label: 'Ask the Payer for the Claim Status' });
   g.add('wait', 'std.flow.wait-signal', {
     label: 'Await the Claim Status',
-    values: { name: CLAIM_SIGNAL, timeoutMs: STATUS_WAIT_MS }
+    values: { name: CLAIM_SIGNAL }
   });
   g.add('latest', 'billing.latest-claim-status', { label: 'Latest Claim Status' });
   g.add('withStatus', 'std.object.set', {
-    label: 'Show the Claim Status',
+    label: 'Details with the Claim Status',
     values: { path: 'claimStatus' }
   });
   g.add('followUp', 'std.human.task', {
@@ -991,7 +1044,7 @@ const followUpPayer = (): GraphDef => {
       queue: 'billing-followup',
       instructions:
         "The payer has not responded in time. The payer's latest claim status (277), when it gave one, is in the details. Resubmit it, keep waiting, or move on to the next payer. A resubmission goes through Correct Claim: when the payer has the claim on file, enter its claim number so it is replaced or reopened the way the payer takes corrections, else it goes as a new claim.",
-      fields: [{ name: 'payerClaimNumber', type: 'string', label: 'Payer claim number' }],
+      fields: [{ name: 'payerClaimNumber', type: 'string', label: 'Payer Claim Number' }],
       outcomes: ['resubmit', ...FOLLOW_UPS.map(([outcome]) => outcome)],
       hints: {
         resubmit: RESUBMIT_HINT,
@@ -1014,6 +1067,7 @@ const followUpPayer = (): GraphDef => {
   g.wire('entry.claimId', 'ask.claimId', 'wait.key', 'latest.claimId');
   g.wire('entry.coverageId', 'ask.coverageId');
   g.wire('ask.sent', 'wait.exec');
+  g.wire('entry.statusWaitMs', 'wait.timeoutMs');
   g.wire('ask.signalsSeen', 'wait.after');
   for (const exec of [
     'ask.answered',
@@ -1033,7 +1087,7 @@ const followUpPayer = (): GraphDef => {
     'followUp',
     '{payer} has not answered this claim in time[ (latest status: {context.claimStatus})]; resubmit it, keep waiting or move on',
     {
-      payer: payerOr(g, 'followUp', 'withStatus.object', 'The payer', 'Payer to Name'),
+      payer: payerOr(g, 'withStatus.object', 'The payer', 'Payer, Else the Payer'),
       context: 'withStatus.object'
     }
   );
@@ -1048,81 +1102,85 @@ const followUpPayer = (): GraphDef => {
   return g.def;
 };
 
-const MAILING_PARTS = [
-  ['addressLine', 'Street Address', 'street address'],
-  ['city', 'City', 'city'],
-  ['state', 'State', 'state'],
-  ['postalCode', 'ZIP Code', 'ZIP code']
-] as const;
-
-const statementSummaries = (g: Builder) => {
-  const statement = {
+const statementSummaries = (): GraphDef => {
+  const g = rule(
+    [p('statementNumber', 'integer', true), p('statementCount', 'integer', true), DETAILS_PIN],
+    [
+      d(
+        'profileNeeded',
+        'string',
+        'Billing Profile Needed',
+        'The summary of the task asking for the billing profile.'
+      ),
+      d(
+        'addressNeeded',
+        'string',
+        'Patient Address Needed',
+        "The summary of the task asking for the patient's mailing address."
+      )
+    ]
+  );
+  const ofCount = template(g, 'ofCount', 'Statement of Count', '[statement {number} of {count}]', {
     number: 'entry.statementNumber',
     count: 'entry.statementCount'
-  } as const;
-  template(
-    g,
-    'statementOfCount',
-    'Statement of Count',
-    '[statement {number} of {count}]',
-    statement
-  );
-  template(g, 'statementAlone', 'Statement Alone', '[statement {number}]', {
-    number: statement.number
   });
-  g.add('whichStatement', 'std.logic.choose', {
+  const alone = template(g, 'alone', 'Statement Alone', '[statement {number}]', {
+    number: 'entry.statementNumber'
+  });
+  g.add('statement', 'std.logic.choose', {
     label: 'Which Statement',
     config: { mode: 'first', type: 'string', count: 3 },
     values: { option3: 'a statement' }
   });
-  g.wire('statementOfCount.text', 'whichStatement.option1');
-  g.wire('statementAlone.text', 'whichStatement.option2');
-  const balance = money(
-    g,
-    'balanceDue',
-    'Balance',
-    detail(g, 'balanceCents', 'Balance (Cents)', 'balanceCents', 'entry.context')
-  );
-  summary(
-    g,
-    'profileNeeded',
-    'Add the billing profile in Settings so {statement} can go to the patient[ for {balance}]',
-    { statement: 'whichStatement.value', balance }
-  );
-  g.add('missingParts', 'std.list.make', {
-    label: 'Missing Address Parts',
-    config: { count: MAILING_PARTS.length, type: 'string' }
+  g.add('gaps', 'billing.address-gaps', { label: 'Address Gaps' });
+  g.add('missingText', 'std.text.join', {
+    label: 'Missing Parts',
+    values: { separator: ', ', last: ' or ' }
   });
-  for (const [i, [part, label, words]] of MAILING_PARTS.entries()) {
-    const value = detail(g, part, `Patient ${label}`, `claim.patient.${part}`, 'entry.context');
-    when(g, `${part}Empty`, `No ${label}`, { [part]: 'string' }, [{ field: part, op: 'empty' }], {
-      [part]: value
-    });
-    g.add(`${part}Missing`, 'std.logic.select', {
-      label: `${label} If Missing`,
-      values: { whenTrue: words }
-    });
-    g.wire(`${part}Empty.result`, `${part}Missing.condition`);
-    g.wire(`${part}Missing.result`, `missingParts.item${i + 1}`);
-  }
-  g.add('missingText', 'std.text.join', { label: 'Missing Parts', values: { separator: ', ' } });
-  g.wire('missingParts.list', 'missingText.items');
-  summary(
+  const balance = balanceOf(g, 'entry.context');
+  const profile = template(
     g,
-    'addressNeeded',
-    'The patient address has no {missing}, so {statement} cannot be sent; enter it or write off {balance}',
+    'profileText',
+    'Profile Needed Text',
+    'Add the billing profile in Settings so {statement} can go to the patient[ for {balance}]',
+    { statement: 'statement.value', balance }
+  );
+  const address = template(
+    g,
+    'addressText',
+    'Address Needed Text',
+    '{missing}, so {statement} cannot be sent; enter it or write off {balance}',
     {
       missing: orElse(
         g,
-        'missingWords',
-        'Missing Parts, Else Address',
-        'missingText.text',
-        'usable mailing address'
+        'missing',
+        'Missing Parts, Else No Usable Address',
+        template(g, 'missingParts', 'Address Lacks Parts', '[The patient address has no {parts}]', {
+          parts: 'missingText.text'
+        }),
+        fixed('The patient has no usable mailing address')
       ),
-      statement: 'whichStatement.value',
-      balance: orElse(g, 'balanceOrRest', 'Balance, Else the Balance', balance, 'the balance')
+      statement: 'statement.value',
+      balance: orElse(
+        g,
+        'balanceOrRest',
+        'Balance, Else the Balance',
+        balance,
+        fixed('the balance')
+      )
     }
   );
+  g.ret('return');
+  g.wire('gaps.missing', 'missingText.items');
+  g.wire(ofCount, 'statement.option1');
+  g.wire(alone, 'statement.option2');
+  g.wire(
+    getField(g, 'address', 'Patient Address', TASK_DETAILS, 'claim.patient', 'entry.context'),
+    'gaps.place'
+  );
+  g.wire(profile, 'return.profileNeeded');
+  g.wire(address, 'return.addressNeeded');
+  return g.def;
 };
 
 const billPatient = (): GraphDef => {
@@ -1132,15 +1190,13 @@ const billPatient = (): GraphDef => {
   );
   g.add('balance', 'billing.read-patient-balance', { label: 'Read Patient Balance' });
   g.add('responsibility', 'billing.patient-responsibility', { label: 'Patient Responsibility' });
-  g.add('why', 'std.text.join', { label: 'Why Protected', values: { separator: '; ' } });
   g.add('protect', 'billing.protect-balance', { label: 'Protect Patient Balance' });
-  when(
+  const owes = condition(
     g,
     'owes',
-    'Anything to Bill',
-    { responsibilityCents: 'integer' },
-    [{ field: 'responsibilityCents', op: 'gt', value: 0 }],
-    { responsibilityCents: 'responsibility.responsibilityCents' }
+    'The Patient Owes Something',
+    { responsibilityCents: ['integer', 'responsibility.responsibilityCents'] },
+    [{ field: 'responsibilityCents', op: 'gt', value: 0 }]
   );
   g.add('billable', 'std.flow.branch', { label: 'Bill the Patient?' });
   g.add('statement', 'billing.issue-statement', { label: 'Send Patient Statement' });
@@ -1148,6 +1204,7 @@ const billPatient = (): GraphDef => {
     label: 'What the Statement Needs',
     config: { cases: ['profile', 'patientAddress'] }
   });
+  g.add('summaries', 'billing.statement-task-summaries', { label: 'Task Summaries' });
   g.add('profileNeeded', 'std.human.task', {
     label: 'Billing Profile Needed',
     config: {
@@ -1190,19 +1247,19 @@ const billPatient = (): GraphDef => {
     'addAddress.claimId'
   );
   g.wire('balance.patientBalance', 'responsibility.patientBalance');
-  g.wire('responsibility.reasons', 'why.items');
-  g.wire('why.text', 'protect.note');
+  g.wire(joinText(g, 'why', 'Why Protected', '; ', 'responsibility.reasons'), 'protect.note');
   g.wire('responsibility.excessCents', 'protect.adjustedCents');
   g.wire('balance.then', 'protect.exec');
   g.wire('protect.then', 'billable.exec');
-  g.wire('owes.result', 'billable.condition');
+  g.wire(owes, 'billable.condition');
   g.wire('billable.true', 'statement.exec');
   g.wire('billable.false', 'doneReturn.exec');
-  g.wire('entry.statementNumber', 'statement.statementNumber');
-  g.wire('entry.statementCount', 'statement.statementCount');
+  g.wire('entry.statementNumber', 'statement.statementNumber', 'summaries.statementNumber');
+  g.wire('entry.statementCount', 'statement.statementCount', 'summaries.statementCount');
   g.wire('entry.subject', 'profileNeeded.subject', 'addressNeeded.subject');
-  g.wire('entry.context', 'profileNeeded.context', 'addressNeeded.context');
-  statementSummaries(g);
+  g.wire('entry.context', 'profileNeeded.context', 'addressNeeded.context', 'summaries.context');
+  g.wire('summaries.profileNeeded', 'profileNeeded.summary');
+  g.wire('summaries.addressNeeded', 'addressNeeded.summary');
   g.wire('statement.issued', 'doneReturn.exec');
   g.wire('statement.missing', 'missing.exec');
   g.wire('statement.need', 'missing.value');
@@ -1229,89 +1286,267 @@ const CLOSINGS = [
 const DAY_MS = 86_400_000;
 
 const POLICY_FIELDS = [
-  field('payerWaitDays', 'number', 'Days to wait for a payer before following up'),
-  field('statementCount', 'integer', 'Patient statements to send'),
-  field('statementIntervalDays', 'number', 'Days between patient statements'),
-  field(
-    'facilityWaitDays',
-    'number',
-    'Days to wait for a facility after its invoice before following up'
-  ),
-  field(
-    'collectionsThresholdCents',
-    'integer',
-    'Smallest balance sent to collections review (cents)'
-  ),
-  field(
-    'autoWriteOffCents',
-    'integer',
-    'Largest patient balance written off without statements (cents)'
-  ),
-  field('reviewRequired', 'boolean', 'A biller reviews the claim before it goes to the payer'),
-  field('writeOffApprovalCents', 'integer', 'Largest write-off closed without approval (cents)'),
-  field(
-    'collectionsApprovalCents',
-    'integer',
-    'Largest balance sent to collections without approval (cents)'
-  )
+  field('payerWaitDays', 'number', 'Payer Wait (Days)'),
+  field('statementCount', 'integer', 'Statements to Send'),
+  field('statementIntervalDays', 'number', 'Days Between Statements'),
+  field('facilityWaitDays', 'number', 'Facility Wait (Days)'),
+  field('reviewWaitDays', 'number', 'Payer File Review Wait (Days)'),
+  field('statusWaitDays', 'number', 'Claim Status Wait (Days)'),
+  field('collectionsThresholdCents', 'integer', 'Collections Threshold (Cents)'),
+  field('autoWriteOffCents', 'integer', 'Auto Write-Off Limit (Cents)'),
+  field('reviewRequired', 'boolean', 'Review Required'),
+  field('writeOffApprovalCents', 'integer', 'Write-Off Approval Limit (Cents)'),
+  field('collectionsApprovalCents', 'integer', 'Collections Approval Limit (Cents)')
 ];
 
-const STEP_INPUTS = [
-  field('balanceCents', 'integer', 'Balance (cents)'),
-  field('pendingReview', 'boolean', 'A payer file line on the claim waits for a biller'),
-  field('reconciling', 'boolean', 'A payer response waits to be reconciled'),
-  field('denialOpen', 'boolean', 'A payer denial waits to be worked'),
-  field('billFacility', 'boolean', 'A facility is responsible for the trip'),
-  field('hasPayer', 'boolean', 'A payer is still to be billed'),
-  field('contacted', 'boolean', 'The payer has the claim'),
-  field('approved', 'boolean', 'Approved for the payer'),
-  field('reviewRequired', 'boolean', 'Review required'),
-  field('payerWaitLeftMs', 'integer', 'Time left to wait for the payer (ms)'),
-  field('withinWriteOff', 'boolean', 'The balance is within the write-off limit'),
-  field('statements', 'integer', 'Statements sent'),
-  field('patientApproved', 'boolean', 'Approved for billing the patient'),
-  field('coverageCount', 'integer', 'Payers on the claim'),
-  field('statementWaitLeftMs', 'integer', 'Time left before the next statement (ms)'),
-  field('facilityWaitLeftMs', 'integer', 'Time left to wait for the facility (ms)'),
-  field('statementsLeft', 'integer', 'Statements left to send'),
-  field('underCollections', 'boolean', 'The balance is under the collections threshold')
-];
-
-type StepSet = {
-  check?: boolean;
-  patientOnly?: boolean;
-  waitOn?: 'payer' | 'statement' | 'facility' | 'review';
-  payerOf?: 'response' | 'billed';
+type Situation = {
+  id: string;
+  label: string;
+  reason: string;
+  step: string;
+  stepLabel?: string;
+  inputs: Record<string, [ValueType, Port]>;
+  rules: Test[];
 };
 
-const step = (
-  label: string,
-  when: Record<string, ReturnType<typeof is>>,
-  name: string,
-  { check = false, patientOnly = false, waitOn, payerOf }: StepSet = {}
-) => ({
-  label,
-  when,
-  set: { step: name, check, patientOnly, waitOn: waitOn ?? null, payerOf: payerOf ?? null }
-});
+const ledgerPin = (name: string, type: ValueType): [ValueType, Port] => [type, `ledger.${name}`];
+
+const BALANCE = ledgerPin('balanceCents', 'integer');
+
+const BILLED = ledgerPin('coverageId', { id: 'coverage' });
+
+const DECISION: ValueType = { object: { step: 'string', reason: 'string' } };
+
+const SITUATIONS: Situation[] = [
+  {
+    id: 'creditInReview',
+    label: 'A Credit Waits on a Payer File Line',
+    reason: 'There is a credit balance while a payer file line on the claim waits for a biller',
+    step: 'awaitReview',
+    inputs: {
+      pendingReview: ledgerPin('pendingReview', 'boolean'),
+      balanceCents: BALANCE
+    },
+    rules: [
+      { field: 'pendingReview', op: 'is', value: true },
+      { field: 'balanceCents', op: 'lt', value: 0 }
+    ]
+  },
+  {
+    id: 'overpaid',
+    label: 'More Was Paid Than Charged',
+    reason: 'More was paid than charged',
+    step: 'overpaid',
+    inputs: { balanceCents: BALANCE },
+    rules: [{ field: 'balanceCents', op: 'lt', value: 0 }]
+  },
+  {
+    id: 'denialOpen',
+    label: 'A Denial Waits to Be Worked',
+    reason: 'A payer denial waits to be worked',
+    step: 'workDenial',
+    inputs: { denialRoute: ledgerPin('denialRoute', 'string') },
+    rules: [{ field: 'denialRoute', op: 'present' }]
+  },
+  {
+    id: 'nothingOwed',
+    label: 'Nothing Is Owed',
+    reason: 'Nothing is owed',
+    step: 'closed',
+    inputs: { balanceCents: BALANCE },
+    rules: [{ field: 'balanceCents', op: 'lte', value: 0 }]
+  },
+  {
+    id: 'reconciling',
+    label: 'A Response Waits to Be Reconciled',
+    reason: 'A payer response waits to be reconciled',
+    step: 'reconcile',
+    inputs: { unreconciledCoverageId: ledgerPin('unreconciledCoverageId', { id: 'coverage' }) },
+    rules: [{ field: 'unreconciledCoverageId', op: 'present' }]
+  },
+  {
+    id: 'facilityHasTime',
+    label: 'The Facility Still Has Time to Pay',
+    reason: 'The responsible facility still has time to pay',
+    step: 'facility',
+    inputs: {
+      billFacility: ledgerPin('billFacility', 'boolean'),
+      facilityWaitLeftMs: ['integer', 'facilityWaitLeftMs.leftMs']
+    },
+    rules: [
+      { field: 'billFacility', op: 'is', value: true },
+      { field: 'facilityWaitLeftMs', op: 'gt', value: 0 }
+    ]
+  },
+  {
+    id: 'facilityResponsible',
+    label: 'A Facility Is Responsible',
+    reason: 'A facility is responsible and its time to pay is up',
+    step: 'followUpFacility',
+    inputs: { billFacility: ledgerPin('billFacility', 'boolean') },
+    rules: [{ field: 'billFacility', op: 'is', value: true }]
+  },
+  {
+    id: 'needsReview',
+    label: 'The Claim Needs Review Before the Payer',
+    reason: 'The claim needs review before it goes to this payer',
+    step: 'review',
+    inputs: {
+      coverageId: BILLED,
+      contacted: ledgerPin('contacted', 'boolean'),
+      approved: ledgerPin('approved', 'boolean'),
+      reviewRequired: ['boolean', 'policy.reviewRequired']
+    },
+    rules: [
+      { field: 'coverageId', op: 'present' },
+      { field: 'contacted', op: 'is', value: false },
+      { field: 'approved', op: 'is', value: false },
+      { field: 'reviewRequired', op: 'is', value: true }
+    ]
+  },
+  {
+    id: 'readyToFile',
+    label: 'The Payer Does Not Have the Claim Yet',
+    reason: 'The claim is ready to file to this payer',
+    step: 'submit',
+    inputs: { coverageId: BILLED, contacted: ledgerPin('contacted', 'boolean') },
+    rules: [
+      { field: 'coverageId', op: 'present' },
+      { field: 'contacted', op: 'is', value: false }
+    ]
+  },
+  {
+    id: 'payerHasTime',
+    label: 'The Payer Still Has Time to Answer',
+    reason: 'The payer still has time to answer',
+    step: 'await',
+    inputs: { coverageId: BILLED, payerWaitLeftMs: ['integer', 'payerWaitLeftMs.result'] },
+    rules: [
+      { field: 'coverageId', op: 'present' },
+      { field: 'payerWaitLeftMs', op: 'gt', value: 0 }
+    ]
+  },
+  {
+    id: 'payerBilled',
+    label: 'A Payer Is Being Billed',
+    reason: 'A payer is being billed and its time to answer is up',
+    step: 'followUp',
+    inputs: { coverageId: BILLED },
+    rules: [{ field: 'coverageId', op: 'present' }]
+  },
+  {
+    id: 'smallBalance',
+    label: 'The Balance Is Within the Auto Write-Off Limit',
+    reason: 'The balance is small enough to write off',
+    step: 'writeOff',
+    stepLabel: 'Write Off a Small Balance',
+    inputs: { balanceCents: BALANCE, autoWriteOffCents: ['integer', 'policy.autoWriteOffCents'] },
+    rules: [{ field: 'balanceCents', op: 'lte', input: 'autoWriteOffCents' }]
+  },
+  {
+    id: 'reviewPatient',
+    label: 'The Claim Needs Review Before the Patient',
+    reason: 'The claim needs review before the patient is billed',
+    step: 'reviewPatient',
+    inputs: {
+      statements: ledgerPin('statements', 'integer'),
+      patientApproved: ledgerPin('patientApproved', 'boolean'),
+      coverageCount: ledgerPin('coverageCount', 'integer')
+    },
+    rules: [
+      { field: 'statements', op: 'lte', value: 0 },
+      { field: 'patientApproved', op: 'is', value: false },
+      { field: 'coverageCount', op: 'gt', value: 0 }
+    ]
+  },
+  {
+    id: 'patientNotApproved',
+    label: 'The Patient Is Not Approved Before the First Statement',
+    reason: 'The patient is not approved before the first statement',
+    step: 'confirmPayers',
+    inputs: {
+      statements: ledgerPin('statements', 'integer'),
+      patientApproved: ledgerPin('patientApproved', 'boolean')
+    },
+    rules: [
+      { field: 'statements', op: 'lte', value: 0 },
+      { field: 'patientApproved', op: 'is', value: false }
+    ]
+  },
+  {
+    id: 'statementNotDue',
+    label: 'The Next Statement Is Not Due Yet',
+    reason: 'The next statement is not due yet',
+    step: 'awaitPatient',
+    inputs: { statementWaitLeftMs: ['integer', 'statementWaitLeftMs.result'] },
+    rules: [{ field: 'statementWaitLeftMs', op: 'gt', value: 0 }]
+  },
+  {
+    id: 'statementsLeft',
+    label: 'Statements Are Left to Send',
+    reason: 'Statements are left to send',
+    step: 'statement',
+    inputs: {
+      statementCount: ['integer', 'policy.statementCount'],
+      statements: ledgerPin('statements', 'integer')
+    },
+    rules: [{ field: 'statementCount', op: 'gt', input: 'statements' }]
+  },
+  {
+    id: 'underCollections',
+    label: 'The Balance Is Under the Collections Threshold',
+    reason: 'The balance is under the collections threshold',
+    step: 'writeOff',
+    stepLabel: 'Write Off Below Collections',
+    inputs: {
+      balanceCents: BALANCE,
+      collectionsThresholdCents: ['integer', 'policy.collectionsThresholdCents']
+    },
+    rules: [{ field: 'balanceCents', op: 'lt', input: 'collectionsThresholdCents' }]
+  }
+];
+
+const PAYER_STEPS = [
+  ['workDenial', 'unreconciled'],
+  ['reconcile', 'unreconciled'],
+  ['review', 'billed'],
+  ['submit', 'billed'],
+  ['await', 'billed'],
+  ['followUp', 'billed']
+] as const;
+
+const WAIT_STEPS = [
+  ['await', 'payerWaitLeftMs.result'],
+  ['awaitPatient', 'statementWaitLeftMs.result'],
+  ['facility', 'facilityWaitLeftMs.leftMs'],
+  ['awaitReview', 'reviewWait.leftMs']
+] as const;
 
 const claimWaitLeft = (): GraphDef => {
   const g = rule(
     [
-      d('waitDays', 'number', 'Wait Days', 'How many days the policy waits.', true),
+      d('waitDays', 'number', 'Wait (Days)', 'How many days the Claim Policy waits.', true),
       d(
         'elapsedMs',
         'integer',
-        'Elapsed Milliseconds',
-        'How long ago the wait started, or nothing when it has not been timed.',
+        'Elapsed (Milliseconds)',
+        'How long ago the wait started, in milliseconds, or nothing when it has not been timed.',
         true
       )
     ],
-    [d('leftMs', 'integer', 'Milliseconds Left', 'The milliseconds of the wait still to go.', true)]
+    [
+      d(
+        'leftMs',
+        'integer',
+        'Wait Left (Milliseconds)',
+        'How much of the wait is still to go, in milliseconds.',
+        true
+      )
+    ]
   );
-  g.add('waitMs', 'std.math.multiply', { label: 'Wait in Milliseconds', values: { b: DAY_MS } });
+  g.add('waitMs', 'std.math.multiply', { label: 'Wait (Milliseconds)', values: { b: DAY_MS } });
   g.add('wholeMs', 'std.math.round', { label: 'Whole Milliseconds' });
-  g.add('elapsed', 'std.logic.coalesce', { label: 'Elapsed, Else None', values: { fallback: 0 } });
+  g.add('elapsed', 'std.logic.coalesce', { label: 'Elapsed, Else Zero', values: { fallback: 0 } });
   g.add('left', 'std.math.subtract', { label: 'Wait Left' });
   g.ret('return');
   g.wire('entry.waitDays', 'waitMs.a');
@@ -1330,112 +1565,117 @@ const nextClaimStep = (): GraphDef => {
       d('step', 'string', 'Step', `The next step: ${CLAIM_STEPS.join(', ')}.`),
       d('coverageId', { id: 'coverage' }, 'Payer', 'The payer the step is about, if any.', true),
       d('payer', 'string', 'Payer Name', 'The name of that payer.', true),
-      d('waitMs', 'integer', 'Wait Milliseconds', 'How long to wait on the await steps.', true),
+      d(
+        'waitMs',
+        'integer',
+        'How Long to Wait (Milliseconds)',
+        'How long the await steps wait, in milliseconds.',
+        true
+      ),
+      d(
+        'statusWaitMs',
+        'integer',
+        'Claim Status Wait (Milliseconds)',
+        'How long a follow-up waits for the payer to answer a claim status request, in milliseconds.',
+        true
+      ),
       d('statementNumber', 'integer', 'Statement', 'Which patient statement to send.', true),
       d('statementCount', 'integer', 'Statements', 'How many patient statements the policy sends.'),
       d(
         'writeOffApprovalCents',
         'integer',
-        'Write-Off Approval Threshold',
-        'The largest write-off closed without approval (cents).'
+        'Write-Off Approval Limit (Cents)',
+        'The largest write-off closed without approval.'
       ),
       d(
         'collectionsApprovalCents',
         'integer',
-        'Collections Approval Threshold',
-        'The largest balance sent to collections without approval (cents).'
+        'Collections Approval Limit (Cents)',
+        'The largest balance sent to collections without approval.'
       ),
       d('check', 'boolean', 'Check First', 'Whether the claim checks run before the step.'),
       d(
         'patientOnly',
         'boolean',
-        'Patient Billing',
+        'Patient Issues Only',
         'Whether only issues that matter for billing the patient count.'
       ),
-      P.reasons('the claim is on this step')
+      d(
+        'reasons',
+        { list: 'string' },
+        'Reasons',
+        'Why the claim is on this step: the situation that decided it.'
+      )
     ]
   );
-  g.add('ledger', 'billing.claim-ledger.break');
+  g.add('ledger', 'billing.claim-ledger.break', { label: 'Claim Ledger' });
   g.add('policy', 'std.table.decide', {
     label: 'Claim Policy',
     config: shared.decision(
       'billing.claim-policy',
       'Claim Policy',
-      'The waits (payer, statements and facility), statements, collections threshold, write-off limit, review rule and approval thresholds (write-offs and collections above them need someone with claims:approve) of the claim cycle, by the kind of payer being billed (its claim filing indicator, or patient).',
-      table(
-        [field('payerKind', 'string', 'Claim filing indicator of the payer billed, or patient')],
-        POLICY_FIELDS,
-        [],
-        {
-          payerWaitDays: 30,
-          statementCount: 3,
-          statementIntervalDays: 30,
-          facilityWaitDays: 60,
-          collectionsThresholdCents: 0,
-          autoWriteOffCents: 0,
-          reviewRequired: true,
-          writeOffApprovalCents: 50_000,
-          collectionsApprovalCents: 0
-        }
-      )
+      'How the claim cycle works for each kind of payer billed (its claim filing indicator, or patient once no payer is left): how long it waits on a payer, a facility and a payer file line before acting, how long a follow-up waits for a claim status from the payer, how many patient statements it sends and how far apart, which balances it writes off or sends to collections review, whether a biller reviews the claim first, and the largest write-off and collections placement closed without approval from someone with claims:approve.',
+      table([field('payerKind', 'string', 'Payer Kind')], POLICY_FIELDS, [], {
+        payerWaitDays: 30,
+        statementCount: 3,
+        statementIntervalDays: 30,
+        facilityWaitDays: 60,
+        reviewWaitDays: 1,
+        statusWaitDays: 1,
+        collectionsThresholdCents: 0,
+        autoWriteOffCents: 0,
+        reviewRequired: true,
+        writeOffApprovalCents: 50_000,
+        collectionsApprovalCents: 0
+      })
     )
   });
-  for (const [id, label, pin, type] of [
-    ['hasPayer', 'A Payer to Bill', 'coverageId', { id: 'coverage' }],
-    ['reconciling', 'A Response to Reconcile', 'unreconciledCoverageId', { id: 'coverage' }],
-    ['denialOpen', 'A Denial to Work', 'denialRoute', 'string']
-  ] as const) {
-    when(g, id, label, { [pin]: type }, [{ field: pin, op: 'present' }], {
-      [pin]: `ledger.${pin}`
-    });
-  }
-  const waitLeft = (id: string, label: string, days: string, elapsed: string) => {
+  const waitLeft = (id: string, label: string, days: string, elapsed?: string) => {
     g.add(id, 'billing.claim-wait-left', { label });
     g.wire(`policy.${days}`, `${id}.waitDays`);
-    g.wire(`ledger.${elapsed}`, `${id}.elapsedMs`);
+    if (elapsed) g.wire(`ledger.${elapsed}`, `${id}.elapsedMs`);
     return `${id}.leftMs` as const;
   };
-  when(
+  const payerHasClaim = condition(
     g,
     'payerHasClaim',
     'The Payer Has the Claim',
-    { contacted: 'boolean' },
-    [{ field: 'contacted', op: 'is', value: true }],
-    { contacted: 'ledger.contacted' }
+    { contacted: ['boolean', 'ledger.contacted'] },
+    [{ field: 'contacted', op: 'is', value: true }]
   );
-  g.add('payerWaitLeftMs', 'std.logic.select', {
-    label: 'Payer Wait Left',
-    values: { whenFalse: 0 }
-  });
-  g.wire('payerHasClaim.result', 'payerWaitLeftMs.condition');
-  g.wire(
+  select(
+    g,
+    'payerWaitLeftMs',
+    'Payer Wait Left, Else None',
+    payerHasClaim,
     waitLeft('payerWait', 'Payer Wait Since Contact', 'payerWaitDays', 'sinceContactMs'),
-    'payerWaitLeftMs.whenTrue'
+    fixed(0)
   );
-  when(
+  const statementTimed = condition(
     g,
     'statementTimed',
     'A Statement Was Sent',
-    { statements: 'integer', sinceStatementMs: 'integer' },
+    {
+      statements: ['integer', 'ledger.statements'],
+      sinceStatementMs: ['integer', 'ledger.sinceStatementMs']
+    },
     [
       { field: 'statements', op: 'gt', value: 0 },
       { field: 'sinceStatementMs', op: 'present' }
-    ],
-    { statements: 'ledger.statements', sinceStatementMs: 'ledger.sinceStatementMs' }
+    ]
   );
-  g.add('statementWaitLeftMs', 'std.logic.select', {
-    label: 'Statement Wait Left',
-    values: { whenFalse: 0 }
-  });
-  g.wire('statementTimed.result', 'statementWaitLeftMs.condition');
-  g.wire(
+  select(
+    g,
+    'statementWaitLeftMs',
+    'Statement Wait Left, Else None',
+    statementTimed,
     waitLeft(
       'statementWait',
       'Statement Wait Since the Last',
       'statementIntervalDays',
       'sinceStatementMs'
     ),
-    'statementWaitLeftMs.whenTrue'
+    fixed(0)
   );
   waitLeft(
     'facilityWaitLeftMs',
@@ -1443,105 +1683,55 @@ const nextClaimStep = (): GraphDef => {
     'facilityWaitDays',
     'sinceFacilityContactMs'
   );
-  g.add('statementsLeft', 'std.math.subtract', { label: 'Statements Left' });
-  g.add('withinWriteOff', 'std.logic.less-or-equal', { label: 'Within the Write-Off Limit' });
-  g.add('underCollections', 'std.logic.less', { label: 'Under the Collections Threshold' });
-  g.add('decide', 'std.table.decide', {
-    label: 'Claim Steps',
-    config: shared.decision(
-      'billing.claim-steps',
-      'Claim Steps',
-      'Decides the next step of the claim cycle from its ledger and policy, top to bottom, with what an await step waits on and whose payer the step is about.',
-      table(
-        STEP_INPUTS,
-        [
-          field('step', 'string', 'Step'),
-          field('check', 'boolean', 'Run the claim checks first'),
-          field('patientOnly', 'boolean', 'Only patient issues count'),
-          field('waitOn', 'string', 'Waits on: payer, statement, facility or review'),
-          field('payerOf', 'string', 'About the payer of: response or billed')
-        ],
-        [
-          step(
-            'A credit balance while a payer file line on the claim waits for a biller',
-            { pendingReview: is(true), balanceCents: below(0) },
-            'awaitReview',
-            { waitOn: 'review' }
-          ),
-          step('More was paid than charged', { balanceCents: below(0) }, 'overpaid'),
-          step('A payer denial waits to be worked', { denialOpen: is(true) }, 'workDenial', {
-            payerOf: 'response'
-          }),
-          step('Nothing is owed', { balanceCents: atMost(0) }, 'closed'),
-          step('A payer response waits to be reconciled', { reconciling: is(true) }, 'reconcile', {
-            payerOf: 'response'
-          }),
-          step(
-            'Waiting on the responsible facility',
-            { billFacility: is(true), facilityWaitLeftMs: above(0) },
-            'facility',
-            { waitOn: 'facility' }
-          ),
-          step('The facility has not paid in time', { billFacility: is(true) }, 'followUpFacility'),
-          step(
-            'Review before this payer',
-            {
-              hasPayer: is(true),
-              contacted: is(false),
-              approved: is(false),
-              reviewRequired: is(true)
-            },
-            'review',
-            { check: true, payerOf: 'billed' }
-          ),
-          step('Ready for this payer', { hasPayer: is(true), contacted: is(false) }, 'submit', {
-            check: true,
-            payerOf: 'billed'
-          }),
-          step('Waiting on the payer', { hasPayer: is(true), payerWaitLeftMs: above(0) }, 'await', {
-            waitOn: 'payer',
-            payerOf: 'billed'
-          }),
-          step('The payer has not answered in time', { hasPayer: is(true) }, 'followUp', {
-            payerOf: 'billed'
-          }),
-          step('Small balance written off', { withinWriteOff: is(true) }, 'writeOff'),
-          step(
-            'Review before billing the patient',
-            { statements: atMost(0), patientApproved: is(false), coverageCount: above(0) },
-            'reviewPatient',
-            { check: true, patientOnly: true }
-          ),
-          step(
-            'No payer to bill',
-            { statements: atMost(0), patientApproved: is(false) },
-            'confirmPayers',
-            { check: true, patientOnly: true }
-          ),
-          step('Waiting between statements', { statementWaitLeftMs: above(0) }, 'awaitPatient', {
-            waitOn: 'statement'
-          }),
-          step('Statements left to send', { statementsLeft: above(0) }, 'statement'),
-          step(
-            'Balance under the collections threshold',
-            { underCollections: is(true) },
-            'writeOff'
-          )
-        ],
-        { step: 'collections', check: false, patientOnly: false, waitOn: null, payerOf: null }
-      )
-    )
+  waitLeft('reviewWait', 'Payer File Review Wait', 'reviewWaitDays');
+  const held = SITUATIONS.map((s) => ({
+    ...s,
+    when: condition(g, s.id, s.label, s.inputs, s.rules)
+  }));
+  const decided = firstOf(
+    g,
+    'decided',
+    'First Situation That Applies',
+    DECISION,
+    held.map((s) => ({
+      id: `${s.id}Step`,
+      label: s.stepLabel ?? `${labelOf(s.step)} Step`,
+      when: s.when,
+      value: fixed({ step: s.step, reason: s.reason })
+    })),
+    fixed({
+      step: 'collections',
+      reason: 'Every payer and statement is done and a balance remains'
+    })
+  );
+  g.add('decision', 'std.object.break', {
+    label: 'Step and Why',
+    config: {
+      fields: [
+        { name: 'step', type: 'string' },
+        { name: 'reason', type: 'string' }
+      ]
+    }
   });
+  g.wire(decided, 'decision.object');
+  const step = 'decision.step';
+  const why = 'decision.reason';
+  const stepIs = (id: string, label: string, steps: string[]) =>
+    condition(g, id, label, { step: ['string', step] }, [
+      { field: 'step', op: 'oneOf', value: steps }
+    ]);
   g.add('waitLeft', 'std.logic.choose', {
     label: 'Wait Left for the Step',
     config: {
       mode: 'byCase',
       type: 'integer',
-      cases: [{ when: 'payer' }, { when: 'statement' }, { when: 'facility' }, { when: 'review' }]
-    },
-    values: { case4: DAY_MS }
+      cases: WAIT_STEPS.map(([when]) => ({ when }))
+    }
   });
-  g.add('waitMs', 'std.math.max', { label: 'How Long to Wait', values: { b: MIN_WAIT_MS } });
+  g.add('waitMs', 'std.math.max', {
+    label: 'At Least the Shortest Wait',
+    values: { b: MIN_WAIT_MS }
+  });
   g.add('nextStatement', 'std.math.add', { label: 'Next Statement', values: { b: 1 } });
   g.add('statementNumber', 'std.logic.choose', {
     label: 'Statement to Send',
@@ -1552,67 +1742,93 @@ const nextClaimStep = (): GraphDef => {
     config: {
       mode: 'byCase',
       type: { id: 'coverage' },
-      cases: [{ when: 'response' }, { when: 'billed' }]
+      cases: PAYER_STEPS.map(([when]) => ({ when }))
     }
   });
   g.add('payerName', 'std.logic.choose', {
-    label: 'Payer Name',
-    config: { mode: 'byCase', type: 'string', cases: [{ when: 'response' }, { when: 'billed' }] }
+    label: 'Payer Name of the Step',
+    config: { mode: 'byCase', type: 'string', cases: PAYER_STEPS.map(([when]) => ({ when })) }
   });
   g.ret('return');
   g.wire('entry.ledger', 'ledger.ledger');
   g.wire('ledger.payerKind', 'policy.payerKind');
-  g.wire('policy.statementCount', 'statementsLeft.a', 'return.statementCount');
-  g.wire('ledger.statements', 'statementsLeft.b', 'nextStatement.a');
-  g.wire('ledger.balanceCents', 'withinWriteOff.a', 'underCollections.a');
-  g.wire('policy.autoWriteOffCents', 'withinWriteOff.b');
-  g.wire('policy.collectionsThresholdCents', 'underCollections.b');
-  g.wire('policy.reviewRequired', 'decide.reviewRequired');
+  g.wire('policy.statementCount', 'return.statementCount');
+  g.wire('ledger.statements', 'nextStatement.a');
   g.wire('policy.writeOffApprovalCents', 'return.writeOffApprovalCents');
   g.wire('policy.collectionsApprovalCents', 'return.collectionsApprovalCents');
-  for (const id of [
-    'hasPayer',
-    'reconciling',
-    'denialOpen',
-    'payerWaitLeftMs',
-    'statementWaitLeftMs',
-    'statementsLeft',
-    'withinWriteOff',
-    'underCollections'
-  ]) {
-    g.wire(`${id}.result`, `decide.${id}`);
-  }
-  g.wire('facilityWaitLeftMs.leftMs', 'decide.facilityWaitLeftMs', 'waitLeft.case3');
-  for (const f of [
-    'balanceCents',
-    'pendingReview',
-    'contacted',
-    'approved',
-    'statements',
-    'patientApproved',
-    'coverageCount',
-    'billFacility'
-  ]) {
-    g.wire(`ledger.${f}`, `decide.${f}`);
-  }
-  g.wire('decide.step', 'statementNumber.key', 'return.step');
-  g.wire('decide.waitOn', 'waitLeft.key');
-  g.wire('payerWaitLeftMs.result', 'waitLeft.case1');
-  g.wire('statementWaitLeftMs.result', 'waitLeft.case2');
+  g.wire(waitLeft('statusWait', 'Claim Status Wait', 'statusWaitDays'), 'return.statusWaitMs');
+  g.wire(step, 'statementNumber.key', 'waitLeft.key', 'coverageId.key', 'payerName.key');
+  g.wire(step, 'return.step');
+  for (const [i, [, port]] of WAIT_STEPS.entries()) g.wire(port, `waitLeft.case${i + 1}`);
   g.wire('waitLeft.value', 'waitMs.a');
   g.wire('nextStatement.result', 'statementNumber.case1');
-  g.wire('decide.payerOf', 'coverageId.key', 'payerName.key');
-  g.wire('ledger.unreconciledCoverageId', 'coverageId.case1');
-  g.wire('ledger.coverageId', 'coverageId.case2');
-  g.wire('ledger.unreconciledPayer', 'payerName.case1');
-  g.wire('ledger.payer', 'payerName.case2');
+  for (const [i, [, whose]] of PAYER_STEPS.entries()) {
+    const response = whose === 'unreconciled';
+    g.wire(
+      response ? 'ledger.unreconciledCoverageId' : 'ledger.coverageId',
+      `coverageId.case${i + 1}`
+    );
+    g.wire(response ? 'ledger.unreconciledPayer' : 'ledger.payer', `payerName.case${i + 1}`);
+  }
   g.wire('coverageId.value', 'return.coverageId');
   g.wire('payerName.value', 'return.payer');
   g.wire('waitMs.result', 'return.waitMs');
   g.wire('statementNumber.value', 'return.statementNumber');
-  g.wire('decide.check', 'return.check');
-  g.wire('decide.patientOnly', 'return.patientOnly');
-  g.wire('decide.rules', 'return.reasons');
+  g.wire(
+    stepIs('checkFirst', 'The Step Checks the Claim First', [
+      'review',
+      'submit',
+      'reviewPatient',
+      'confirmPayers'
+    ]),
+    'return.check'
+  );
+  g.wire(
+    stepIs('patientOnly', 'The Step Bills the Patient', ['reviewPatient', 'confirmPayers']),
+    'return.patientOnly'
+  );
+  g.wire(makeList(g, 'reasons', 'Reasons', 'string', [why]), 'return.reasons');
+  return g.def;
+};
+
+const claimTaskDetails = (): GraphDef => {
+  const g = rule(
+    [
+      p('claimId', { id: 'claim' }),
+      d('reference', 'string', 'Claim Reference', 'The claim number and patient name.', true),
+      d('coverageId', { id: 'coverage' }, 'Payer', 'The payer the step is about, if any.', true),
+      d('payer', 'string', 'Payer Name', 'The name of that payer.', true),
+      d('balanceCents', 'integer', 'Balance (Cents)', 'What is still owed on the claim.', true),
+      d('issues', T.issues, 'Issues', 'The issues the claim checks found, if they ran.', true),
+      d('claim', { object: {} }, 'Claim', 'The saved claim the checks read, if they ran.', true)
+    ],
+    [
+      d('subject', 'string', 'Task Subject', 'How tasks about the claim name it.'),
+      d(
+        'payerSubject',
+        'string',
+        'Payer Task Subject',
+        'How tasks about one payer name the claim and the payer.'
+      ),
+      p('context', 'any')
+    ]
+  );
+  const parts = makeList(g, 'parts', 'Claim and Payer', 'string', [
+    'entry.reference',
+    'entry.payer'
+  ]);
+  const context = makeObject(g, 'context', 'Task Details', {
+    claimId: [{ id: 'claim' }, 'entry.claimId'],
+    coverageId: [{ id: 'coverage' }, 'entry.coverageId'],
+    payer: ['string', 'entry.payer'],
+    balanceCents: ['integer', 'entry.balanceCents'],
+    issues: [T.issues, 'entry.issues'],
+    claim: [{ object: {} }, 'entry.claim']
+  });
+  g.ret('return');
+  g.wire('entry.reference', 'return.subject');
+  g.wire(joinText(g, 'payerSubject', 'Claim · Payer', ' · ', parts), 'return.payerSubject');
+  g.wire(context, 'return.context');
   return g.def;
 };
 
@@ -1651,7 +1867,7 @@ const cycleClaim = (): GraphDef => {
   g.add('ledger', 'billing.read-claim-ledger', { label: 'Read Claim Ledger' });
   g.add('next', 'billing.next-claim-step', { label: 'Next Claim Step' });
   g.add('status', 'std.table.lookup', {
-    label: 'Status for the Step',
+    label: 'Claim Status for the Step',
     config: {
       type: 'string',
       rows: Object.entries(STEP_STATUSES).map(([key, value]) => ({ key, value }))
@@ -1659,28 +1875,19 @@ const cycleClaim = (): GraphDef => {
   });
   g.add('record', 'billing.record-claim-step', { label: 'Record Claim Step' });
   g.add('clear', 'std.var.set', {
-    label: 'No Checks Yet',
+    label: 'Clear the Checks',
     config: { name: 'checked' },
     values: { value: UNCHECKED }
   });
   g.add('checkFirst', 'std.flow.branch', { label: 'Check the Claim First?' });
-  g.add('lastRejection', 'std.object.get-field', {
-    label: 'Last Rejection',
-    config: { record: T.ledger, path: 'rejection' }
-  });
   g.add('rejection', 'std.logic.choose', {
-    label: 'Rejection to Show',
+    label: 'Last Rejection, When Reviewing',
     config: { mode: 'byCase', type: 'string', cases: [{ when: 'review' }] }
   });
   g.add('check', 'billing.check-claim', { label: 'Check Claim' });
-  g.add('checks', 'std.object.make', {
-    label: 'Checks',
-    config: {
-      fields: [
-        { name: 'issues', type: T.issues },
-        { name: 'claim', type: { object: {} } }
-      ]
-    }
+  const checks = makeObject(g, 'checks', 'Issues and Claim Checked', {
+    issues: [T.issues, 'check.issues'],
+    claim: [{ object: {} }, 'check.claim']
   });
   g.add('keepValid', 'std.var.set', { label: 'Keep the Checks', config: { name: 'checked' } });
   g.add('keepInvalid', 'std.var.set', {
@@ -1688,13 +1895,9 @@ const cycleClaim = (): GraphDef => {
     config: { name: 'checked' }
   });
   g.add('checked', 'std.var.get', { label: 'Checks of This Step', config: { name: 'checked' } });
-  g.add('route', 'std.flow.switch', {
-    label: 'By Step',
-    config: { cases: ROUTES }
-  });
-  g.add('unknownStepContext', 'std.object.make', {
-    label: 'Step Not Handled',
-    config: { fields: [{ name: 'step', type: 'string' }] }
+  g.add('route', 'std.flow.switch', { label: 'By Step', config: { cases: ROUTES } });
+  const unhandled = makeObject(g, 'unknownStepContext', 'Unhandled Step', {
+    step: ['string', 'next.step']
   });
   g.add('unknownStep', 'std.human.task', {
     label: 'Claim Step Not Handled',
@@ -1702,19 +1905,13 @@ const cycleClaim = (): GraphDef => {
       title: 'Claim step not handled',
       queue: 'billing-review',
       instructions:
-        'The Next Claim Step rule chose a step this claim cycle has no branch for (the details name it), so the claim cannot move on. Correct the Claim Steps table or the rule override that returns it, then retry the cycle.',
+        'The Next Claim Step rule chose a step this claim cycle has no branch for (the details name it), so the claim cannot move on. Correct the Next Claim Step override that returns it, then retry the cycle.',
       outcomes: ['retry'],
       hints: {
         retry: 'Runs the claim cycle again; this task comes back if the step is still not handled.'
       }
     }
   });
-  g.add('payerSubjectParts', 'std.list.make', {
-    label: 'Subject Parts',
-    config: { count: 2, type: 'string' }
-  });
-  g.add('payerSubject', 'std.text.join', { label: 'Task Subject', values: { separator: ' · ' } });
-  template(g, 'claimSubject', 'Task Subject', '{reference}');
   g.add('checkedParts', 'std.object.break', {
     label: 'Issues and Claim Checked',
     config: {
@@ -1724,20 +1921,15 @@ const cycleClaim = (): GraphDef => {
       ]
     }
   });
-  g.add('claimContext', 'std.object.make', {
-    label: 'Claim Context',
-    config: {
-      fields: [
-        { name: 'claimId', type: { id: 'claim' } },
-        { name: 'coverageId', type: { id: 'coverage' } },
-        { name: 'payer', type: 'string' },
-        { name: 'balanceCents', type: 'integer' },
-        { name: 'issues', type: T.issues },
-        { name: 'claim', type: { object: {} } }
-      ]
-    }
-  });
-  g.add('balance', 'std.object.get', { label: 'Balance', values: { path: 'balanceCents' } });
+  g.add('details', 'billing.claim-task-details', { label: 'Claim Task Details' });
+  const balance = getField(
+    g,
+    'balance',
+    'Balance (Cents)',
+    T.ledger,
+    'balanceCents',
+    'ledger.ledger'
+  );
   g.add('wait', 'std.flow.wait-signal', {
     label: 'Await a Claim Change or Deadline',
     values: { name: CLAIM_SIGNAL }
@@ -1747,16 +1939,13 @@ const cycleClaim = (): GraphDef => {
   g.add('confirmPayers', 'billing.confirm-payers', { label: 'Confirm Payers' });
   g.add('submit', 'billing.submit-to-payer', { label: 'Submit to Payer' });
   g.add('reconcile', 'billing.reconcile-payment', { label: 'Reconcile Payment' });
-  g.add('denialInputs', 'std.object.make', {
-    label: 'Denial Inputs',
-    config: {
-      fields: [
-        { name: 'claimId', type: { id: 'claim' } },
-        { name: 'coverageId', type: { id: 'coverage' } },
-        { name: 'subject', type: 'string' },
-        { name: 'context', type: 'any' }
-      ]
-    }
+  const subject = 'details.subject';
+  const context = 'details.context';
+  const denialInputs = makeObject(g, 'denialInputs', 'Work Denial Inputs', {
+    claimId: [{ id: 'claim' }, 'entry.claimId'],
+    coverageId: [{ id: 'coverage' }, 'next.coverageId'],
+    subject: ['string', 'details.payerSubject'],
+    context: ['any', context]
   });
   g.add('denial', 'std.flow.run-workflow', {
     label: 'Work Denial',
@@ -1766,15 +1955,10 @@ const cycleClaim = (): GraphDef => {
     label: 'How the Denial Ended',
     config: { cases: ['writeOff', 'void'] }
   });
-  g.add('refundInputs', 'std.object.make', {
-    label: 'Refund Inputs',
-    config: {
-      fields: [
-        { name: 'claimId', type: { id: 'claim' } },
-        { name: 'subject', type: 'string' },
-        { name: 'context', type: 'any' }
-      ]
-    }
+  const refundInputs = makeObject(g, 'refundInputs', 'Refund Inputs', {
+    claimId: [{ id: 'claim' }, 'entry.claimId'],
+    subject: ['string', subject],
+    context: ['any', context]
   });
   g.add('overpaid', 'std.flow.run-workflow', {
     label: 'Refund Overpayment',
@@ -1827,7 +2011,7 @@ const cycleClaim = (): GraphDef => {
       }
     }
   });
-  recordEvent(g, 'facilityKeepWaiting', 'facility_follow_up', 'Keep Waiting on Facility');
+  recordEvent(g, 'facilityKeepWaiting', 'facility_follow_up', 'Keep Waiting on the Facility');
   for (const [id, status, label] of CLOSINGS) {
     g.add(id, 'billing.close-claim', { label, values: { status } });
   }
@@ -1843,9 +2027,12 @@ const cycleClaim = (): GraphDef => {
   g.wire('loop.body', 'ledger.exec');
   g.wire('loop.completed', 'done.exec');
   g.wire('entry.claimId', 'ledger.claimId', 'record.claimId', 'check.claimId', 'wait.key');
-  g.wire('ledger.ledger', 'next.ledger', 'lastRejection.record', 'balance.object');
+  g.wire('ledger.ledger', 'next.ledger');
   g.wire('next.step', 'status.key', 'rejection.key', 'route.value');
-  g.wire('lastRejection.value', 'rejection.case1');
+  g.wire(
+    getField(g, 'lastRejection', 'Last Rejection', T.ledger, 'rejection', 'ledger.ledger'),
+    'rejection.case1'
+  );
   g.wire('ledger.then', 'record.exec');
   g.wire('status.value', 'record.status');
   g.wire('ledger.signalsSeen', 'record.signalsSeen', 'wait.after');
@@ -1857,23 +2044,20 @@ const cycleClaim = (): GraphDef => {
   g.wire('next.patientOnly', 'check.patientOnly', 'fix.patientOnly');
   g.wire('rejection.value', 'check.rejection');
   g.wire('next.coverageId', 'check.rejectedCoverageId');
-  g.wire('check.issues', 'checks.issues');
-  g.wire('check.claim', 'checks.claim');
-  g.wire('checks.object', 'keepValid.value', 'keepInvalid.value');
+  g.wire(checks, 'keepValid.value', 'keepInvalid.value');
   g.wire('check.valid', 'keepValid.exec');
   g.wire('check.invalid', 'keepInvalid.exec');
   g.wire('keepValid.then', 'route.exec');
   g.wire('keepInvalid.then', 'fix.exec');
 
-  g.wire('entry.claimId', 'claimContext.claimId');
-  g.wire('next.coverageId', 'claimContext.coverageId');
-  g.wire('next.payer', 'claimContext.payer', 'payerSubjectParts.item2');
-  g.wire('balance.value', 'claimContext.balanceCents');
+  g.wire('entry.claimId', 'details.claimId');
+  g.wire('ledger.reference', 'details.reference');
+  g.wire('next.coverageId', 'details.coverageId');
+  g.wire('next.payer', 'details.payer');
+  g.wire(balance, 'details.balanceCents');
   g.wire('checked.value', 'checkedParts.object');
-  g.wire('checkedParts.issues', 'claimContext.issues');
-  g.wire('checkedParts.claim', 'claimContext.claim');
-  g.wire('ledger.reference', 'payerSubjectParts.item1', 'claimSubject.reference');
-  g.wire('payerSubjectParts.list', 'payerSubject.items');
+  g.wire('checkedParts.issues', 'details.issues');
+  g.wire('checkedParts.claim', 'details.claim');
 
   g.wire('route.await', 'wait.exec');
   g.wire('route.awaitPatient', 'wait.exec');
@@ -1881,31 +2065,27 @@ const cycleClaim = (): GraphDef => {
   g.wire('next.waitMs', 'wait.timeoutMs');
 
   const steps = [
-    ['fix', 'payer'],
-    ['review', 'payer'],
-    ['confirmPayers', 'claim'],
-    ['submit', 'payer'],
-    ['reconcile', 'payer'],
-    ['followUp', 'payer'],
-    ['statement', 'claim']
+    ['fix', 'payerSubject'],
+    ['review', 'payerSubject'],
+    ['confirmPayers', 'subject'],
+    ['submit', 'payerSubject'],
+    ['reconcile', 'payerSubject'],
+    ['followUp', 'payerSubject'],
+    ['statement', 'subject']
   ] as const;
-  for (const [id, about] of steps) {
+  for (const [id, named] of steps) {
     g.wire('entry.claimId', `${id}.claimId`);
-    g.wire(`${about}Subject.text`, `${id}.subject`);
-    g.wire('claimContext.object', `${id}.context`);
+    g.wire(`details.${named}`, `${id}.subject`);
+    g.wire(context, `${id}.context`);
     if (id !== 'fix' && id !== 'statement') g.wire('next.coverageId', `${id}.coverageId`);
   }
-  g.wire('claimSubject.text', 'collections.subject', 'refundInputs.subject');
-  g.wire('claimContext.object', 'collections.context', 'refundInputs.context');
-  g.wire('entry.claimId', 'denialInputs.claimId', 'refundInputs.claimId');
-  g.wire('next.coverageId', 'denialInputs.coverageId');
-  g.wire('payerSubject.text', 'denialInputs.subject');
-  g.wire('claimContext.object', 'denialInputs.context');
+  g.wire(subject, 'collections.subject');
+  g.wire(context, 'collections.context');
   for (const id of ['approveWriteOff', 'approveCollections']) {
     g.wire('entry.claimId', `${id}.claimId`);
-    g.wire('balance.value', `${id}.balanceCents`);
-    g.wire('claimSubject.text', `${id}.subject`);
-    g.wire('claimContext.object', `${id}.context`);
+    g.wire(balance, `${id}.balanceCents`);
+    g.wire(subject, `${id}.subject`);
+    g.wire(context, `${id}.context`);
   }
   g.wire('next.writeOffApprovalCents', 'approveWriteOff.thresholdCents');
   g.wire('next.collectionsApprovalCents', 'approveCollections.thresholdCents');
@@ -1915,13 +2095,13 @@ const cycleClaim = (): GraphDef => {
   g.wire('route.submit', 'submit.exec');
   g.wire('route.reconcile', 'reconcile.exec');
   g.wire('route.workDenial', 'denial.exec');
-  g.wire('denialInputs.object', 'denial.inputs');
+  g.wire(denialInputs, 'denial.inputs');
   g.wire('denial.then', 'denied.exec');
   g.wire('denial.pin', 'denied.value');
   g.wire('denied.writeOff', 'approveWriteOff.exec');
   g.wire('denied.void', 'closeVoid.exec');
   g.wire('route.overpaid', 'overpaid.exec');
-  g.wire('refundInputs.object', 'overpaid.inputs');
+  g.wire(refundInputs, 'overpaid.inputs');
   g.wire('overpaid.then', 'refunded.exec');
   g.wire('overpaid.pin', 'refunded.value');
   g.wire('refunded.keptCredit', 'closePaid.exec');
@@ -1930,10 +2110,11 @@ const cycleClaim = (): GraphDef => {
   g.wire('route.statement', 'statement.exec');
   g.wire('next.statementNumber', 'statement.statementNumber');
   g.wire('next.statementCount', 'statement.statementCount');
+  g.wire('next.statusWaitMs', 'followUp.statusWaitMs');
   g.wire('route.collections', 'collections.exec');
   g.wire('route.followUpFacility', 'facilityFollowUp.exec');
-  g.wire('claimSubject.text', 'facilityFollowUp.subject');
-  g.wire('claimContext.object', 'facilityFollowUp.context');
+  g.wire(subject, 'facilityFollowUp.subject');
+  g.wire(context, 'facilityFollowUp.context');
   g.wire('facilityFollowUp.keepWaiting', 'facilityKeepWaiting.exec');
   g.wire('entry.claimId', 'facilityKeepWaiting.claimId');
   g.wire('facilityFollowUp.writeOff', 'approveWriteOff.exec');
@@ -1941,27 +2122,46 @@ const cycleClaim = (): GraphDef => {
   g.wire('route.writeOff', 'approveWriteOff.exec');
   g.wire('route.closed', 'closePaid.exec');
   g.wire('route.default', 'unknownStep.exec');
-  g.wire('claimSubject.text', 'unknownStep.subject');
-  g.wire('next.step', 'unknownStepContext.step');
-  g.wire('unknownStepContext.object', 'unknownStep.context');
-  summary(
-    g,
-    'unknownStep',
-    'The claim cycle has no branch for the step "{step}"; correct the Claim Steps table, then retry',
-    { step: 'next.step' }
+  g.wire(subject, 'unknownStep.subject');
+  g.wire(unhandled, 'unknownStep.context');
+  g.wire(
+    template(
+      g,
+      'unknownStepSummary',
+      'Unhandled Step Summary',
+      'The claim cycle has no branch for the step "{step}"; correct the Next Claim Step rule, then retry',
+      { step: 'next.step' }
+    ),
+    'unknownStep.summary'
   );
-  const balance = money(g, 'balanceText', 'Balance Text', 'balance.value');
-  summary(
-    g,
-    'collections',
-    '{balance} is still unpaid after every payer and patient statement; write it off or send it to collections',
-    { balance: orElse(g, 'balanceOrAny', 'Balance, Else A Balance', balance, 'A balance') }
+  const balanceText = money(g, 'balanceText', 'Balance', balance);
+  g.wire(
+    template(
+      g,
+      'collectionsSummary',
+      'Collections Summary',
+      '{balance} is still unpaid after every payer and patient statement; write it off or send it to collections',
+      {
+        balance: orElse(
+          g,
+          'balanceOrAny',
+          'Balance Amount, Else "A Balance"',
+          balanceText,
+          fixed('A balance')
+        )
+      }
+    ),
+    'collections.summary'
   );
-  summary(
-    g,
-    'facilityFollowUp',
-    'The facility has not paid its invoice for this trip[ ({balance} open)]; contact it, then keep waiting, write it off or send it to collections',
-    { balance }
+  g.wire(
+    template(
+      g,
+      'facilityFollowUpSummary',
+      'Facility Follow-Up Summary',
+      'The facility has not paid its invoice for this trip[ ({balance} open)]; contact it, then keep waiting, write it off or send it to collections',
+      { balance: balanceText }
+    ),
+    'facilityFollowUp.summary'
   );
 
   for (const id of [
@@ -1991,20 +2191,32 @@ export const cycleGraphs: SeedGraph[] = [
   asRule(
     'billing.claim-wait-left',
     'Claim Wait Left',
-    'How many milliseconds of a claim cycle wait are still to go: the wait in days, rounded to whole milliseconds, less the time since it started (none when it has not been timed).',
+    'How much of a claim cycle wait is still to go, in milliseconds: the wait the Claim Policy sets in days, less the time since it started (all of it when it has not been timed).',
     claimWaitLeft()
   ),
   asRule(
     'billing.payer-is-coverage',
     'Payer Is Coverage',
-    'Whether a payer on the claim is the given coverage.',
+    'Whether a payer on the claim is the coverage asked about.',
     payerIsCoverage()
   ),
   asRule(
     'billing.next-claim-step',
     'Next Claim Step',
-    'Decides what a claim needs next from its ledger (Claim Steps table) under the Claim Policy table: refund an overpayment, work a payer denial, reconcile a payer response, wait on a facility that is responsible and follow up when it has not paid in time, review before a payer and submit once approved, wait out the payer and follow up, review before the patient is billed or confirm payers, send or wait on patient statements, write off a small balance, balance review, or close.',
+    'Decides what a claim needs next from where it stands, with the waits, statements and limits of the Claim Policy table, taking the first situation that applies, top to bottom, and saying why: refund an overpayment, work a payer denial, reconcile a payer response, wait on a responsible facility and follow up when it has not paid in time, review the claim before a payer and file it once approved, wait on the payer and follow up, review before the patient is billed or confirm payers, send or wait between patient statements, write off a small balance, review an unpaid balance for collections, or close.',
     nextClaimStep()
+  ),
+  asRule(
+    'billing.claim-task-details',
+    'Claim Task Details',
+    'Names the claim for task lists, with its payer for tasks about one payer, and gathers what tasks show a biller about it: the payer, balance and the issues the claim checks found.',
+    claimTaskDetails()
+  ),
+  asRule(
+    'billing.review-summary',
+    'Review Summary',
+    'Says what the Review Claim task asks: what blocks billing, else to approve billing the payer or the patient for the claim total, naming the first warnings to check.',
+    reviewSummary()
   ),
   asStage(
     'billing.review-claim',
@@ -2027,20 +2239,38 @@ export const cycleGraphs: SeedGraph[] = [
   asRule(
     'billing.underpayment',
     'Underpayment',
-    'Holds what a Medicare primary payer allowed against what the Medicare ambulance fee schedule of the year of service allows for the trip (Underpayment table), unless several patients shared the trip, a denial is expected, the response has no reason codes or the year has no schedule: more than $1 short is an underpayment, and its reconcile task is raised.',
+    'Holds what a Medicare primary payer allowed against what the Medicare ambulance fee schedule of the year of service allows for the trip, unless several patients shared the trip, a denial is expected, the response has no reason codes or the year has no schedule. Allowing more than the Underpayment Threshold below it (Underpayment Limits table, $1) is an underpayment, and its reconcile task is raised.',
     underpayment()
+  ),
+  asRule(
+    'billing.fee-schedule-facts',
+    'Fee Schedule Facts',
+    'What holding a payer response against the Medicare fee schedule reads from the claim: its charge lines, pickup ZIP code and date of service, and whether the payer is Medicare, pays first, the trip carried several patients or a denial is expected.',
+    feeScheduleFacts()
+  ),
+  asRule(
+    'billing.reconcile-summary',
+    'Reconcile Summary',
+    'Says what the Reconcile Payment task asks: which payer answered, what is still open and, when Medicare pays first, what the fee schedule allows and any underpayment.',
+    reconcileSummary()
   ),
   asStage(
     'billing.reconcile-payment',
     'Reconcile Payment',
-    'Asks a biller to reconcile a payer response that leaves a balance: continue, correct the claim (Correct Claim), or write off the rest.',
+    'Holds a payment against the Medicare fee schedule when Medicare pays first (Underpayment), then asks a biller to reconcile a payer response that leaves a balance: continue to the next payer or the patient, correct the claim (Correct Claim), or write off the rest. An underpaid response is handed out first.',
     reconcilePayment()
   ),
   asStage(
     'billing.follow-up-payer',
     'Follow Up with Payer',
-    'Asks the payer for the claim status (276, real time or batch, waiting up to a day for the 277), then asks a biller what to do about a payer that has not responded, showing the latest status: resubmit (Correct Claim), keep waiting, or move to the next payer.',
+    'Asks the payer for the claim status (276, in real time or in a batch) and waits for its answer (277) as long as the Claim Policy says, then asks a biller what to do about a payer that has not answered in time, showing the latest status: resubmit (Correct Claim), keep waiting, or move on to the next payer.',
     followUpPayer()
+  ),
+  asRule(
+    'billing.statement-task-summaries',
+    'Statement Task Summaries',
+    'Says what the Bill Patient tasks ask when a statement cannot go out: add the billing profile, or complete the patient address, naming the parts it lacks.',
+    statementSummaries()
   ),
   asStage(
     'billing.bill-patient',
@@ -2051,7 +2281,7 @@ export const cycleGraphs: SeedGraph[] = [
   asWorkflow(
     'billing.cycle-claim',
     'Cycle Claim',
-    "Bills each payer in claim order, one step at a time: reads the claim ledger, decides the Next Claim Step and records it as the claim's status, runs Check Claim before a review or submission (fixing what blocks the claim), has it reviewed, files each approved claim as its own 837P (asking a biller when it cannot), follows up, works denials (Work Denial), reconciles responses (or resubmits a corrected claim), refunds credit balances (Refund Overpayment), waits on a responsible facility (following up when it has not paid within the Claim Policy wait after its invoice), confirms payers when there are none, reviews before the first patient statement, sends statements before collections review, and has write-offs and collections placements above the Claim Policy thresholds approved. Sleeps until a claim change or a deadline.",
+    "Works a claim from its first bill until it closes, one step at a time: decides the Next Claim Step and shows it as the claim's status, checks the claim before a review or filing and asks a biller to fix what blocks it, has it reviewed, files it to each payer in order (asking a biller when it cannot), follows up on late payers, works denials (Work Denial), reconciles payments, refunds overpayments (Refund Overpayment), waits on a responsible facility and follows up when it has not paid in time, confirms payers when there are none, reviews before the first patient statement, sends statements, and has write-offs and collections above the Claim Policy limits approved. Between steps it sleeps until the claim changes or a wait runs out.",
     cycleClaim()
   )
 ];

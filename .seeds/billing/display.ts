@@ -1,6 +1,6 @@
 import type { GraphDef } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
-import { asRule, d, rule, T } from './shared.ts';
+import { asRule, condition, d, joinText, makeList, rule, select, T, template } from './shared.ts';
 
 const DIGITS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
@@ -19,28 +19,57 @@ const placeText = (): GraphDef => {
       ]
     }
   });
-  g.add('cityCode', 'std.logic.condition', {
-    label: 'City Is a Place Code',
-    config: {
-      inputs: [{ name: 'city', type: 'string' }],
-      rules: [{ field: 'city', op: 'startsWith', value: DIGITS }]
-    }
-  });
-  g.add('city', 'std.logic.select', { label: 'City Unless a Code' });
-  g.add('list', 'std.list.make', {
-    label: 'Street, City and ZIP',
-    config: { count: 3, type: 'string' }
-  });
-  g.add('join', 'std.text.join', { label: 'With Commas', values: { separator: ', ' } });
+  const cityCode = condition(
+    g,
+    'cityCode',
+    'City Is a Place Code',
+    { city: ['string', 'parts.city'] },
+    [{ field: 'city', op: 'startsWith', value: DIGITS }]
+  );
+  const city = select(g, 'city', 'City Unless a Code', cityCode, undefined, 'parts.city');
+  const parts = makeList(g, 'list', 'Street, City and ZIP', 'string', [
+    'parts.addressLine',
+    city,
+    'parts.postalCode'
+  ]);
   g.ret('return');
   g.wire('entry.place', 'parts.object');
-  g.wire('parts.city', 'cityCode.city', 'city.whenFalse');
-  g.wire('cityCode.result', 'city.condition');
-  g.wire('parts.addressLine', 'list.item1');
-  g.wire('city.result', 'list.item2');
-  g.wire('parts.postalCode', 'list.item3');
-  g.wire('list.list', 'join.items');
-  g.wire('join.text', 'return.text');
+  g.wire(joinText(g, 'join', 'With Commas', ', ', parts), 'return.text');
+  return g.def;
+};
+
+const listPreview = (): GraphDef => {
+  const g = rule(
+    [
+      d('items', { list: 'string' }, 'Items', 'The texts to list, in order.', true),
+      d('shown', 'integer', 'How Many to Name', 'How many items to name before counting the rest.'),
+      d('separator', 'string', 'Separator', 'What goes between the named items, such as "; ".')
+    ],
+    [
+      d('listed', 'string', 'Listed', 'The first items named, joined by the separator.'),
+      d('more', 'integer', 'How Many More', 'How many items are left unnamed.', true),
+      d('count', 'integer', 'Count', 'How many items there are in all.')
+    ]
+  );
+  g.add('first', 'std.list.slice', { label: 'First Items', values: { start: 0 } });
+  g.add('count', 'std.list.length', { label: 'How Many' });
+  g.add('beyond', 'std.math.subtract', { label: 'Beyond Those Named' });
+  g.add('listed', 'std.text.join', { label: 'Listed' });
+  const unnamed = condition(
+    g,
+    'someUnnamed',
+    'Some Left Unnamed',
+    { beyond: ['integer', 'beyond.result'] },
+    [{ field: 'beyond', op: 'gt', value: 0 }]
+  );
+  g.ret('return');
+  g.wire('entry.items', 'first.list', 'count.list');
+  g.wire('entry.shown', 'first.end', 'beyond.b');
+  g.wire('entry.separator', 'listed.separator');
+  g.wire('first.list', 'listed.items');
+  g.wire('count.length', 'beyond.a', 'return.count');
+  g.wire('listed.text', 'return.listed');
+  g.wire(select(g, 'more', 'How Many More', unnamed, 'beyond.result'), 'return.more');
   return g.def;
 };
 
@@ -58,56 +87,35 @@ const blockingSummary = (): GraphDef => {
     config: { field: 'severity', op: 'is', value: 'blocking' }
   });
   g.add('messages', 'std.list.pluck', { label: 'Their Messages', values: { field: 'message' } });
-  g.add('firstTwo', 'std.list.slice', { label: 'First Two', values: { start: 0, end: 2 } });
-  g.add('listed', 'std.text.join', { label: 'Joined', values: { separator: '; ' } });
-  g.add('beyond', 'std.math.subtract', { label: 'Beyond Two', values: { b: 2 } });
-  g.add('moreThanTwo', 'std.logic.condition', {
-    label: 'More Than Two',
-    config: {
-      inputs: [{ name: 'count', type: 'integer' }],
-      rules: [{ field: 'count', op: 'gt', value: 2 }]
+  g.add('preview', 'billing.list-preview', {
+    label: 'First Two Messages',
+    values: { shown: 2, separator: '; ' }
+  });
+  g.add('lead', 'std.text.count', {
+    label: 'How Many Block',
+    values: { singular: 'issue blocks', plural: 'issues block' }
+  });
+  const text = template(
+    g,
+    'text',
+    'Blocking Text',
+    '{lead} billing {billed}: {listed}[; and {more} more]',
+    {
+      lead: 'lead.text',
+      billed: 'entry.billed',
+      listed: 'preview.listed',
+      more: 'preview.more'
     }
-  });
-  g.add('more', 'std.logic.select', { label: 'How Many More' });
-  g.add('several', 'std.text.template', {
-    label: 'Several Block',
-    config: { template: '{count} issues block' }
-  });
-  g.add('lead', 'std.logic.choose', {
-    label: 'One or Several',
-    config: { mode: 'byCase', type: 'string', cases: [{ when: '1' }] },
-    values: { case1: 'An issue blocks' }
-  });
-  g.add('text', 'std.text.template', {
-    label: 'Blocking Text',
-    config: { template: '{lead} billing {billed}: {listed}[; and {more} more]' }
-  });
-  g.add('none', 'std.logic.condition', {
-    label: 'Nothing Blocks',
-    config: {
-      inputs: [{ name: 'count', type: 'integer' }],
-      rules: [{ field: 'count', op: 'is', value: 0 }]
-    }
-  });
-  g.add('summary', 'std.logic.select', { label: 'Summary' });
+  );
+  const none = condition(g, 'none', 'Nothing Blocks', { count: ['integer', 'blocking.count'] }, [
+    { field: 'count', op: 'is', value: 0 }
+  ]);
   g.ret('return');
   g.wire('entry.issues', 'blocking.list');
   g.wire('blocking.list', 'messages.list');
-  g.wire('messages.list', 'firstTwo.list');
-  g.wire('firstTwo.list', 'listed.items');
-  g.wire('blocking.count', 'beyond.a', 'moreThanTwo.count', 'several.count', 'lead.key');
-  g.wire('blocking.count', 'none.count');
-  g.wire('moreThanTwo.result', 'more.condition');
-  g.wire('beyond.result', 'more.whenTrue');
-  g.wire('several.text', 'lead.otherwise');
-  g.wire('lead.value', 'text.lead');
-  g.wire('entry.billed', 'text.billed');
-  g.wire('listed.text', 'text.listed');
-  g.wire('more.result', 'text.more');
-  g.wire('none.result', 'summary.condition');
-  g.wire('entry.otherwise', 'summary.whenTrue');
-  g.wire('text.text', 'summary.whenFalse');
-  g.wire('summary.result', 'return.summary');
+  g.wire('messages.list', 'preview.items');
+  g.wire('blocking.count', 'lead.count');
+  g.wire(select(g, 'summary', 'Summary', none, 'entry.otherwise', text), 'return.summary');
   return g.def;
 };
 
@@ -117,6 +125,12 @@ export const displayGraphs: SeedGraph[] = [
     'Place Text',
     'Writes an address as its street, city and ZIP code, leaving out a city that is a NEMSIS place code.',
     placeText()
+  ),
+  asRule(
+    'billing.list-preview',
+    'List Preview',
+    'Names the first few items of a list and counts the rest, for summaries such as "a; b; and 3 more".',
+    listPreview()
   ),
   asRule(
     'billing.blocking-summary',

@@ -22,13 +22,18 @@ import {
 } from './claim-models.ts';
 import {
   ADJUSTMENT,
+  CERTIFICATION_FACTS,
   CLAIM_LEDGER,
   DEADLINE,
   DENIAL_FACTS,
+  DUE_DATE,
+  FILING_FACTS,
   PATIENT_BALANCE_FACTS,
   REFUND_FACTS,
+  REMINDER_FACTS,
   REMITTANCE_LINE,
-  REMITTANCE_POSTING
+  REMITTANCE_POSTING,
+  TASK_DUE
 } from './ledger-models.ts';
 import { BLOB } from './model-kit.ts';
 import { COVERAGE, DEMOGRAPHICS, LOCATION, PATIENT } from './party-models.ts';
@@ -63,6 +68,11 @@ export const billingTypes = {
   denial: DENIAL_FACTS.type,
   refund: REFUND_FACTS.type,
   patientBalance: PATIENT_BALANCE_FACTS.type,
+  filings: { list: FILING_FACTS.type },
+  certifications: { list: CERTIFICATION_FACTS.type },
+  dueDates: { list: DUE_DATE.type },
+  tasksDue: { list: TASK_DUE.type },
+  reminders: { list: REMINDER_FACTS.type },
   deadlines: { list: DEADLINE.type },
   adjustments: { list: ADJUSTMENT.type },
   remittanceLines: { list: REMITTANCE_LINE.type },
@@ -96,6 +106,11 @@ export const billingModels: Model[] = [
   DENIAL_FACTS,
   REFUND_FACTS,
   PATIENT_BALANCE_FACTS,
+  FILING_FACTS,
+  CERTIFICATION_FACTS,
+  REMINDER_FACTS,
+  TASK_DUE,
+  DUE_DATE,
   DEADLINE,
   ADJUSTMENT,
   REMITTANCE_LINE,

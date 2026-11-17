@@ -47,16 +47,6 @@ type PricedClaim = { lines: PricedLine[]; totalCents: number; missing: string[] 
 
 const HCPCS = new RegExp(HCPCS_PATTERN);
 
-const STEP = 10 ** UNIT_SCALE;
-
-const WHOLE_UNITS_FROM = 100;
-
-export const roundUnits = (units: number) =>
-  units >= WHOLE_UNITS_FROM ? Math.ceil(units - 1e-9) : Math.ceil(units * STEP - 1e-9) / STEP;
-
-export const isTransport = (lines: readonly ClaimLine[]) =>
-  lines.some((l) => l.code !== NO_TRANSPORT_CODE);
-
 export const readLines = (x: unknown): ClaimLine[] => {
   if (!Array.isArray(x) || !x.length) throw new Error('A claim needs at least one line');
   return x.map((line, i) => {
@@ -67,7 +57,7 @@ export const readLines = (x: unknown): ClaimLine[] => {
     if (typeof units !== 'number' || !Number.isFinite(units) || units <= 0) {
       throw new Error(`Line ${i + 1} (${code}) needs a positive number of units`);
     }
-    return { code, units: roundUnits(units) };
+    return { code, units };
   });
 };
 

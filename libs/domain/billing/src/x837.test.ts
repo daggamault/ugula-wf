@@ -472,8 +472,9 @@ describe('build837', () => {
     assert.equal(long, `NTE*ADD*${'X'.repeat(80)}`);
   });
 
-  it('reports whole loaded miles from 100 miles up, as CMS requires', () => {
-    assert.ok(build({ ...mapped, loadedMiles: 120.3 }).includes('CR1****A*DH*121'));
+  it('reports the loaded miles as billed, without rounding them again', () => {
+    assert.ok(build({ ...mapped, loadedMiles: 121 }).includes('CR1****A*DH*121'));
+    assert.ok(build({ ...mapped, loadedMiles: 12.3 }).includes('CR1****A*DH*12.3'));
   });
 
   it('counts SE01 across a batch of self and dependent claims', () => {
@@ -561,11 +562,11 @@ describe('readX837Claim', () => {
     assert.equal(read.subscriber.firstName, 'José');
   });
 
-  it('rounds units up to tenths and caps diagnoses at twelve', () => {
+  it('keeps units as billed and caps diagnoses at twelve', () => {
     const read = readX837Claim({
       ...mapped,
       diagnoses: Array.from({ length: 14 }, (_, i) => `R${String(i).padStart(2, '0')}`),
-      lines: [{ ...base, units: 1.01 }]
+      lines: [{ ...base, units: 1.1 }]
     });
     assert.equal(read.lines[0]?.units, 1.1);
     assert.equal(read.diagnoses.length, 12);

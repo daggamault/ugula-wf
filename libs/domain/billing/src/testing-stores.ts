@@ -59,7 +59,7 @@ export const billingStores = (stores: Partial<BillingStores> = {}): BillingStore
     saveAppealPacket: unused('recovery')
   },
   schedules: stores.schedules ?? {
-    deadlines: unused('schedule'),
+    deadlineFacts: unused('schedule'),
     raiseTask: unused('schedule'),
     facilityInvoices: unused('schedule'),
     saveFacilityInvoice: unused('schedule')

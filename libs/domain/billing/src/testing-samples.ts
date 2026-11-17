@@ -134,7 +134,7 @@ export const sampleX837: X837Claim = {
   otherPayers: [],
   weightPounds: null,
   transportReason: 'A',
-  loadedMiles: 7.33,
+  loadedMiles: 7.4,
   conditionCodes: ['09', '06'],
   diagnoses: ['R079', 'I10'],
   pickup: { name: null, ...PLACE },

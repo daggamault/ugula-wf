@@ -1,6 +1,7 @@
 import { actionNode, pin, pureNode } from '@ugula/graph';
 import { renderAppealPacket } from '../documents.ts';
 import { DENIAL_FACTS, PATIENT_BALANCE_FACTS, REFUND_FACTS } from '../ledger-models.ts';
+import { ADJUSTMENT_TYPE } from '../model-kit.ts';
 import {
   appealOutcomeOf,
   denialFactsOf,
@@ -62,7 +63,7 @@ export const recoveryNodes: NodesOf = (stores) => {
       title: 'Read Denial',
       category: CATEGORY,
       description:
-        "Reads the denial a payer sent on a claim (Denial Facts): how Remittance Routing routed it, its reason codes, the remittance date, the appeals already sent and the payer's correction and appeal settings. Decides nothing.",
+        "Reads the denial a payer sent on a claim (Denial Facts): how Route Remittance routed it, its reason codes, the remittance date, the appeals already sent and the payer's correction and appeal settings. Decides nothing.",
       level: 'basic',
       keywords: ['denial', 'denied', 'reason codes'],
       inputs: [claimIdPin, coverageIdPin],
@@ -84,27 +85,22 @@ export const recoveryNodes: NodesOf = (stores) => {
       title: 'Read Payer Response',
       category: CATEGORY,
       description:
-        "Adds up every response one payer sent on a claim: what it paid, the patient's share of the allowed amount it stated (deductible, coinsurance and copay: PR-1, PR-2, PR-3), what it allowed (paid, plus that share, plus Medicare sequestration, CO-253) and whether it sent reason codes at all (a payment posted by hand may have none). Decides nothing.",
+        'Reads every response one payer sent on a claim: what it paid in all and the adjustments it sent, each with its group, reason code and amount, as it sent them (a payment posted by hand may have none). Decides nothing; Payer Response Amounts does.',
       level: 'basic',
-      keywords: ['allowed', 'paid', 'deductible', 'coinsurance', 'copay'],
+      keywords: ['allowed', 'paid', 'deductible', 'coinsurance', 'copay', 'adjustments'],
       inputs: [claimIdPin, coverageIdPin],
       outputs: [
         pin('paidCents', 'integer', {
           label: 'Paid (Cents)',
           description: 'What the payer paid in all, in cents.'
         }),
-        pin('patientCents', 'integer', {
-          label: "Patient's Share (Cents)",
-          description: 'The deductible, coinsurance and copay the payer stated, in cents.'
-        }),
-        pin('allowedCents', 'integer', {
-          label: 'Allowed (Cents)',
-          description: 'What the payer allowed, in cents.'
-        }),
-        pin('reasonCoded', 'boolean', {
-          label: 'Sent Reason Codes',
-          description: 'Whether the payer sent reason codes at all.'
-        })
+        pin(
+          'adjustments',
+          { list: ADJUSTMENT_TYPE },
+          {
+            description: 'Every adjustment the payer sent, with its group, reason code and amount.'
+          }
+        )
       ],
       compute: async (inputs, _, ctx) =>
         responseFactsOf(
@@ -194,7 +190,7 @@ export const recoveryNodes: NodesOf = (stores) => {
       title: 'Read Patient Balance',
       category: CATEGORY,
       description:
-        "Reads what is left for the patient (Patient Balance Facts): the balance, the cost share the last payer stated, the pickup state, the date of service and the last payer's plan type. Decides nothing; Patient Responsibility does.",
+        "Reads what is left for the patient (Patient Balance Facts): the balance, the adjustments the last payer that answered sent, the claim filing indicators of the payers on the claim, the pickup state, the date of service, the last payer's plan type and what balance-billing protection already took off. Decides nothing; Patient Responsibility does.",
       level: 'basic',
       keywords: ['patient responsibility', 'self pay', 'balance'],
       inputs: [claimIdPin],

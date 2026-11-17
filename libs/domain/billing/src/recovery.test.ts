@@ -179,7 +179,7 @@ describe('refundFactsOf', () => {
 });
 
 describe('patientBalanceFactsOf', () => {
-  it('reads the cost share the last payer stated and what decides state protection', () => {
+  it('reads the adjustments the last payer sent and what decides state protection', () => {
     const facts = patientBalanceFactsOf(
       ledger(
         [
@@ -197,25 +197,18 @@ describe('patientBalanceFactsOf', () => {
     );
     assert.deepEqual(facts, {
       balanceCents: 5_000,
-      costShareCents: 5_000,
+      adjustments: [{ group: 'PR', reason: '2', cents: 5_000 }],
+      claimFilings: ['MB', 'BL'],
       state: 'NH',
       serviceDate: '2026-02-01',
       planType: 'fully_insured',
       payerKind: 'BL',
-      dualEligible: false,
       protectedCents: 45_000
     });
     assert.equal(patientBalanceFactsOf(ledger([])).payerKind, 'patient');
-    const dual = ledger([], {
-      coverages: [
-        { id: 'mcr', payer: 'Medicare', claimFiling: 'MB' },
-        { id: 'mcd', payer: 'State Medicaid', claimFiling: 'MC' }
-      ]
-    });
-    assert.equal(patientBalanceFactsOf(dual).dualEligible, true);
   });
 
-  it('knows no plan type or filing kind for a payer that has none, and no dual eligibility without Medicare', () => {
+  it('knows no plan type or filing kind for a payer that has none', () => {
     const facts = patientBalanceFactsOf(
       ledger(
         [
@@ -232,19 +225,19 @@ describe('patientBalanceFactsOf', () => {
     );
     assert.deepEqual(facts, {
       balanceCents: 30_000,
-      costShareCents: 0,
+      adjustments: [],
+      claimFilings: ['MC'],
       state: null,
       serviceDate: null,
       planType: null,
       payerKind: null,
-      dualEligible: false,
       protectedCents: 0
     });
   });
 });
 
 describe('responseFactsOf', () => {
-  it("adds up what a payer allowed: its payments, the patient's deductible, coinsurance and copay, and sequestration", () => {
+  it('adds up what one payer paid and gathers every adjustment it sent', () => {
     const paid = ledger([
       event({ kind: 'submitted' }),
       event({
@@ -261,16 +254,14 @@ describe('responseFactsOf', () => {
     ]);
     assert.deepEqual(responseFactsOf(paid, 'mcr'), {
       paidCents: 43_000,
-      patientCents: 11_000,
-      allowedCents: 54_900,
-      reasonCoded: true
+      adjustments: [
+        { group: 'CO', reason: '45', cents: 40_000 },
+        { group: 'PR', reason: '2', cents: 11_000 },
+        { group: 'PR', reason: '96', cents: 15_000 },
+        { group: 'CO', reason: '253', cents: 900 }
+      ]
     });
-    assert.deepEqual(responseFactsOf(ledger([]), 'blue'), {
-      paidCents: 0,
-      patientCents: 0,
-      allowedCents: 0,
-      reasonCoded: false
-    });
+    assert.deepEqual(responseFactsOf(ledger([]), 'blue'), { paidCents: 0, adjustments: [] });
     assert.throws(() => responseFactsOf(paid, 'nope'), /not on the claim/);
   });
 });

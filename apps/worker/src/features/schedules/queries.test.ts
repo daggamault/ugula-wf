@@ -42,55 +42,103 @@ const claimRow = (id: string, number: string, facility = 'f1') => ({
 });
 
 describe('createScheduleStore', () => {
-  it('reads every kind of deadline in one query, dated in the agency time zone, with whether a reminder is open', async () => {
+  it('reads the facts deadlines are worked out from, dated in the agency time zone', async () => {
+    const claim = {
+      claim_id: 'c1',
+      patient_id: 'p1',
+      reference: '20261002-0012 · PCR-1 · Jane Doe'
+    };
     const { db, queries } = createRecordingDb(() => [
       {
-        kind: 'appeal',
-        claim_id: 'c1',
-        coverage_id: null,
-        reference: '20261002-0012 · PCR-1 · Jane Doe',
-        due_on: '2026-11-10',
-        days_left: 9,
-        task_id: TASK,
-        priority: 0,
-        reminded: false
+        filings: [
+          {
+            ...claim,
+            coverage_id: 'cov1',
+            claim_filing: 'MB',
+            filing_limit_days: null,
+            service_date: '2026-10-02'
+          }
+        ],
+        certifications: [{ ...claim, signed_on: '2026-09-15', service_date: '2026-10-02' }],
+        tasks: [
+          {
+            ...claim,
+            workflow: 'billing.work-denial',
+            due_on: '2026-11-10',
+            task_id: TASK,
+            priority: 0
+          }
+        ],
+        reminders: [
+          {
+            kind: 'pcs',
+            claim_id: 'c1',
+            patient_id: 'p1',
+            due_on: '2026-11-14',
+            opened_on: '2026-10-31'
+          }
+        ]
       }
     ]);
-    const [deadline] = await createScheduleStore(db, blobs).deadlines('r1', '2026-11-01');
-    assert.deepEqual(deadline, {
-      kind: 'appeal',
-      claimId: 'c1',
-      coverageId: null,
-      reference: '20261002-0012 · PCR-1 · Jane Doe',
-      dueOn: '2026-11-10',
-      daysLeft: 9,
-      taskId: TASK,
-      priority: 0,
-      reminded: false
+    const facts = await createScheduleStore(db, blobs).deadlineFacts('r1', '2026-09-01');
+    const reference = '20261002-0012 · PCR-1 · Jane Doe';
+    assert.deepEqual(facts, {
+      filings: [
+        {
+          claimId: 'c1',
+          patientId: 'p1',
+          reference,
+          coverageId: 'cov1',
+          claimFiling: 'MB',
+          filingLimitDays: null,
+          serviceDate: '2026-10-02'
+        }
+      ],
+      certifications: [
+        {
+          claimId: 'c1',
+          patientId: 'p1',
+          reference,
+          signedOn: '2026-09-15',
+          serviceDate: '2026-10-02'
+        }
+      ],
+      tasks: [
+        {
+          workflow: 'billing.work-denial',
+          claimId: 'c1',
+          patientId: 'p1',
+          reference,
+          dueOn: '2026-11-10',
+          taskId: TASK,
+          priority: 0
+        }
+      ],
+      reminders: [
+        { kind: 'pcs', claimId: 'c1', patientId: 'p1', dueOn: '2026-11-14', openedOn: '2026-10-31' }
+      ]
     });
-    const [q] = queries;
-    for (const part of ['filing as', 'due as', 'pcs as', 'billing.deadline-reminder']) {
-      assert.ok(q?.sql.includes(part) || q?.parameters.includes(part), part);
-    }
-    assert.ok(q?.parameters.includes('billing.work-denial'));
-    assert.ok(q?.sql.includes('(t.due_at at time zone a.zone)::date as due_on'));
-    assert.ok(!q?.sql.includes('select *'));
+    assert.equal(queries.length, 1);
+    const all = queries[0]?.sql ?? '';
+    assert.ok(all.includes('g.key as workflow'));
+    assert.ok(all.includes('c.service_date >= $') && queries[0]?.parameters.includes('2026-09-01'));
+    assert.ok(all.includes('or c.patient_id in (select patient_id from certifications)'));
+    assert.ok(all.includes('(t.due_at at time zone a.zone)::date::text as due_on'));
+    assert.ok(all.includes('(t.created_at at time zone a.zone)::date::text as opened_on'));
+    assert.ok(!all.includes('select *'));
   });
 
-  it('files deadlines for drafts and rejected submissions, and reminds once per deadline', async () => {
-    const { db, queries } = createRecordingDb(() => []);
-    await createScheduleStore(db, blobs).deadlines('r1', '2026-11-01');
-    const sql = queries[0]?.sql ?? '';
+  it('files deadlines for drafts and rejected submissions, and reads open and done reminders', async () => {
+    const { db, queries } = createRecordingDb(() => [
+      { filings: [], certifications: [], tasks: [], reminders: [] }
+    ]);
+    await createScheduleStore(db, blobs).deadlineFacts('r1', '2026-09-01');
+    const sql = queries.map((q) => q.sql).join(' ');
     assert.ok(sql.includes("c.status in ('draft', 'needs_review', 'ready')"));
     assert.match(sql, /j\.kind = 'rejected'\s+and j\.created_at > e\.created_at/);
     assert.ok(sql.includes("t.status in ('open', 'completed')"));
-    assert.ok(sql.includes("r.inputs ->> 'dueOn' = d.due_on::text"));
-    assert.ok(
-      sql.includes(
-        "case when d.kind = 'pcs' then rc.patient_id = d.patient_id else rc.id = d.claim_id end"
-      )
-    );
-    assert.ok(sql.includes('(t.created_at at time zone a.zone)::date > d.due_on'));
+    assert.ok(sql.includes("r.inputs ->> 'dueOn' as due_on"));
+    assert.ok(!sql.includes('365') && !sql.includes('interval'));
   });
 
   it('raises open tasks only, never lowering them', async () => {

@@ -1,37 +1,50 @@
-import type { GraphDef } from '@ugula/graph';
+import type { GraphDef, ValueType } from '@ugula/graph';
 import { slot } from '../builder.ts';
 import type { SeedGraph } from '../graphs.ts';
+import { thenExit } from './glossary.ts';
 import {
   ADDRESS_PINS,
   asRule,
   asStage,
+  type Builder,
+  condition,
   d,
   exit,
-  field,
-  is,
+  firstOf,
+  fixed,
+  getField,
+  makeList,
+  makeObject,
+  orElse,
   P,
+  type Port,
+  pureSlot,
   rule,
+  select,
   shared,
   stage,
-  startsWith,
   T,
-  table
+  template
 } from './shared.ts';
 
 const PCR_IN = P.pcr();
 
+const YES = '9922005';
+
+const NO = '9922001';
+
 const tripFacts = (): GraphDef => {
   const g = rule([PCR_IN], [d('trip', T.trip, 'Trip Facts', 'The trip as the report records it.')]);
-  g.add('pcr', 'nemsis.pcr.break');
-  g.add('times', 'nemsis.times.break');
-  g.add('response', 'nemsis.response.break');
-  g.add('disposition', 'nemsis.disposition.break');
-  g.add('payment', 'nemsis.payment.break');
-  g.add('arrest', 'nemsis.arrest.break');
+  g.add('pcr', 'nemsis.pcr.break', { label: 'Report' });
+  g.add('times', 'nemsis.times.break', { label: 'Times' });
+  g.add('response', 'nemsis.response.break', { label: 'Response' });
+  g.add('disposition', 'nemsis.disposition.break', { label: 'Disposition' });
+  g.add('payment', 'nemsis.payment.break', { label: 'Payment' });
+  g.add('arrest', 'nemsis.arrest.break', { label: 'Cardiac Arrest' });
   g.add('called', 'std.logic.coalesce', { label: 'Call Time, Else Dispatch Time' });
-  g.add('when', 'std.logic.coalesce', { label: 'Or Nothing', values: { fallback: '' } });
-  g.add('serviceDate', 'std.text.substring', { label: 'Date Part', values: { end: 10 } });
-  g.add('trip', 'billing.trip-facts.make');
+  g.add('when', 'std.logic.coalesce', { label: 'Call Time, Else Blank', values: { fallback: '' } });
+  g.add('serviceDate', 'std.text.substring', { label: 'Date of Service', values: { end: 10 } });
+  g.add('trip', 'billing.trip-facts.make', { label: 'Trip Facts' });
   g.ret('return');
   g.wire('entry.pcr', 'pcr.pcr');
   g.wire('pcr.times', 'times.times');
@@ -69,13 +82,13 @@ const locationFacts = (): GraphDef => {
     [PCR_IN],
     [d('locations', T.locations, 'Location Facts', 'Pickup and destination, and their kinds.')]
   );
-  g.add('pcr', 'nemsis.pcr.break');
-  g.add('scene', 'nemsis.scene.break');
-  g.add('disposition', 'nemsis.disposition.break');
+  g.add('pcr', 'nemsis.pcr.break', { label: 'Report' });
+  g.add('scene', 'nemsis.scene.break', { label: 'Scene' });
+  g.add('disposition', 'nemsis.disposition.break', { label: 'Disposition' });
   g.add('pickup', 'billing.location.make', { label: 'Pickup' });
   g.add('destination', 'billing.location.make', { label: 'Destination' });
   g.add('firstReason', 'std.list.first', { label: 'Main Reason for the Destination' });
-  g.add('locations', 'billing.location-facts.make');
+  g.add('locations', 'billing.location-facts.make', { label: 'Location Facts' });
   g.ret('return');
   g.wire('entry.pcr', 'pcr.pcr');
   g.wire('pcr.scene', 'scene.scene');
@@ -107,8 +120,8 @@ const clinicalFacts = (): GraphDef => {
       )
     ]
   );
-  g.add('pcr', 'nemsis.pcr.break');
-  g.add('situation', 'nemsis.situation.break');
+  g.add('pcr', 'nemsis.pcr.break', { label: 'Report' });
+  g.add('situation', 'nemsis.situation.break', { label: 'Situation' });
   g.add('medications', 'std.list.reshape', {
     label: 'Medications and Routes',
     config: {
@@ -122,7 +135,7 @@ const clinicalFacts = (): GraphDef => {
     label: 'Procedure Codes',
     config: { fields: [{ name: 'procedure', type: 'string', from: 'procedure' }] }
   });
-  g.add('clinical', 'billing.clinical-facts.make');
+  g.add('clinical', 'billing.clinical-facts.make', { label: 'Clinical Facts' });
   g.ret('return');
   g.wire('entry.pcr', 'pcr.pcr');
   g.wire('pcr.situation', 'situation.situation');
@@ -139,37 +152,294 @@ const clinicalFacts = (): GraphDef => {
 
 const TRANSPORT_ACCIDENTS = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8'];
 
-const mspFromReport = () =>
-  shared.decision(
-    'billing.msp-from-report',
-    'MSP From the Report',
-    'Prefills the Medicare Secondary Payer accident answer from what the report records: workers compensation as the payment method or a work-related injury, or a transport accident as the cause of injury. The other MSP answers come from the patient, so a biller enters them.',
-    table(
-      [
-        field('paymentMethod', 'string', 'Primary method of payment · ePayment.01'),
-        field('workRelated', 'string', 'Work-related illness or injury · eSituation.14'),
-        field('injuryCauses', { list: 'string' }, 'Cause of injury (ICD-10) · eInjury.01')
-      ],
-      [field('mspAccident', 'string', 'MSP accident answer')],
-      [
-        {
-          label: "Workers' compensation is the payment method",
-          when: { paymentMethod: is('2601013') },
-          set: { mspAccident: 'workersComp' }
-        },
-        {
-          label: 'The illness or injury is work related',
-          when: { workRelated: is('9922005') },
-          set: { mspAccident: 'workersComp' }
-        },
-        {
-          label: 'A transport accident caused the injury',
-          when: { injuryCauses: startsWith(...TRANSPORT_ACCIDENTS) },
-          set: { mspAccident: 'noFault' }
-        }
-      ]
-    )
+const mspAccident = (g: Builder) =>
+  firstOf(
+    g,
+    'msp',
+    'MSP Accident Answer from the Report',
+    'string',
+    [
+      {
+        id: 'asWorkersComp',
+        label: "Workers' Compensation When It Pays or the Injury Is Work Related",
+        when: condition(
+          g,
+          'workersComp',
+          "Workers' Compensation Pays or the Injury Is Work Related",
+          {
+            paymentMethod: ['string', 'payment.method'],
+            workRelated: ['string', 'situation.workRelated']
+          },
+          [
+            { field: 'paymentMethod', op: 'is', value: '2601013' },
+            { field: 'workRelated', op: 'is', value: YES }
+          ],
+          'any'
+        ),
+        value: fixed('workersComp')
+      },
+      {
+        id: 'asNoFault',
+        label: 'No-Fault When a Transport Accident Caused the Injury',
+        when: condition(
+          g,
+          'transportAccident',
+          'A Transport Accident Caused the Injury',
+          { injuryCauses: [{ list: 'string' }, 'injury.causes'] },
+          [{ field: 'injuryCauses', op: 'startsWith', value: TRANSPORT_ACCIDENTS }]
+        ),
+        value: fixed('noFault')
+      }
+    ],
+    fixed(null)
   );
+
+const SIGNATURE = (T.pcr as { object: { signatures: { list: ValueType } } }).object.signatures.list;
+
+const RELEASE: ValueType = { object: { signature: 'string', signatureNote: 'string' } };
+
+const BILLING_RELEASE = '4513005';
+
+const SIGNED = ['4515027', '4515031', '4515033'];
+
+const REFUSED = ['4515019', '4515029'];
+
+const COULD_NOT_SIGN = [
+  { key: '4515003', value: 'the patient died' },
+  { key: '4515005', value: 'the patient was in distress' },
+  { key: '4515013', value: "the patient's mental status was impaired" },
+  { key: '4515015', value: 'the patient is a minor' },
+  { key: '4515017', value: "the patient's hands or arms were impaired" },
+  { key: '4515023', value: 'the patient was unconscious' },
+  { key: '4515025', value: 'the patient is visually impaired' },
+  { key: '4515035', value: 'the patient cannot read' },
+  { key: '4515037', value: 'the patient was restrained' },
+  { key: '4515039', value: 'the patient was combative or uncooperative' }
+];
+
+const NOT_AN_EXCEPTION = [
+  { key: '4515001', value: 'the crew was called out to another call' },
+  { key: '4515007', value: 'of an equipment failure' },
+  { key: '4515009', value: 'the patient was in law enforcement custody' },
+  { key: '4515011', value: 'of a language barrier' },
+  { key: '4515021', value: 'care was transferred before a signature could be obtained' }
+];
+
+const releaseSignature = (): GraphDef => {
+  const g = rule(
+    [
+      d(
+        'signature',
+        SIGNATURE,
+        'Signature',
+        'One signature of the report given for the release for billing.'
+      )
+    ],
+    [
+      d(
+        'release',
+        RELEASE,
+        'Release Signature',
+        'Whether the signature counts as signed, an exception, refused or missing, with why.'
+      )
+    ]
+  );
+  g.add('parts', 'nemsis.signature.break', { label: 'Signature' });
+  g.wire('entry.signature', 'parts.signature');
+  const status: [ValueType, Port] = ['string', 'parts.status'];
+  const signed = condition(g, 'signed', 'Signed', { status }, [
+    { field: 'status', op: 'oneOf', value: SIGNED }
+  ]);
+  const representative = condition(
+    g,
+    'representative',
+    'Signed by a Representative',
+    { status, signer: ['string', 'parts.signer'] },
+    [
+      { field: 'status', op: 'is', value: '4515033' },
+      { field: 'signer', op: 'is', value: '4512017' }
+    ],
+    'any'
+  );
+  const refused = condition(g, 'refused', 'Refused', { status }, [
+    { field: 'status', op: 'oneOf', value: REFUSED }
+  ]);
+  g.add('couldNotSign', 'std.table.lookup', {
+    label: 'Patient Could Not Sign',
+    config: shared.lookup(
+      'billing.signature-exceptions',
+      'Signature Exceptions',
+      'The signature statuses (eOther.15) that say why the patient could not sign, so the release counts as a signature exception, with the reason told to the biller.',
+      { type: 'string', rows: COULD_NOT_SIGN }
+    )
+  });
+  g.add('notAnException', 'std.table.lookup', {
+    label: 'Not a Reason the Patient Could Not Sign',
+    config: shared.lookup(
+      'billing.signature-non-exceptions',
+      'Not Signature Exceptions',
+      'The signature statuses (eOther.15) that say why nobody signed without the patient being unable to, so the signature is still missing, with the reason told to the biller.',
+      { type: 'string', rows: NOT_AN_EXCEPTION }
+    )
+  });
+  g.wire('parts.status', 'couldNotSign.key', 'notAnException.key');
+  const kind = firstOf(
+    g,
+    'kind',
+    'Signed, Else Refused, Else an Exception, Else Missing',
+    'string',
+    [
+      { id: 'isSigned', label: 'Name It Signed', when: signed, value: fixed('signed') },
+      { id: 'isRefused', label: 'Name It Refused', when: refused, value: fixed('refused') },
+      {
+        id: 'isException',
+        label: 'Name It an Exception',
+        when: 'couldNotSign.found',
+        value: fixed('exception')
+      }
+    ],
+    fixed('missing')
+  );
+  g.add('note', 'std.logic.choose', {
+    label: 'Signature Note',
+    config: {
+      mode: 'byCase',
+      type: 'string',
+      cases: [{ when: 'signed' }, { when: 'refused' }, { when: 'exception' }]
+    },
+    values: { case2: 'The patient refused to sign for billing' }
+  });
+  g.wire(kind, 'note.key');
+  g.wire(
+    select(
+      g,
+      'representativeNote',
+      'Note a Representative',
+      representative,
+      fixed('Signed by a patient representative')
+    ),
+    'note.case1'
+  );
+  g.wire(
+    template(g, 'exceptionNote', 'Why the Patient Could Not Sign', 'Not signed because {reason}', {
+      reason: 'couldNotSign.value'
+    }),
+    'note.case3'
+  );
+  const other = template(
+    g,
+    'otherNote',
+    'Why Nobody Signed',
+    'Not signed because {reason}, which is not a reason the patient could not sign',
+    { reason: 'notAnException.value' }
+  );
+  g.wire(
+    select(
+      g,
+      'missingNote',
+      'Why Nobody Signed, Else No Status',
+      'notAnException.found',
+      other,
+      fixed('The billing signature has no status')
+    ),
+    'note.otherwise'
+  );
+  g.ret('return');
+  g.wire(
+    makeObject(g, 'release', 'Release Signature', {
+      signature: ['string', kind],
+      signatureNote: ['string', 'note.value']
+    }),
+    'return.release'
+  );
+  return g.def;
+};
+
+const RELEASE_KINDS = [
+  ['signed', 'Signed Releases'],
+  ['exception', 'Exceptions'],
+  ['refused', 'Refusals'],
+  ['missing', 'Missing Signatures']
+] as const;
+
+const billingSignature = (): GraphDef => {
+  const g = rule(
+    [
+      d(
+        'signatures',
+        { list: SIGNATURE },
+        'Signatures',
+        'The signatures recorded on the patient care report.',
+        true
+      )
+    ],
+    [
+      d(
+        'signature',
+        'string',
+        'Signature',
+        'Whether the release was signed, an exception, refused or missing.'
+      ),
+      d(
+        'signatureNote',
+        'string',
+        'Signature Note',
+        'Why the patient did not sign, or who signed for them.',
+        true
+      )
+    ]
+  );
+  g.add('releases', 'std.list.where', {
+    label: 'Signatures for the Release for Billing',
+    config: { field: 'reasons', op: 'is', value: BILLING_RELEASE }
+  });
+  g.wire('entry.signatures', 'releases.list');
+  g.add('each', 'std.list.map-rule', {
+    label: 'Release Signature of Each',
+    config: { rule: 'billing.release-signature', version: 1, item: 'signature' }
+  });
+  g.wire('releases.list', 'each.list');
+  g.add('best', 'std.logic.choose', {
+    label: 'Signed, Else an Exception, Else Refused, Else Missing',
+    config: { mode: 'first', type: { list: RELEASE }, count: RELEASE_KINDS.length }
+  });
+  for (const [i, [kind, label]] of RELEASE_KINDS.entries()) {
+    g.add(kind, 'std.list.where', {
+      label,
+      config: { field: 'signature', op: 'is', value: kind }
+    });
+    g.wire('each.release', `${kind}.list`);
+    g.wire(`${kind}.list`, `best.option${i + 1}`);
+  }
+  g.add('first', 'std.list.first', { label: 'Best Release' });
+  g.wire('best.value', 'first.list');
+  const signature = getField(g, 'signature', 'Its Signature', RELEASE, 'signature', 'first.item');
+  const note = getField(g, 'note', 'Its Note', RELEASE, 'signatureNote', 'first.item');
+  const any = condition(
+    g,
+    'any',
+    'Signed for the Release for Billing',
+    { count: ['integer', 'releases.count'] },
+    [{ field: 'count', op: 'gt', value: 0 }]
+  );
+  g.ret('return');
+  g.wire(
+    orElse(g, 'signatureOrMissing', 'Signature, Else Missing', signature, fixed('missing')),
+    'return.signature'
+  );
+  g.wire(
+    select(
+      g,
+      'noteOrNone',
+      'Note, Else No Release Signature',
+      any,
+      note,
+      fixed('The report has no signature for the release for billing')
+    ),
+    'return.signatureNote'
+  );
+  return g.def;
+};
 
 const documentationFacts = (): GraphDef => {
   const g = rule(
@@ -183,28 +453,32 @@ const documentationFacts = (): GraphDef => {
       )
     ]
   );
-  g.add('pcr', 'nemsis.pcr.break');
-  g.add('payment', 'nemsis.payment.break');
-  g.add('times', 'nemsis.times.break');
-  g.add('exam', 'nemsis.exam.break');
-  g.add('disposition', 'nemsis.disposition.break');
-  g.add('situation', 'nemsis.situation.break');
-  g.add('injury', 'nemsis.injury.break');
-  g.add('msp', 'std.table.decide', { label: 'MSP From the Report', config: mspFromReport() });
-  g.add('signature', 'billing.read-signature', { label: 'Billing Signature' });
-  g.add('pcs', 'std.table.lookup', {
-    label: 'Physician Certification on File',
-    config: {
-      type: 'boolean',
-      rows: [
-        { key: '9922005', value: true },
-        { key: '9922001', value: false }
-      ]
-    }
+  g.add('pcr', 'nemsis.pcr.break', { label: 'Report' });
+  g.add('payment', 'nemsis.payment.break', { label: 'Payment' });
+  g.add('times', 'nemsis.times.break', { label: 'Times' });
+  g.add('exam', 'nemsis.exam.break', { label: 'Exam' });
+  g.add('disposition', 'nemsis.disposition.break', { label: 'Disposition' });
+  g.add('situation', 'nemsis.situation.break', { label: 'Situation' });
+  g.add('injury', 'nemsis.injury.break', { label: 'Injury' });
+  g.add('signature', 'billing.billing-signature', { label: 'Billing Signature' });
+  const pcsAnswer: [ValueType, Port] = ['string', 'payment.certificationStatement'];
+  const pcsYes = condition(g, 'pcsYes', 'Certification Answered Yes', { answer: pcsAnswer }, [
+    { field: 'answer', op: 'is', value: YES }
+  ]);
+  const pcsAnswered = condition(
+    g,
+    'pcsAnswered',
+    'Certification Answered Yes or No',
+    { answer: pcsAnswer },
+    [{ field: 'answer', op: 'oneOf', value: [YES, NO] }]
+  );
+  const pcs = select(g, 'pcs', 'Physician Certification on File', pcsAnswered, pcsYes);
+  g.add('pcsDate', 'std.logic.coalesce', {
+    label: 'Certification Date, Else Blank',
+    values: { fallback: '' }
   });
-  g.add('pcsDate', 'std.logic.coalesce', { label: 'Or Nothing', values: { fallback: '' } });
-  g.add('pcsSignedOn', 'std.text.substring', { label: 'Date Part', values: { end: 10 } });
-  g.add('documentation', 'billing.documentation.make');
+  g.add('pcsSignedOn', 'std.text.substring', { label: 'Signed On', values: { end: 10 } });
+  g.add('documentation', 'billing.documentation.make', { label: 'Documentation' });
   g.ret('return');
   g.wire('entry.pcr', 'pcr.pcr');
   g.wire('pcr.payment', 'payment.payment');
@@ -213,17 +487,13 @@ const documentationFacts = (): GraphDef => {
   g.wire('pcr.disposition', 'disposition.disposition');
   g.wire('pcr.situation', 'situation.situation');
   g.wire('pcr.injury', 'injury.injury');
-  g.wire('payment.method', 'msp.paymentMethod');
-  g.wire('situation.workRelated', 'msp.workRelated');
-  g.wire('injury.causes', 'msp.injuryCauses');
-  g.wire('msp.mspAccident', 'documentation.mspAccident');
+  g.wire(mspAccident(g), 'documentation.mspAccident');
   g.wire('disposition.patientsTransported', 'documentation.patientCount');
   g.wire('payment.closestFacilityMiles', 'documentation.closestFacilityMiles');
   g.wire('pcr.signatures', 'signature.signatures');
   g.wire('signature.signature', 'documentation.signature');
   g.wire('signature.signatureNote', 'documentation.signatureNote');
-  g.wire('payment.certificationStatement', 'pcs.key');
-  g.wire('pcs.value', 'documentation.pcsOnFile');
+  g.wire(pcs, 'documentation.pcsOnFile');
   g.wire('payment.certificationDate', 'pcsDate.value');
   g.wire('pcsDate.result', 'pcsSignedOn.text');
   g.wire('pcsSignedOn.result', 'documentation.pcsSignedOn');
@@ -250,10 +520,10 @@ const demographicsFromPcr = (): GraphDef => {
       )
     ]
   );
-  g.add('pcr', 'nemsis.pcr.break');
-  g.add('patient', 'nemsis.patient.break');
+  g.add('pcr', 'nemsis.pcr.break', { label: 'Report' });
+  g.add('patient', 'nemsis.patient.break', { label: 'Patient' });
   g.add('sex', 'std.logic.coalesce', { label: 'Sex, Else Gender' });
-  g.add('demographics', 'billing.demographics.make');
+  g.add('demographics', 'billing.demographics.make', { label: 'Demographics' });
   g.ret('return');
   g.wire('entry.pcr', 'pcr.pcr');
   g.wire('pcr.patient', 'patient.patient');
@@ -279,8 +549,8 @@ const coveragesFromPcr = (): GraphDef => {
       )
     ]
   );
-  g.add('pcr', 'nemsis.pcr.break');
-  g.add('payment', 'nemsis.payment.break');
+  g.add('pcr', 'nemsis.pcr.break', { label: 'Report' });
+  g.add('payment', 'nemsis.payment.break', { label: 'Payment' });
   g.add('insurances', 'std.list.reshape', {
     label: 'Insurances as Coverages',
     config: {
@@ -312,28 +582,40 @@ const coveragesFromPcr = (): GraphDef => {
     )
   });
   g.add('fallback', 'billing.coverage.make', {
-    label: 'Coverage From the Payment Method',
+    label: 'Coverage from the Payment Method',
     values: { priority: '2611003' }
   });
-  g.add('fallbackList', 'std.list.make', { label: 'As a List', config: { count: 1 } });
-  g.add('count', 'std.list.length', { label: 'How Many Insurances' });
-  g.add('none', 'std.logic.equal', { label: 'No Insurances', values: { b: 0 } });
-  g.add('useMethod', 'std.logic.and', { label: 'No Insurances, but a Known Method' });
-  g.add('coverages', 'std.logic.select', { label: 'Coverages' });
+  const fallbackList = makeList(g, 'fallbackList', 'As a List', T.coverages.list, [
+    'fallback.coverage'
+  ]);
+  const useMethod = condition(
+    g,
+    'useMethod',
+    'No Insurances, but a Known Payment Method',
+    {
+      insurances: [{ list: { object: {} } }, 'pcr.insurances'],
+      known: ['boolean', 'method.found']
+    },
+    [
+      { field: 'insurances', op: 'empty' },
+      { field: 'known', op: 'is', value: true }
+    ]
+  );
+  const coverages = select(
+    g,
+    'coverages',
+    'Payment Method Payer, Else the Insurances',
+    useMethod,
+    fallbackList,
+    'insurances.list'
+  );
   g.ret('return');
   g.wire('entry.pcr', 'pcr.pcr');
-  g.wire('pcr.insurances', 'insurances.list', 'count.list');
+  g.wire('pcr.insurances', 'insurances.list');
   g.wire('pcr.payment', 'payment.payment');
   g.wire('payment.method', 'method.key');
   g.wire('method.value', 'fallback.payer');
-  g.wire('fallback.coverage', 'fallbackList.item1');
-  g.wire('count.length', 'none.a');
-  g.wire('none.result', 'useMethod.a');
-  g.wire('method.found', 'useMethod.b');
-  g.wire('useMethod.result', 'coverages.condition');
-  g.wire('fallbackList.list', 'coverages.whenTrue');
-  g.wire('insurances.list', 'coverages.whenFalse');
-  g.wire('coverages.result', 'return.coverages');
+  g.wire(coverages, 'return.coverages');
   return g.def;
 };
 
@@ -348,34 +630,34 @@ const mapEncounterFacts = (): GraphDef => {
   const g = stage(
     [PCR_IN],
     [FACTS_OUT],
-    Object.fromEntries([['then', exit('Mapped', 'The encounter facts are ready.')]]),
+    thenExit(exit('Mapped', 'The encounter facts are ready.')),
     [{ name: 'destinationHospital', type: 'boolean', default: false }]
   );
-  g.add('pcr', 'nemsis.pcr.break');
-  g.add('payment', 'nemsis.payment.break');
+  g.add('pcr', 'nemsis.pcr.break', { label: 'Report' });
+  g.add('payment', 'nemsis.payment.break', { label: 'Payment' });
   g.add('trip', 'billing.trip-facts', { label: 'Trip Facts' });
   g.add('locations', 'billing.location-facts', { label: 'Location Facts' });
-  g.add('patient', 'billing.demographics-from-pcr', { label: 'Patient Facts' });
+  g.add('patient', 'billing.demographics-from-pcr', { label: 'Demographics from PCR' });
   g.add('clinical', 'billing.clinical-facts', { label: 'Clinical Facts' });
   g.add('documentation', 'billing.documentation-facts', { label: 'Documentation Facts' });
   g.add('coverages', 'billing.coverages-from-pcr', { label: 'Reported Coverages' });
   g.add('places', 'billing.location-facts.break', { label: 'Pickup and Destination' });
   g.add('destination', 'billing.location.break', { label: 'Destination' });
-  g.add('hospital', 'billing.find-hospital', { label: 'Destination Hospital' });
+  g.add('hospital', 'billing.find-hospital', { label: 'Find the Destination Hospital' });
   g.add('keepHospital', 'std.var.set', {
-    label: 'The Destination Is a Hospital',
+    label: 'Note the Destination Is a Hospital',
     config: { name: 'destinationHospital' },
     values: { value: true }
   });
   g.add('isHospital', 'std.var.get', {
-    label: 'Destination Hospital',
+    label: 'The Destination Is a Hospital',
     config: { name: 'destinationHospital' }
   });
   g.add('locationFacts', 'std.object.set-field', {
-    label: 'Locations With the Hospital',
+    label: 'Locations with the Hospital',
     config: { record: T.locations, path: 'destinationHospital' }
   });
-  g.add('facts', 'billing.encounter-facts.make');
+  g.add('facts', 'billing.encounter-facts.make', { label: 'Encounter Facts' });
   g.add('agency', 'billing.agency-facts', { label: 'Agency Facts' });
   g.ret('done');
   g.wire('entry.exec', 'hospital.exec');
@@ -417,15 +699,10 @@ export const factGraphs: SeedGraph[] = [
     'billing.agency-facts',
     'Agency Facts',
     'An agency rule after the encounter facts are mapped: correct or add facts from the report (a local code, a facility the agency knows) before any billing rule reads them. Passes the facts through unchanged until an agency overrides it.',
-    {
-      execIn: [],
-      execOut: [],
-      inputs: [
-        d('facts', T.facts, 'Encounter Facts', 'The facts the base rules mapped.'),
-        P.pcr(true)
-      ],
-      outputs: [d('facts', T.facts, 'Encounter Facts', 'The facts every billing rule reads.')]
-    }
+    pureSlot(
+      [d('facts', T.facts, 'Encounter Facts', 'The facts the base rules mapped.'), P.pcr(true)],
+      [d('facts', T.facts, 'Encounter Facts', 'The facts every billing rule reads.')]
+    )
   ),
   asRule(
     'billing.trip-facts',
@@ -446,20 +723,32 @@ export const factGraphs: SeedGraph[] = [
     clinicalFacts()
   ),
   asRule(
+    'billing.release-signature',
+    'Release Signature',
+    'Says whether one signature given for the release for billing counts as signed, an exception because the patient could not sign (Signature Exceptions table), refused or missing (Not Signature Exceptions table), and why.',
+    releaseSignature()
+  ),
+  asRule(
+    'billing.billing-signature',
+    'Billing Signature',
+    "Says whether the report's release for billing was signed by the patient or a representative, not signed because the patient could not sign (a CMS signature exception), refused or missing, with why: the best of its signatures for the release, signed first, then an exception, a refusal, and missing last.",
+    billingSignature()
+  ),
+  asRule(
     'billing.documentation-facts',
     'Documentation Facts',
-    'Maps what the report documents for billing: the release-for-billing signature, physician certification, the transport reason as reported, ambulance conditions, prior authorization, weight, trip times, patients transported, miles to the closest hospital, and the MSP accident answer (MSP From the Report table).',
+    'Maps what the report documents for billing: the release-for-billing signature, physician certification, the transport reason as reported, ambulance conditions, prior authorization, weight, trip times, patients transported, miles to the closest hospital, and the MSP accident answer: workers compensation when it pays or the injury is work related, else no-fault when a transport accident caused it.',
     documentationFacts()
   ),
   asRule(
     'billing.demographics-from-pcr',
-    'Demographics From PCR',
+    'Demographics from PCR',
     'Maps the report patient to the demographics patients are matched and created by.',
     demographicsFromPcr()
   ),
   asRule(
     'billing.coverages-from-pcr',
-    'Coverages From PCR',
+    'Coverages from PCR',
     'Maps the report insurances to coverages with the insured and their relationship to the patient, or names Medicare or Medicaid from the payment method (Payer by Payment Method table) when there are none.',
     coveragesFromPcr()
   ),

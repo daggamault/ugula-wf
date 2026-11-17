@@ -2,7 +2,6 @@ import type { NodeDef } from '@ugula/graph';
 import { claimTaskNodes } from './claim-tasks.ts';
 import { claimNodes } from './claims.ts';
 import { cycleNodes } from './cycle.ts';
-import { documentationNodes } from './documentation.ts';
 import { exchangeNodes } from './exchange.ts';
 import { issueNodes } from './issues.ts';
 import { narrativeNodes } from './narrative.ts';
@@ -22,7 +21,7 @@ export type {
   ClaimStatusCheck,
   ClaimStore,
   ClaimTaskStore,
-  Deadline,
+  DeadlineFacts,
   DraftClaim,
   EligibilityCheck,
   ExchangeStore,
@@ -54,7 +53,6 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
     cycleNodes,
     payerFileNodes,
     exchangeNodes,
-    documentationNodes,
     issueNodes,
     recoveryNodes,
     scheduleNodes

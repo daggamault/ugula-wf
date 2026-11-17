@@ -1,4 +1,4 @@
-import { type PricedLine, roundUnits } from './charges.ts';
+import type { PricedLine } from './charges.ts';
 import {
   type ClaimDetails,
   DIAGNOSIS_LIMIT,
@@ -205,7 +205,7 @@ const readX837Line = (x: unknown, i: number): X837Line => {
     code: need(textOrNull(r.code), `a code on service line ${i + 1}`),
     modifiers: strs(r.modifiers).slice(0, MAX_LINE_MODIFIERS),
     chargeCents,
-    units: roundUnits(positive(r.units, `units on service line ${i + 1}`)),
+    units: positive(r.units, `units on service line ${i + 1}`),
     serviceDate: need(textOrNull(r.serviceDate), `a date on service line ${i + 1}`),
     patientCount:
       typeof r.patientCount === 'number' && Number.isInteger(r.patientCount) && r.patientCount > 0
@@ -249,7 +249,7 @@ const readLineAdjudication = (x: unknown): LineAdjudication[] => {
           code,
           modifiers: strs(r.modifiers).slice(0, MAX_LINE_MODIFIERS),
           paidCents: r.paidCents as number,
-          units: roundUnits(r.units),
+          units: r.units as number,
           adjustments: list(r.adjustments).flatMap(readAdjustment)
         }
       ]
@@ -509,7 +509,7 @@ const claimSegments = (c: X837Claim, hl: number): Segment[] => {
             '',
             clean(c.transportReason, 1),
             'DH',
-            String(roundUnits(c.loadedMiles))
+            String(c.loadedMiles)
           ]
         ]),
     ...(c.conditionCodes.length ? [['CRC', '07', 'Y', ...c.conditionCodes]] : []),

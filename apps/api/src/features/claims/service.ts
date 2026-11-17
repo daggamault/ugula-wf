@@ -3,9 +3,9 @@ import {
   CLAIM_TASKS,
   type ClaimBilling,
   type ClaimTaskKey,
-  checkFactsOf,
   claimBillingOf,
   claimCodeRefs,
+  claimRecordOf,
   ledgerFactsOf,
   MAP_837P_RULE,
   readClaimStep,
@@ -56,7 +56,7 @@ type ClaimServiceDeps = {
 
 export const NEXT_CLAIM_STEP_RULE = 'billing.next-claim-step';
 
-export const CLAIM_CHECKS_RULE = 'billing.claim-checks';
+export const CLAIM_ISSUES_RULE = 'billing.claim-issues';
 
 const CYCLE_WORKFLOW = { key: 'billing.cycle-claim', version: 1 };
 
@@ -119,7 +119,7 @@ export const createClaimService = ({ db, boss, now, blobs, publish, rules }: Cla
         : null;
       const [step, checked] = await Promise.all([
         ledger ? rules(agencyId, NEXT_CLAIM_STEP_RULE, { ledger }, at) : null,
-        check ? rules(agencyId, CLAIM_CHECKS_RULE, { facts: checkFactsOf(check, at) }, at) : null
+        check ? rules(agencyId, CLAIM_ISSUES_RULE, { record: claimRecordOf(check, at) }, at) : null
       ]);
       return ok({
         claim,

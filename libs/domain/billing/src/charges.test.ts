@@ -3,12 +3,10 @@ import { describe, it } from 'node:test';
 import {
   isClassification,
   isServiceLevel,
-  isTransport,
   NO_TRANSPORT_TRIPS,
   priceLines,
   readLines,
-  readPricedLines,
-  roundUnits
+  readPricedLines
 } from './charges.ts';
 
 describe('readLines', () => {
@@ -25,22 +23,10 @@ describe('readLines', () => {
     );
   });
 
-  it('rounds units up to the tenths an 837P carries', () => {
+  it('keeps the units it is given', () => {
     assert.deepEqual(readLines([{ code: 'A0425', units: 12.34 }]), [
-      { code: 'A0425', units: 12.4 }
+      { code: 'A0425', units: 12.34 }
     ]);
-    assert.equal(roundUnits(1.1), 1.1);
-    assert.equal(roundUnits(1.1000000000000085), 1.1);
-    assert.equal(roundUnits(1.11), 1.2);
-    assert.equal(roundUnits(1.0999999999999943), 1.1);
-    assert.equal(roundUnits(0.31), 0.4);
-    assert.equal(roundUnits(99.91), 100);
-  });
-
-  it('rounds units up to whole miles from 100 miles, as Medicare asks', () => {
-    assert.equal(roundUnits(100), 100);
-    assert.equal(roundUnits(100.2), 101);
-    assert.equal(roundUnits(998.5), 999);
   });
 
   it('rejects empty claims, bad codes and bad units', () => {
@@ -116,9 +102,9 @@ describe('priceLines', () => {
 });
 
 describe('priceLines rounding', () => {
-  it('prices the rounded units', () => {
+  it('prices the units it is given', () => {
     const { lines } = priceLines(readLines([{ code: 'A0425', units: 12.31 }]), { A0425: 1000 });
-    assert.deepEqual(lines, [{ code: 'A0425', units: 12.4, unitCents: 1000, totalCents: 12400 }]);
+    assert.deepEqual(lines, [{ code: 'A0425', units: 12.31, unitCents: 1000, totalCents: 12310 }]);
   });
 
   it('rounds half cents up', () => {
@@ -141,13 +127,6 @@ describe('priceLines rounding', () => {
       totalCents: 0,
       missing: ['A0427']
     });
-  });
-});
-
-describe('isTransport', () => {
-  it('is false only when every line is treatment without transport', () => {
-    assert.equal(isTransport([{ code: 'A0998', units: 1 }]), false);
-    assert.equal(isTransport([{ code: 'A0429', units: 1 }]), true);
   });
 });
 

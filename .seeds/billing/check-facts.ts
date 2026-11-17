@@ -6,13 +6,32 @@ import {
   SELF,
   SERVICE_LEVELS
 } from '@ugula/billing';
-import type { GraphDef, Json, ValueType } from '@ugula/graph';
+import type { GraphDef, ValueType } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
-import { asRule, type Builder, d, rule, shared, T } from './shared.ts';
+import {
+  asRule,
+  condition,
+  d,
+  fixed,
+  getField,
+  isListed,
+  MEDICARE_CLAIM_FILINGS as MEDICARE,
+  makeList,
+  orElse,
+  type Port,
+  rule,
+  select,
+  shared,
+  T,
+  template
+} from './shared.ts';
 
-type Port = `${string}.${string}`;
-
-type Test = [name: string, op: string, value?: Json];
+export const CLAIM_RECORD_IN = d(
+  'record',
+  T.claimRecord,
+  'Claim Record',
+  'The saved claim as it is stored.'
+);
 
 const typesOf = (key: string) =>
   new Map(
@@ -24,42 +43,16 @@ const PAYER = typesOf('billing.recorded-payer');
 const objectOf = (types: ReadonlyMap<string, ValueType>): ValueType => ({
   object: Object.fromEntries(types)
 });
-const ADDRESS: ValueType = RECORD.get('pickup') ?? 'any';
+const typeOf = (types: ReadonlyMap<string, ValueType>, name: string): ValueType =>
+  types.get(name) ?? 'any';
+const ADDRESS = typeOf(RECORD, 'pickup');
 const DIAGNOSIS: ValueType = (RECORD.get('diagnoses') as { list: ValueType }).list;
-const MEDICARE_FILINGS = ['MA', 'MB'];
-
-const title = (words: string) =>
-  words.replace(/\b[a-z]/g, (c) => c.toUpperCase()).replace('Zip', 'ZIP');
-
-const condition = (
-  g: Builder,
-  id: string,
-  label: string,
-  inputs: Record<string, [ValueType, Port]>,
-  tests: Test[],
-  match: 'all' | 'any' = 'all'
-) => {
-  g.add(id, 'std.logic.condition', {
-    label,
-    config: {
-      match,
-      inputs: Object.entries(inputs).map(([name, [type]]) => ({ name, type })),
-      rules: tests.map(([field, op, value]) => ({
-        field,
-        op,
-        ...(value === undefined ? {} : { value })
-      }))
-    }
-  });
-  for (const [name, [, port]] of Object.entries(inputs)) g.wire(port, `${id}.${name}`);
-  return `${id}.result` as const;
-};
 
 const ADDRESS_PARTS = [
-  ['addressLine', 'street address'],
-  ['city', 'city'],
-  ['state', 'state'],
-  ['postalCode', 'ZIP code']
+  ['addressLine', 'street address', 'Street Address'],
+  ['city', 'city', 'City'],
+  ['state', 'state', 'State'],
+  ['postalCode', 'ZIP code', 'ZIP Code']
 ] as const;
 
 const addressGaps = (): GraphDef => {
@@ -71,31 +64,22 @@ const addressGaps = (): GraphDef => {
     label: 'Address',
     config: { fields: ADDRESS_PARTS.map(([name]) => ({ name, type: 'string' })) }
   });
-  g.add('missing', 'std.list.make', {
-    label: 'Missing Parts',
-    config: { count: ADDRESS_PARTS.length, type: 'string' }
-  });
   g.wire('entry.place', 'parts.object');
-  for (const [i, [part, name]] of ADDRESS_PARTS.entries()) {
+  const named = ADDRESS_PARTS.map(([part, text, label]) => {
     const gap = condition(
       g,
       `${part}Gap`,
-      `${title(name)} Empty`,
+      `${label} Missing`,
       { place: [ADDRESS, 'entry.place'], [part]: ['string', `parts.${part}`] },
       [
-        ['place', 'present'],
-        [part, 'empty']
+        { field: 'place', op: 'present' },
+        { field: part, op: 'empty' }
       ]
     );
-    g.add(`${part}Name`, 'std.logic.select', {
-      label: `Missing ${title(name)}`,
-      values: { whenTrue: name }
-    });
-    g.wire(gap, `${part}Name.condition`);
-    g.wire(`${part}Name.result`, `missing.item${i + 1}`);
-  }
+    return select(g, `${part}Name`, `${label}, If Missing`, gap, fixed(text));
+  });
   g.ret('return');
-  g.wire('missing.list', 'return.missing');
+  g.wire(makeList(g, 'missing', 'Missing Parts', 'string', named), 'return.missing');
   return g.def;
 };
 
@@ -111,13 +95,262 @@ const diagnosisText = (): GraphDef => {
       )
     ]
   );
-  g.add('text', 'std.text.template', {
-    label: 'Meaning and Code',
-    config: { template: '{diagnosis.description} ({diagnosis.code})' }
+  g.ret('return');
+  g.wire(
+    template(g, 'text', 'Meaning and Code', '{diagnosis.description} ({diagnosis.code})', {
+      diagnosis: 'entry.diagnosis'
+    }),
+    'return.text'
+  );
+  return g.def;
+};
+
+const zipInAnotherState = (): GraphDef => {
+  const g = rule(
+    [
+      d('place', ADDRESS, 'Place', 'An address with its state and ZIP code.', true),
+      d(
+        'zipState',
+        'string',
+        'ZIP Code State',
+        'The state the ZIP code of the address belongs to (GeoNames).',
+        true
+      )
+    ],
+    [
+      d(
+        'elsewhere',
+        'boolean',
+        'ZIP in Another State',
+        'Whether the ZIP code belongs to another state than the address.'
+      )
+    ]
+  );
+  const state = getField(g, 'state', 'Address State', ADDRESS, 'state', 'entry.place');
+  g.ret('return');
+  g.wire(
+    condition(
+      g,
+      'elsewhere',
+      'ZIP Code in Another State',
+      { zipState: ['string', 'entry.zipState'], state: ['string', state] },
+      [
+        { field: 'zipState', op: 'present' },
+        { field: 'state', op: 'present' },
+        { field: 'zipState', op: 'isNot', input: 'state' }
+      ]
+    ),
+    'return.elsewhere'
+  );
+  return g.def;
+};
+
+const patientTransported = (): GraphDef => {
+  const g = rule(
+    [
+      d('classification', 'string', 'Classification', 'How the trip is classified.', true),
+      d('deceased', 'boolean', 'Deceased', 'Whether the patient was dead on scene.', true),
+      d(
+        'lineCodes',
+        typeOf(RECORD, 'lineCodes'),
+        'Charge Line Codes',
+        'The HCPCS codes of the charge lines.',
+        true
+      )
+    ],
+    [
+      d(
+        'transported',
+        'boolean',
+        'Transported',
+        'Whether a living patient was transported, by the classification, else by the charge lines.'
+      )
+    ]
+  );
+  const classification: [ValueType, Port] = ['string', 'entry.classification'];
+  g.add('transportLines', 'std.list.where', {
+    label: 'Lines Other Than No Transport',
+    config: { field: '', op: 'isNot', value: NO_TRANSPORT_CODE }
+  });
+  g.wire('entry.lineCodes', 'transportLines.list');
+  const classified = condition(g, 'classified', 'Classified', { classification }, [
+    { field: 'classification', op: 'present' }
+  ]);
+  const transportTrip = condition(
+    g,
+    'transportTrip',
+    'Classified as a Transport',
+    { classification },
+    [{ field: 'classification', op: 'notOneOf', value: [...NO_TRANSPORT_TRIPS] }]
+  );
+  const billedTransport = condition(
+    g,
+    'billedTransport',
+    'Billed as a Transport',
+    { lines: ['integer', 'transportLines.count'] },
+    [{ field: 'lines', op: 'gt', value: 0 }]
+  );
+  const byWhat = select(
+    g,
+    'byWhat',
+    'By Classification, Else Lines',
+    classified,
+    transportTrip,
+    billedTransport
+  );
+  g.ret('return');
+  g.wire(
+    condition(
+      g,
+      'transported',
+      'Living Patient Transported',
+      { deceased: ['boolean', 'entry.deceased'], transport: ['boolean', byWhat] },
+      [
+        { field: 'deceased', op: 'isNot', value: true },
+        { field: 'transport', op: 'is', value: true }
+      ]
+    ),
+    'return.transported'
+  );
+  return g.def;
+};
+
+const diagnosesToCheck = (): GraphDef => {
+  const g = rule(
+    [
+      d(
+        'diagnoses',
+        typeOf(RECORD, 'diagnoses'),
+        'Diagnoses',
+        'The diagnoses with what the code set says about each.',
+        true
+      ),
+      d('serviceDate', 'string', 'Date of Service', 'The date of service.', true)
+    ],
+    [
+      d(
+        'unknown',
+        { list: 'string' },
+        'Unknown Codes',
+        'The diagnosis codes that are not ICD-10-CM codes.'
+      ),
+      d(
+        'unbillable',
+        { list: 'string' },
+        'Categories',
+        'The diagnoses that are categories needing more characters to bill, as text.'
+      )
+    ]
+  );
+  const beforeCodes = condition(
+    g,
+    'beforeCodes',
+    'Before the Loaded ICD-10-CM Year',
+    { serviceDate: ['string', 'entry.serviceDate'] },
+    [{ field: 'serviceDate', op: 'lt', value: ICD10CM_FROM }]
+  );
+  g.add('unknown', 'std.list.where', {
+    label: 'Unknown Diagnoses',
+    config: { field: 'description', op: 'empty' }
+  });
+  g.add('unknownCodes', 'std.list.pluck', {
+    label: 'Unknown Diagnosis Codes',
+    values: { field: 'code' }
+  });
+  g.add('known', 'std.list.where', {
+    label: 'Known Diagnoses',
+    config: { field: 'description', op: 'present' }
+  });
+  g.add('categories', 'std.list.where', {
+    label: 'Categories',
+    config: { field: 'billable', op: 'isNot', value: true }
+  });
+  g.add('categoryText', 'std.list.map-rule', {
+    label: 'Each Category as Text',
+    config: { rule: 'billing.diagnosis-text', version: 1, item: 'diagnosis' }
   });
   g.ret('return');
-  g.wire('entry.diagnosis', 'text.diagnosis');
-  g.wire('text.text', 'return.text');
+  g.wire('entry.diagnoses', 'unknown.list', 'known.list');
+  g.wire('unknown.list', 'unknownCodes.list');
+  g.wire('known.list', 'categories.list');
+  g.wire('categories.list', 'categoryText.list');
+  for (const [id, label, from, out] of [
+    ['checkedUnknown', 'Unknown Codes to Check', 'unknownCodes.list', 'unknown'],
+    ['checkedCategories', 'Categories to Check', 'categoryText.text', 'unbillable']
+  ] as const)
+    g.wire(select(g, id, label, beforeCodes, fixed([]), from), `return.${out}`);
+  return g.def;
+};
+
+const tripTimes = (): GraphDef => {
+  const time = (name: string, label: string) =>
+    d(name, 'datetime', label, `When the unit ${label.toLowerCase()}.`, true);
+  const g = rule(
+    [
+      time('atScene', 'Arrived at the Scene'),
+      time('leftScene', 'Left the Scene'),
+      time('atDestination', 'Arrived at the Destination')
+    ],
+    [
+      d(
+        'recorded',
+        'boolean',
+        'Times Recorded',
+        'Whether the report says when the patient left the scene and arrived at the destination.'
+      ),
+      d(
+        'inOrder',
+        'boolean',
+        'Times in Order',
+        'Whether no trip time comes before the one ahead of it.'
+      )
+    ]
+  );
+  for (const [id, start, end, label] of [
+    ['onScene', 'atScene', 'leftScene', 'Seconds on Scene'],
+    ['enRoute', 'leftScene', 'atDestination', 'Seconds En Route']
+  ] as const) {
+    g.add(id, 'std.time.difference', { label, config: { unit: 'seconds' } });
+    g.wire(`entry.${start}`, `${id}.start`);
+    g.wire(`entry.${end}`, `${id}.end`);
+  }
+  const back = (id: string, label: string, gap: Port) =>
+    condition(g, id, label, { seconds: ['integer', gap] }, [
+      { field: 'seconds', op: 'lt', value: 0 }
+    ]);
+  g.ret('return');
+  g.wire(
+    condition(
+      g,
+      'recorded',
+      'Trip Times Recorded',
+      {
+        leftScene: ['datetime', 'entry.leftScene'],
+        atDestination: ['datetime', 'entry.atDestination']
+      },
+      [
+        { field: 'leftScene', op: 'present' },
+        { field: 'atDestination', op: 'present' }
+      ]
+    ),
+    'return.recorded'
+  );
+  g.wire(
+    condition(
+      g,
+      'inOrder',
+      'Trip Times in Order',
+      {
+        leftEarly: ['boolean', back('leftEarly', 'Left Before Arriving', 'onScene.amount')],
+        arrivedEarly: ['boolean', back('arrivedEarly', 'Arrived Before Leaving', 'enRoute.amount')]
+      },
+      [
+        { field: 'leftEarly', op: 'isNot', value: true },
+        { field: 'arrivedEarly', op: 'isNot', value: true }
+      ]
+    ),
+    'return.inOrder'
+  );
   return g.def;
 };
 
@@ -139,38 +372,25 @@ const payerCheckFacts = (): GraphDef => {
   );
   g.add('payer', 'billing.recorded-payer.break', { label: 'Payer' });
   g.wire('entry.payer', 'payer.payer');
-  const p = (name: string): [ValueType, Port] => [PAYER.get(name) ?? 'any', `payer.${name}`];
+  const p = (name: string): [ValueType, Port] => [typeOf(PAYER, name), `payer.${name}`];
   const linked = condition(
     g,
     'linked',
-    'Linked to the Directory',
-    {
-      payerId: p('payerId'),
-      claimFiling: p('claimFiling')
-    },
+    'Linked to the Payer Directory',
+    { payerId: p('payerId'), claimFiling: p('claimFiling') },
     [
-      ['payerId', 'present'],
-      ['claimFiling', 'present']
+      { field: 'payerId', op: 'present' },
+      { field: 'claimFiling', op: 'present' }
     ]
   );
   const needsInsured = condition(
     g,
     'needsInsured',
     'Patient Is Not the Insured',
-    {
-      relationship: p('relationship')
-    },
-    [['relationship', 'isNot', SELF]]
+    { relationship: p('relationship') },
+    [{ field: 'relationship', op: 'isNot', value: SELF }]
   );
-  const medicare = condition(
-    g,
-    'medicare',
-    'Medicare Payer',
-    {
-      claimFiling: p('claimFiling')
-    },
-    [['claimFiling', 'oneOf', MEDICARE_FILINGS]]
-  );
+  const medicare = isListed(g, 'medicare', 'Medicare Payer', MEDICARE, 'payer.claimFiling');
   g.add('federal', 'std.table.lookup', {
     label: 'Federal Filing Limit',
     config: shared.lookup(
@@ -189,60 +409,47 @@ const payerCheckFacts = (): GraphDef => {
     )
   });
   g.wire('payer.claimFiling', 'federal.key');
-  g.add('limit', 'std.logic.choose', {
-    label: 'Directory Limit, Else Federal',
-    config: { mode: 'first', type: 'integer', count: 2 }
-  });
-  g.wire('payer.filingLimitDays', 'limit.option1');
-  g.wire('federal.value', 'limit.option2');
-  g.add('elapsed', 'std.time.difference', {
-    label: 'Days Since Service',
-    config: { unit: 'days' }
-  });
-  g.wire('entry.serviceDate', 'elapsed.start');
-  g.wire('entry.today', 'elapsed.end');
+  orElse(
+    g,
+    'limit',
+    'Directory Limit, Else Federal',
+    'payer.filingLimitDays',
+    'federal.value',
+    'integer'
+  );
+  const days = (id: string, label: string, start: Port, end: Port) => {
+    g.add(id, 'std.time.difference', { label, config: { unit: 'days' } });
+    g.wire(start, `${id}.start`);
+    g.wire(end, `${id}.end`);
+    return `${id}.amount` as const;
+  };
+  const elapsed = days('elapsed', 'Days Since Service', 'entry.serviceDate', 'entry.today');
   g.add('left', 'std.math.subtract', { label: 'Days Left to File' });
   g.wire('limit.value', 'left.a');
-  g.wire('elapsed.amount', 'left.b');
-  g.add('sinceAdmit', 'std.time.difference', {
-    label: 'Days Since Admitted',
-    config: { unit: 'days' }
-  });
-  g.wire('payer.stayAdmittedOn', 'sinceAdmit.start');
-  g.wire('entry.serviceDate', 'sinceAdmit.end');
-  g.add('untilDischarge', 'std.time.difference', {
-    label: 'Days Until Discharged',
-    config: { unit: 'days' }
-  });
-  g.wire('entry.serviceDate', 'untilDischarge.start');
-  g.wire('payer.stayDischargedOn', 'untilDischarge.end');
-  const admitted = condition(
-    g,
+  g.wire(elapsed, 'left.b');
+  const onOrAfter = (id: string, label: string, date: string, gap: Port) =>
+    condition(
+      g,
+      id,
+      label,
+      { [date]: p(date), days: ['integer', gap] },
+      [
+        { field: date, op: 'empty' },
+        { field: 'days', op: 'gte', value: 0 }
+      ],
+      'any'
+    );
+  const admitted = onOrAfter(
     'admitted',
-    'Admitted by Then',
-    {
-      admittedOn: p('stayAdmittedOn'),
-      days: ['integer', 'sinceAdmit.amount']
-    },
-    [
-      ['admittedOn', 'empty'],
-      ['days', 'gte', 0]
-    ],
-    'any'
+    'Admitted by the Date of Service',
+    'stayAdmittedOn',
+    days('sinceAdmit', 'Days Since Admitted', 'payer.stayAdmittedOn', 'entry.serviceDate')
   );
-  const notDischarged = condition(
-    g,
+  const notDischarged = onOrAfter(
     'notDischarged',
-    'Not Discharged Before',
-    {
-      dischargedOn: p('stayDischargedOn'),
-      days: ['integer', 'untilDischarge.amount']
-    },
-    [
-      ['dischargedOn', 'empty'],
-      ['days', 'gte', 0]
-    ],
-    'any'
+    'Not Discharged Before the Date of Service',
+    'stayDischargedOn',
+    days('untilDischarge', 'Days Until Discharged', 'entry.serviceDate', 'payer.stayDischargedOn')
   );
   const during = condition(
     g,
@@ -255,15 +462,12 @@ const payerCheckFacts = (): GraphDef => {
       notDischarged: ['boolean', notDischarged]
     },
     [
-      ['stayKind', 'present'],
-      ['serviceDate', 'present'],
-      ['admitted', 'is', true],
-      ['notDischarged', 'is', true]
+      { field: 'stayKind', op: 'present' },
+      { field: 'serviceDate', op: 'present' },
+      { field: 'admitted', op: 'is', value: true },
+      { field: 'notDischarged', op: 'is', value: true }
     ]
   );
-  g.add('stay', 'std.logic.select', { label: 'Stay Reported' });
-  g.wire(during, 'stay.condition');
-  g.wire('payer.stayKind', 'stay.whenTrue');
   g.add('facts', 'billing.checked-payer.make', { label: 'Payer Facts' });
   for (const f of [
     'coverageId',
@@ -279,7 +483,7 @@ const payerCheckFacts = (): GraphDef => {
   g.wire('limit.value', 'facts.filingLimitDays');
   g.wire('left.result', 'facts.filingDaysLeft');
   g.wire(medicare, 'facts.medicare');
-  g.wire('stay.result', 'facts.stayReported');
+  g.wire(select(g, 'stay', 'Stay Reported', during, 'payer.stayKind'), 'facts.stayReported');
   g.ret('return');
   g.wire('facts.payer', 'return.facts');
   return g.def;
@@ -320,97 +524,43 @@ const PASSED = [
 ];
 
 const PLACES = [
-  ['pickup', 'pickup'],
-  ['destination', 'destination'],
-  ['patient', 'patient']
+  ['patient', 'Patient', 'patientAddressMissing'],
+  ['pickup', 'Pickup', 'pickupMissing'],
+  ['destination', 'Destination', 'destinationMissing']
 ] as const;
 
 const claimCheckFacts = (): GraphDef => {
   const g = rule(
-    [d('record', T.claimRecord, 'Claim Record', 'The saved claim as it is stored.')],
+    [CLAIM_RECORD_IN],
     [d('facts', T.checkFacts, 'Check Facts', 'The claim as the checks read it.')]
   );
   g.add('record', 'billing.claim-record.break', { label: 'Claim Record' });
   g.wire('entry.record', 'record.record');
-  const r = (name: string): [ValueType, Port] => [RECORD.get(name) ?? 'any', `record.${name}`];
+  const r = (name: string): [ValueType, Port] => [typeOf(RECORD, name), `record.${name}`];
+  const present = (id: string, label: string, name: string, fact: string) =>
+    g.wire(
+      condition(g, id, label, { [name]: r(name) }, [{ field: name, op: 'present' }]),
+      `facts.${fact}`
+    );
   g.add('facts', 'billing.check-facts.make', { label: 'Check Facts' });
   for (const f of PASSED) g.wire(`record.${f}`, `facts.${f}`);
-  g.wire(
-    condition(g, 'patientLinked', 'Patient on the Claim', { patientId: r('patientId') }, [
-      ['patientId', 'present']
-    ]),
-    'facts.patientLinked'
-  );
-  for (const [place, field] of [
-    ['patient', 'patientAddressMissing'],
-    ['pickup', 'pickupMissing'],
-    ['destination', 'destinationMissing']
-  ] as const) {
-    g.add(`${place}Gaps`, 'billing.address-gaps', {
-      label: `${place[0]?.toUpperCase()}${place.slice(1)} Gaps`
-    });
+  present('patientLinked', 'Patient on the Claim', 'patientId', 'patientLinked');
+  for (const [place, label, fact] of PLACES) {
+    g.add(`${place}Gaps`, 'billing.address-gaps', { label: `${label} Address Gaps` });
     g.wire(`record.${place}`, `${place}Gaps.place`);
-    g.wire(`${place}Gaps.missing`, `facts.${field}`);
+    g.wire(`${place}Gaps.missing`, `facts.${fact}`);
   }
-  g.add('transportLines', 'std.list.where', {
-    label: 'Lines Other Than No Transport',
-    config: { field: '', op: 'isNot', value: NO_TRANSPORT_CODE }
-  });
-  g.wire('record.lineCodes', 'transportLines.list');
-  const classified = condition(
-    g,
-    'classified',
-    'Classified',
-    {
-      classification: r('classification')
-    },
-    [['classification', 'present']]
-  );
-  const transportTrip = condition(
-    g,
-    'transportTrip',
-    'Classified as a Transport',
-    {
-      classification: r('classification')
-    },
-    [['classification', 'notOneOf', [...NO_TRANSPORT_TRIPS]]]
-  );
-  const billedTransport = condition(
-    g,
-    'billedTransport',
-    'Billed as a Transport',
-    {
-      lines: ['integer', 'transportLines.count']
-    },
-    [['lines', 'gt', 0]]
-  );
-  g.add('byWhat', 'std.logic.select', { label: 'By Classification, Else Lines' });
-  g.wire(classified, 'byWhat.condition');
-  g.wire(transportTrip, 'byWhat.whenTrue');
-  g.wire(billedTransport, 'byWhat.whenFalse');
+  g.add('transported', 'billing.patient-transported', { label: 'Patient Transported' });
+  for (const f of ['classification', 'deceased', 'lineCodes'])
+    g.wire(`record.${f}`, `transported.${f}`);
+  g.wire('transported.transported', 'facts.transports');
   g.wire(
-    condition(
-      g,
-      'transports',
-      'Transported',
-      {
-        deceased: r('deceased'),
-        transport: ['boolean', 'byWhat.result']
-      },
-      [
-        ['deceased', 'isNot', true],
-        ['transport', 'is', true]
-      ]
-    ),
-    'facts.transports'
-  );
-  g.wire(
-    condition(g, 'levelValid', 'Valid Level', { level: r('level') }, [
-      ['level', 'oneOf', [...SERVICE_LEVELS]]
+    condition(g, 'levelValid', 'Level of Service Valid', { level: r('level') }, [
+      { field: 'level', op: 'oneOf', value: [...SERVICE_LEVELS] }
     ]),
     'facts.levelValid'
   );
-  g.add('lineCount', 'std.list.length', { label: 'Charge Lines' });
+  g.add('lineCount', 'std.list.length', { label: 'Charge Line Count' });
   g.wire('record.lineCodes', 'lineCount.list');
   g.wire('lineCount.length', 'facts.lineCount');
   g.add('lineSum', 'std.math.sum', { label: 'Sum of the Lines' });
@@ -419,208 +569,112 @@ const claimCheckFacts = (): GraphDef => {
   g.wire('lineSum.result', 'addsUp.a');
   g.wire('record.totalCents', 'addsUp.b');
   g.wire('addsUp.result', 'facts.linesAddUp');
-  const beforeCodes = condition(
-    g,
-    'beforeCodes',
-    'Before the Loaded Code Year',
-    {
-      serviceDate: r('serviceDate')
-    },
-    [['serviceDate', 'lt', ICD10CM_FROM]]
-  );
-  g.add('unknown', 'std.list.where', {
-    label: 'Unknown Codes',
-    config: { field: 'description', op: 'empty' }
-  });
-  g.wire('record.diagnoses', 'unknown.list');
-  g.add('unknownCodes', 'std.list.pluck', { label: 'Their Codes', values: { field: 'code' } });
-  g.wire('unknown.list', 'unknownCodes.list');
-  g.add('known', 'std.list.where', {
-    label: 'Known Codes',
-    config: { field: 'description', op: 'present' }
-  });
-  g.wire('record.diagnoses', 'known.list');
-  g.add('categories', 'std.list.where', {
-    label: 'Categories',
-    config: { field: 'billable', op: 'isNot', value: true }
-  });
-  g.wire('known.list', 'categories.list');
-  g.add('categoryText', 'std.list.map-rule', {
-    label: 'Each Category as Text',
-    config: { rule: 'billing.diagnosis-text', version: 1, item: 'diagnosis' }
-  });
-  g.wire('categories.list', 'categoryText.list');
-  for (const [id, from, field] of [
-    ['checkedUnknown', 'unknownCodes.list', 'unknownDiagnoses'],
-    ['checkedCategories', 'categoryText.text', 'unbillableDiagnoses']
-  ] as const) {
-    g.add(id, 'std.logic.select', {
-      label: field === 'unknownDiagnoses' ? 'Unknown Unless Before' : 'Categories Unless Before',
-      values: { whenTrue: [] }
-    });
-    g.wire(beforeCodes, `${id}.condition`);
-    g.wire(from, `${id}.whenFalse`);
-    g.wire(`${id}.result`, `facts.${field}`);
-  }
+  g.add('diagnoses', 'billing.diagnoses-to-check', { label: 'Diagnoses to Check' });
+  g.wire('record.diagnoses', 'diagnoses.diagnoses');
+  g.wire('record.serviceDate', 'diagnoses.serviceDate');
+  g.wire('diagnoses.unknown', 'facts.unknownDiagnoses');
+  g.wire('diagnoses.unbillable', 'facts.unbillableDiagnoses');
   g.wire('record.pickupZipKnown', 'facts.pickupZipPriced');
-  g.add('zipText', 'std.text.template', {
-    label: 'Pickup ZIP',
-    config: { template: '{pickup.postalCode}' }
+  const zip = template(g, 'zipText', 'Pickup ZIP Code', '{pickup.postalCode}', {
+    pickup: 'record.pickup'
   });
-  g.wire('record.pickup', 'zipText.pickup');
-  g.add('zipLength', 'std.text.length', { label: 'Pickup ZIP Length' });
-  g.wire('zipText.text', 'zipLength.text');
+  g.add('zipLength', 'std.text.length', { label: 'Pickup ZIP Code Length' });
+  g.wire(zip, 'zipLength.text');
   g.wire(
     condition(
       g,
       'needsPlusFour',
-      'Needs ZIP+4',
-      {
-        split: r('pickupZipSplit'),
-        length: ['integer', 'zipLength.length']
-      },
+      'Pickup Needs ZIP+4',
+      { split: r('pickupZipSplit'), length: ['integer', 'zipLength.length'] },
       [
-        ['split', 'is', true],
-        ['length', 'lt', 9]
+        { field: 'split', op: 'is', value: true },
+        { field: 'length', op: 'lt', value: 9 }
       ]
     ),
     'facts.pickupZipNeedsPlusFour'
   );
-  g.add('mismatches', 'std.list.make', {
-    label: 'ZIP in Another State',
-    config: { count: PLACES.length, type: 'string' }
-  });
-  for (const [i, [place]] of PLACES.entries()) {
-    g.add(`${place}State`, 'std.object.get-field', {
-      label: `${place[0]?.toUpperCase()}${place.slice(1)} State`,
-      config: { record: ADDRESS, path: 'state' }
+  const mismatches = (['pickup', 'destination', 'patient'] as const).map((place) => {
+    const label = PLACES.find(([p]) => p === place)?.[1] ?? place;
+    g.add(`${place}Mismatch`, 'billing.zip-in-another-state', {
+      label: `${label} ZIP in Another State`
     });
-    g.wire(`record.${place}`, `${place}State.record`);
-    g.add(`${place}Differs`, 'std.logic.not-equal', {
-      label: `${place[0]?.toUpperCase()}${place.slice(1)} States Differ`
-    });
-    g.wire(`record.${place}ZipState`, `${place}Differs.a`);
-    g.wire(`${place}State.value`, `${place}Differs.b`);
-    const mismatch = condition(
+    g.wire(`record.${place}`, `${place}Mismatch.place`);
+    g.wire(`record.${place}ZipState`, `${place}Mismatch.zipState`);
+    return select(
       g,
-      `${place}Mismatch`,
-      `${place[0]?.toUpperCase()}${place.slice(1)} ZIP Elsewhere`,
-      {
-        zipState: r(`${place}ZipState`),
-        state: ['string', `${place}State.value`],
-        differs: ['boolean', `${place}Differs.result`]
-      },
-      [
-        ['zipState', 'present'],
-        ['state', 'present'],
-        ['differs', 'is', true]
-      ]
+      `${place}Named`,
+      `${label}, If in Another State`,
+      `${place}Mismatch.elsewhere`,
+      fixed(place)
     );
-    g.add(`${place}Named`, 'std.logic.select', {
-      label: `Mismatched ${title(place)}`,
-      values: { whenTrue: place }
-    });
-    g.wire(mismatch, `${place}Named.condition`);
-    g.wire(`${place}Named.result`, `mismatches.item${i + 1}`);
-  }
-  g.wire('mismatches.list', 'facts.zipStateMismatches');
+  });
   g.wire(
-    condition(g, 'modifierValid', 'Valid Modifier', { modifier: r('originDestination') }, [
-      ['modifier', 'present']
-    ]),
-    'facts.originDestinationValid'
+    makeList(g, 'mismatches', 'Places with a ZIP in Another State', 'string', mismatches),
+    'facts.zipStateMismatches'
   );
-  g.wire(
-    condition(g, 'conditions', 'Conditions Documented', { codes: r('conditionCodes') }, [
-      ['codes', 'present']
-    ]),
-    'facts.conditionsDocumented'
+  present(
+    'modifierValid',
+    'Origin/Destination Modifier Valid',
+    'originDestination',
+    'originDestinationValid'
   );
-  g.wire(
-    condition(
-      g,
-      'timesRecorded',
-      'Times Recorded',
-      {
-        leftScene: r('leftScene'),
-        atDestination: r('atDestination')
-      },
-      [
-        ['leftScene', 'present'],
-        ['atDestination', 'present']
-      ]
-    ),
-    'facts.timesRecorded'
+  present(
+    'conditions',
+    'Ambulance Conditions Documented',
+    'conditionCodes',
+    'conditionsDocumented'
   );
-  for (const [id, start, end, label] of [
-    ['onScene', 'atScene', 'leftScene', 'Seconds on Scene'],
-    ['enRoute', 'leftScene', 'atDestination', 'Seconds En Route']
-  ] as const) {
-    g.add(id, 'std.time.difference', { label, config: { unit: 'seconds' } });
-    g.wire(`record.${start}`, `${id}.start`);
-    g.wire(`record.${end}`, `${id}.end`);
-  }
-  const back = (id: string, label: string, gap: Port) =>
-    condition(g, id, label, { seconds: ['integer', gap] }, [['seconds', 'lt', 0]]);
-  g.wire(
-    condition(
-      g,
-      'inOrder',
-      'Times in Order',
-      {
-        leftEarly: ['boolean', back('leftEarly', 'Left Before Arriving', 'onScene.amount')],
-        arrivedEarly: ['boolean', back('arrivedEarly', 'Arrived Before Leaving', 'enRoute.amount')]
-      },
-      [
-        ['leftEarly', 'isNot', true],
-        ['arrivedEarly', 'isNot', true]
-      ]
-    ),
-    'facts.timesInOrder'
-  );
+  g.add('times', 'billing.trip-times', { label: 'Trip Times' });
+  for (const f of ['atScene', 'leftScene', 'atDestination']) g.wire(`record.${f}`, `times.${f}`);
+  g.wire('times.recorded', 'facts.timesRecorded');
+  g.wire('times.inOrder', 'facts.timesInOrder');
   g.add('pcsDays', 'std.time.difference', {
-    label: 'Days Signed Before the Trip',
+    label: 'Days the PCS Was Signed Before the Trip',
     config: { unit: 'days' }
   });
   g.wire('record.pcsSignedOn', 'pcsDays.start');
   g.wire('record.serviceDate', 'pcsDays.end');
   g.wire('pcsDays.amount', 'facts.pcsDaysBeforeTrip');
-  g.add('medicarePayers', 'std.list.where', {
-    label: 'Medicare Payers',
-    config: { field: 'claimFiling', op: 'oneOf', value: MEDICARE_FILINGS }
-  });
-  g.wire('record.payers', 'medicarePayers.list');
-  g.wire(
-    condition(
-      g,
-      'billsMedicare',
-      'Bills Medicare',
-      {
-        medicare: ['integer', 'medicarePayers.count']
-      },
-      [['medicare', 'gt', 0]]
-    ),
-    'facts.billsMedicare'
-  );
   g.add('payers', 'std.list.map-rule', {
-    label: 'Each Payer',
+    label: 'Facts of Each Payer',
     config: { rule: 'billing.payer-check-facts', version: 1, item: 'payer' }
   });
   g.wire('record.payers', 'payers.list');
   g.wire('record.serviceDate', 'payers.serviceDate');
   g.wire('record.today', 'payers.today');
   g.wire('payers.facts', 'facts.payers');
+  g.add('medicarePayers', 'std.list.where', {
+    label: 'Medicare Payers',
+    config: { field: 'medicare', op: 'is', value: true }
+  });
+  g.wire('payers.facts', 'medicarePayers.list');
+  g.wire(
+    condition(
+      g,
+      'billsMedicare',
+      'Bills Medicare',
+      { medicare: ['integer', 'medicarePayers.count'] },
+      [{ field: 'medicare', op: 'gt', value: 0 }]
+    ),
+    'facts.billsMedicare'
+  );
   g.add('authorizationDays', 'std.time.difference', {
-    label: 'Days Authorization Runs Past the Trip',
+    label: 'Days the Authorization Runs Past the Trip',
     config: { unit: 'days' }
   });
   g.wire('record.serviceDate', 'authorizationDays.start');
   g.wire('record.priorAuthorizationExpiresOn', 'authorizationDays.end');
   g.wire('authorizationDays.amount', 'facts.priorAuthorizationDaysLeft');
-  g.add('recordedParty', 'std.logic.select', { label: 'Recorded Party' });
-  g.wire('record.responsibilityRecorded', 'recordedParty.condition');
-  g.wire('record.responsibleParty', 'recordedParty.whenTrue');
-  g.wire('recordedParty.result', 'facts.recordedParty');
+  g.wire(
+    select(
+      g,
+      'recordedParty',
+      'Recorded Responsible Party',
+      'record.responsibilityRecorded',
+      'record.responsibleParty'
+    ),
+    'facts.recordedParty'
+  );
   g.ret('return');
   g.wire('facts.facts', 'return.facts');
   return g.def;
@@ -640,15 +694,39 @@ export const checkFactGraphs: SeedGraph[] = [
     diagnosisText()
   ),
   asRule(
+    'billing.zip-in-another-state',
+    'ZIP in Another State',
+    'Whether the ZIP code of an address belongs to another state than the address says, by the GeoNames ZIP codes.',
+    zipInAnotherState()
+  ),
+  asRule(
+    'billing.patient-transported',
+    'Patient Transported',
+    'Whether a living patient was transported: by the classification when the trip has one (not a treat-and-no-transport, refusal or not-billable trip), else by a charge line other than the no-transport code.',
+    patientTransported()
+  ),
+  asRule(
+    'billing.diagnoses-to-check',
+    'Diagnoses to Check',
+    'Finds the diagnosis codes that are not ICD-10-CM codes and the categories that need more characters to bill; none for trips before the year of the loaded ICD-10-CM codes.',
+    diagnosesToCheck()
+  ),
+  asRule(
+    'billing.trip-times',
+    'Trip Times',
+    'Whether the report says when the patient left the scene and arrived at the destination, and whether the arrival, departure and destination times are in order.',
+    tripTimes()
+  ),
+  asRule(
     'billing.payer-check-facts',
     'Payer Check Facts',
-    'Works out what the checks read about one payer: linked to the directory, whether the insured is needed, its filing limit (the directory, else the Federal Filing Limits table) and days left to file, Medicare, and a facility stay it reports on the date of service.',
+    'Works out what the checks read about one payer: whether it is linked to the payer directory, whether the insured is needed, its filing limit (the directory, else the Federal Filing Limits table) and days left to file, whether the Medicare Claim Filings table makes it Medicare, and a facility stay it reports on the date of service.',
     payerCheckFacts()
   ),
   asRule(
     'billing.claim-check-facts',
     'Claim Check Facts',
-    'Works out what the claim checks read from the saved claim: whether the patient was transported, address gaps, charge lines adding up, diagnoses to check, ZIP code problems, trip times in order, days a certification was signed before the trip, Medicare, each payer, and days a prior authorization runs past the trip.',
+    'Works out what the claim checks read from the saved claim: whether the patient was transported, address gaps, charge lines adding up, diagnoses to check, ZIP code problems, trip times, the days a physician certification was signed before the trip, each payer and whether one is Medicare, and the days a prior authorization runs past the trip.',
     claimCheckFacts()
   )
 ];

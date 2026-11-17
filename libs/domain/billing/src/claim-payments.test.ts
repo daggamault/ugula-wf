@@ -91,7 +91,7 @@ describe('readPayment', () => {
   it('falls back to a routing message when the route gives none', () => {
     assert.equal(
       readPayment(entry, { ...posting('review'), message: '' }),
-      'Remittance Routing leaves this payment to be posted another way'
+      'Route Remittance leaves this payment to be posted another way'
     );
   });
 

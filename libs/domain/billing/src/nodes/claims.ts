@@ -1,12 +1,12 @@
 import { actionNode, branchNode, type PinSpec, pin, pureNode } from '@ugula/graph';
 import { priceLines, readLines, readPricedLines } from '../charges.ts';
-import { CHECK_FACTS, CLAIM_DOCUMENT, CLAIM_ISSUE } from '../check-models.ts';
+import { CLAIM_DOCUMENT, CLAIM_ISSUE, CLAIM_RECORD } from '../check-models.ts';
 import { chargeChanges, editedValues, readClaimPatch } from '../claim-fix.ts';
 import { CLAIM_FIX_FIELDS } from '../claim-fix-fields.ts';
 import { fixForm } from '../claim-fix-form.ts';
 import { CLAIM, LINE, SERVICE } from '../claim-models.ts';
-import { type ClaimCheck, checkFactsOf, readIssues, readNewClaim } from '../claim-validation.ts';
-import { claimProgress, RESTARTABLE_STATUSES } from '../claims.ts';
+import { type ClaimCheck, claimRecordOf, readIssues, readNewClaim } from '../claim-validation.ts';
+import { claimProgress } from '../claims.ts';
 import { FACILITY_KINDS, isResponsibleParty } from '../facilities.ts';
 import { BLOB } from '../model-kit.ts';
 import { PATIENT } from '../party-models.ts';
@@ -122,7 +122,7 @@ export const claimNodes: NodesOf = (stores) => {
       title: 'Price Lines',
       category: CATEGORY,
       description:
-        'Prices HCPCS lines at the unit price chosen for each code, rounding each line to the cent, and lists the codes that have no price.',
+        'Prices HCPCS lines at the unit price chosen for each code for the units given, rounding each line total to the cent, and lists the codes that have no price.',
       level: 'basic',
       keywords: ['price', 'charges', 'total'],
       inputs: [
@@ -191,18 +191,18 @@ export const claimNodes: NodesOf = (stores) => {
       }
     }),
     actionNode({
-      type: 'billing.read-claim-checks',
-      title: 'Read Claim for Checks',
+      type: 'billing.read-claim',
+      title: 'Read Claim',
       category: CATEGORY,
       description:
-        'Loads the saved claim as the check rules read it (Check Facts): patient, trip, charges, diagnoses, places, documentation and each payer, with the days a certification was signed before the trip and the days left to file worked out. Also gives the claim for task details and the payers already skipped, whose issues no longer matter.',
+        'Loads the saved claim as it is stored (Claim Record): patient, trip, charges, diagnoses, places, documentation and each payer, with today in the time zone of the agency. Also gives the claim for task details and the payers already skipped.',
       level: 'basic',
-      keywords: ['validate', 'check', 'facts'],
+      keywords: ['claim', 'record', 'load', 'check'],
       inputs: [claimIdPin],
       outputs: [
-        pin('facts', CHECK_FACTS.type, {
-          label: 'Check Facts',
-          description: 'The claim as the check rules read it.'
+        pin('record', CLAIM_RECORD.type, {
+          label: 'Claim Record',
+          description: 'The saved claim as it is stored.'
         }),
         pin('claim', { object: {} }, { description: 'The saved claim, for task details.' }),
         pin(
@@ -223,7 +223,7 @@ export const claimNodes: NodesOf = (stores) => {
           claims().ledger(ctx.runId, claimId)
         ]);
         return {
-          facts: checkFactsOf(check, ctx.now),
+          record: claimRecordOf(check, ctx.now),
           claim: check,
           skipped: ledger ? claimProgress(ledger).skipped : []
         };
@@ -543,7 +543,7 @@ export const claimNodes: NodesOf = (stores) => {
         return { document };
       }
     }),
-    branchNode({
+    actionNode({
       type: 'billing.note-revision',
       title: 'Note PCR Revision',
       category: CATEGORY,
@@ -565,17 +565,6 @@ export const claimNodes: NodesOf = (stores) => {
           description: 'The report the claim was billed from before.'
         })
       ],
-      exits: {
-        restartable: {
-          label: 'Restartable',
-          description:
-            'The claim can still be worked again from the new report (draft, needs review or void).'
-        },
-        billed: {
-          label: 'Billed',
-          description: 'The claim was already billed from the previous report.'
-        }
-      },
       compute: async (inputs, _, ctx) => {
         const claimId = claimIdOf(inputs.claimId);
         const report = {
@@ -588,12 +577,7 @@ export const claimNodes: NodesOf = (stores) => {
           ctx.key,
           report
         );
-        return {
-          exit: (RESTARTABLE_STATUSES as readonly string[]).includes(status)
-            ? 'restartable'
-            : 'billed',
-          outputs: { status, previous }
-        };
+        return { status, previous };
       }
     })
   ];

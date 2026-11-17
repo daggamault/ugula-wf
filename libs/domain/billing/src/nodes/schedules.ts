@@ -1,6 +1,6 @@
-import { actionNode, pin } from '@ugula/graph';
+import { actionNode, isIsoDate, pin } from '@ugula/graph';
 import { invoiceTotal, renderFacilityInvoice } from '../documents.ts';
-import { DEADLINE } from '../ledger-models.ts';
+import { CERTIFICATION_FACTS, FILING_FACTS, REMINDER_FACTS, TASK_DUE } from '../ledger-models.ts';
 import { requiredText } from '../values.ts';
 import type { NodesOf } from './stores.ts';
 
@@ -30,26 +30,58 @@ export const scheduleNodes: NodesOf = (stores) => {
       compute: async (_, __, ctx) => ({ today: await today(ctx.runId, ctx.now) })
     }),
     actionNode({
-      type: 'billing.find-deadlines',
-      title: 'Find Deadlines',
+      type: 'billing.read-deadlines',
+      title: 'Read Deadlines',
       category: CATEGORY,
       description:
-        "Lists the agency's claim deadlines coming up as of today: timely filing for payers not billed yet, the due dates of open appeal, records request and refund tasks, and physician certifications about to expire for patients on scheduled trips, each with the days left and whether a reminder was already opened for that deadline (per patient for certifications, and once more after a filing limit passes). Decides nothing; Deadline Action does.",
+        "Reads what the agency's claim deadlines are worked out from: claims whose next payer is not billed yet, with that payer's claim filing indicator, the filing limit the payer directory sets and the date of service; each patient's last scheduled trip with a physician certification on file, among trips on or after a date; open tasks with a due date and the workflow that opened them; and the deadline reminders already opened. Decides nothing; Upcoming Deadlines does.",
       level: 'basic',
       keywords: ['timely filing', 'due date', 'reminder', 'deadline'],
-      inputs: [],
+      inputs: [
+        pin('since', 'string', {
+          label: 'Trips Since',
+          description:
+            'The earliest scheduled trip whose physician certification is read (YYYY-MM-DD).'
+        })
+      ],
       outputs: [
         pin(
-          'deadlines',
-          { list: DEADLINE.type },
+          'filings',
+          { list: FILING_FACTS.type },
           {
-            description: 'The claim deadlines coming up, with the days left.'
+            description:
+              'Claims whose next payer is not billed yet, with what sets their filing limit.'
+          }
+        ),
+        pin(
+          'certifications',
+          { list: CERTIFICATION_FACTS.type },
+          {
+            description:
+              "Each patient's last scheduled trip since the date with a physician certification on file, and when it was signed."
+          }
+        ),
+        pin(
+          'tasks',
+          { list: TASK_DUE.type },
+          {
+            label: 'Task Due Dates',
+            description:
+              'Open tasks on claims other than deadline reminders, with their due dates and the workflow that opened them.'
+          }
+        ),
+        pin(
+          'reminders',
+          { list: REMINDER_FACTS.type },
+          {
+            description: 'Deadline reminders already opened, open or done.'
           }
         )
       ],
-      compute: async (_, __, ctx) => ({
-        deadlines: await schedules().deadlines(ctx.runId, await today(ctx.runId, ctx.now))
-      })
+      compute: async ({ since }, __, ctx) => {
+        if (!isIsoDate(since)) throw new Error(`${since} is not a date`);
+        return schedules().deadlineFacts(ctx.runId, since);
+      }
     }),
     actionNode({
       type: 'billing.raise-task',

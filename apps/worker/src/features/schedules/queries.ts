@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import {
   type CalendarStore,
   CLOSED_CLAIM_STATUSES,
-  type Deadline,
   type FacilityInvoiceSource,
   money,
   type ScheduleStore
@@ -15,37 +14,38 @@ import { runAgency } from '../../shared/tenancy.ts';
 
 type Blobs = Pick<BlobStore, 'putBytes'>;
 
-const WINDOW_DAYS = 90;
-
-const PCS_DAYS = 60;
-
-const TASK_DEADLINES = {
-  'billing.work-denial': 'appeal',
-  'billing.log-records-request': 'records',
-  'billing.refund-overpayment': 'refund'
-} as const;
-
 const REMINDER_WORKFLOW = 'billing.deadline-reminder';
 
 const OPEN_EXCLUDED = sql.join([...CLOSED_CLAIM_STATUSES, 'draft'].map((s) => sql.lit(s)));
 
 const reference = sql<string>`concat_ws(' · ', c.number, c.pcr_number, nullif(concat_ws(' ', p.first_name, p.last_name), ''))`;
 
-const taskKind = sql<string>`case g.key ${sql.join(
-  Object.entries(TASK_DEADLINES).map(([key, kind]) => sql`when ${key} then ${kind}`),
-  sql` `
-)} else 'task' end`;
+type ClaimRow = { claim_id: string; patient_id: string | null; reference: string };
 
-type DeadlineRow = {
+type FilingRow = ClaimRow & {
+  coverage_id: string;
+  claim_filing: string | null;
+  filing_limit_days: number | null;
+  service_date: string;
+};
+
+type CertificationRow = ClaimRow & { signed_on: string; service_date: string };
+
+type TaskRow = ClaimRow & { workflow: string; due_on: string; task_id: string; priority: number };
+
+type ReminderRow = {
   kind: string;
   claim_id: string;
-  coverage_id: string | null;
-  reference: string;
+  patient_id: string | null;
   due_on: string;
-  days_left: number;
-  task_id: string | null;
-  priority: number;
-  reminded: boolean;
+  opened_on: string;
+};
+
+type DeadlineRows = {
+  filings: FilingRow[];
+  certifications: CertificationRow[];
+  tasks: TaskRow[];
+  reminders: ReminderRow[];
 };
 
 export const invoiceKey = (agencyId: string, facilityId: string, sourceKey: string) =>
@@ -93,16 +93,15 @@ export const claimScheduleRun = (db: Db, agencyId: string, workflow: string, fir
     .executeTakeFirst();
 
 export const createScheduleStore = (db: Db, blobs: Blobs): ScheduleStore => ({
-  deadlines: async (runId, today) => {
-    const { rows } = await sql<DeadlineRow>`
+  deadlineFacts: async (runId, since) => {
+    const { rows } = await sql<DeadlineRows>`
       with agency as (
         select r.agency_id, ${agencyTimeZone(sql.ref('r.agency_id'))} as zone
         from workflow_runs r where r.id = ${runId}
       ),
-      filing as (
-        select 'timelyFiling' as kind, c.id as claim_id, c.patient_id, cc.id as coverage_id, ${reference} as reference,
-          (c.service_date + coalesce(dp.filing_limit_days, case when dp.claim_filing in ('MA', 'MB', 'CH') then 365 end))::date as due_on,
-          null::uuid as task_id, 0 as priority
+      filings as (
+        select c.id as claim_id, c.patient_id, ${reference} as reference, cc.id as coverage_id,
+          dp.claim_filing, dp.filing_limit_days, c.service_date::text as service_date
         from claims c
         join agency a on a.agency_id = c.agency_id
         join lateral (
@@ -123,9 +122,19 @@ export const createScheduleStore = (db: Db, blobs: Blobs): ScheduleStore => ({
               )
           )
       ),
+      certifications as (
+        select distinct on (c.patient_id) c.id as claim_id, c.patient_id, ${reference} as reference,
+          c.pcs_signed_on::text as signed_on, c.service_date::text as service_date
+        from claims c
+        join agency a on a.agency_id = c.agency_id
+        left join patients p on p.id = c.patient_id
+        where c.classification = 'scheduled' and c.pcs_signed_on is not null and c.patient_id is not null
+          and c.service_date >= ${since}::date
+        order by c.patient_id, c.service_date desc, c.number desc
+      ),
       due as (
-        select ${taskKind} as kind, c.id as claim_id, c.patient_id, null::uuid as coverage_id, ${reference} as reference,
-          (t.due_at at time zone a.zone)::date as due_on, t.id as task_id, t.priority
+        select g.key as workflow, c.id as claim_id, c.patient_id, ${reference} as reference,
+          (t.due_at at time zone a.zone)::date::text as due_on, t.id as task_id, t.priority
         from tasks t
         join agency a on a.agency_id = t.agency_id
         join claim_runs cr on cr.run_id = t.run_id
@@ -136,51 +145,65 @@ export const createScheduleStore = (db: Db, blobs: Blobs): ScheduleStore => ({
         join graphs g on g.id = v.graph_id
         where t.status = 'open' and t.due_at is not null and g.key <> ${REMINDER_WORKFLOW}
       ),
-      pcs as (
-        select distinct on (c.patient_id) 'pcs' as kind, c.id as claim_id, c.patient_id, null::uuid as coverage_id,
-          ${reference} as reference, (c.pcs_signed_on + ${PCS_DAYS}::int)::date as due_on, null::uuid as task_id, 0 as priority
-        from claims c
-        join agency a on a.agency_id = c.agency_id
-        left join patients p on p.id = c.patient_id
-        where c.classification = 'scheduled' and c.pcs_signed_on is not null and c.patient_id is not null
-          and c.service_date >= ${today}::date - ${PCS_DAYS}::int
-        order by c.patient_id, c.service_date desc, c.number desc
+      reminders as (
+        select r.inputs ->> 'kind' as kind, c.id as claim_id, c.patient_id, r.inputs ->> 'dueOn' as due_on,
+          (t.created_at at time zone a.zone)::date::text as opened_on
+        from tasks t
+        join agency a on a.agency_id = t.agency_id
+        join claim_runs cr on cr.run_id = t.run_id
+        join claims c on c.id = cr.claim_id
+        join workflow_runs r on r.id = t.run_id
+        join graph_versions v on v.id = r.graph_version_id
+        join graphs g on g.id = v.graph_id
+        where g.key = ${REMINDER_WORKFLOW} and t.status in ('open', 'completed')
+          and r.inputs ->> 'kind' is not null and r.inputs ->> 'dueOn' is not null
+          and (
+            c.id in (select claim_id from filings union all select claim_id from due)
+            or c.patient_id in (select patient_id from certifications)
+          )
       )
-      select d.kind, d.claim_id, d.coverage_id, d.reference, d.due_on::text as due_on,
-        (d.due_on - ${today}::date)::int as days_left, d.task_id, d.priority,
-        exists (
-          select 1 from tasks t
-          join claim_runs cr on cr.run_id = t.run_id
-          join claims rc on rc.id = cr.claim_id
-          join workflow_runs r on r.id = t.run_id
-          join graph_versions v on v.id = r.graph_version_id
-          join graphs g on g.id = v.graph_id
-          cross join agency a
-          where g.key = ${REMINDER_WORKFLOW} and t.status in ('open', 'completed')
-            and r.inputs ->> 'kind' = d.kind and r.inputs ->> 'dueOn' = d.due_on::text
-            and case when d.kind = 'pcs' then rc.patient_id = d.patient_id else rc.id = d.claim_id end
-            and (d.kind = 'pcs' or d.due_on >= ${today}::date or (t.created_at at time zone a.zone)::date > d.due_on)
-        ) as reminded
-      from (
-        select kind, claim_id, patient_id, coverage_id, reference, due_on, task_id, priority from filing
-        union all select kind, claim_id, patient_id, coverage_id, reference, due_on, task_id, priority from due
-        union all select kind, claim_id, patient_id, coverage_id, reference, due_on, task_id, priority from pcs
-      ) d
-      where d.due_on is not null and d.due_on - ${today}::date <= ${WINDOW_DAYS}::int
-      order by d.due_on, d.kind, d.claim_id`.execute(db);
-    return rows.map(
-      (r): Deadline => ({
+      select
+        (select coalesce(json_agg(f order by f.claim_id), '[]') from filings f) as filings,
+        (select coalesce(json_agg(x order by x.patient_id), '[]') from certifications x) as certifications,
+        (select coalesce(json_agg(d order by d.task_id), '[]') from due d) as tasks,
+        (select coalesce(json_agg(m order by m.claim_id, m.due_on), '[]') from reminders m) as reminders`.execute(
+      db
+    );
+    const [facts] = rows;
+    if (!facts) throw new Error('The deadlines query gave no row');
+    const claimOf = (r: ClaimRow) => ({
+      claimId: r.claim_id,
+      patientId: r.patient_id,
+      reference: r.reference
+    });
+    return {
+      filings: facts.filings.map((r) => ({
+        ...claimOf(r),
+        coverageId: r.coverage_id,
+        claimFiling: r.claim_filing,
+        filingLimitDays: r.filing_limit_days,
+        serviceDate: r.service_date
+      })),
+      certifications: facts.certifications.map((r) => ({
+        ...claimOf(r),
+        signedOn: r.signed_on,
+        serviceDate: r.service_date
+      })),
+      tasks: facts.tasks.map((r) => ({
+        workflow: r.workflow,
+        ...claimOf(r),
+        dueOn: r.due_on,
+        taskId: r.task_id,
+        priority: r.priority
+      })),
+      reminders: facts.reminders.map((r) => ({
         kind: r.kind,
         claimId: r.claim_id,
-        coverageId: r.coverage_id,
-        reference: r.reference,
+        patientId: r.patient_id,
         dueOn: r.due_on,
-        daysLeft: r.days_left,
-        taskId: r.task_id,
-        priority: r.priority,
-        reminded: r.reminded
-      })
-    );
+        openedOn: r.opened_on
+      }))
+    };
   },
 
   raiseTask: async (runId, taskId, priority) => {

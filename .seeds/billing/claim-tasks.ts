@@ -2,11 +2,22 @@ import { CLAIM_FIX_FIELDS, PAYMENT_KINDS } from '@ugula/billing';
 import type { FieldSpec, GraphDef } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import { p } from './glossary.ts';
-import { asWorkflow, type Builder, flow, summary, T } from './shared.ts';
+import {
+  asWorkflow,
+  type Builder,
+  condition,
+  fixed,
+  flow,
+  makeObject,
+  type Port,
+  select,
+  summary,
+  T
+} from './shared.ts';
 
-const EDIT_PERMISSION = 'claims:update';
+export const EDIT_PERMISSION = 'claims:update';
 
-const choicesOf = (labels: Readonly<Record<string, string>>) =>
+export const choicesOf = (labels: Readonly<Record<string, string>>) =>
   Object.entries(labels).map(([value, label]) => ({ value, label }));
 
 export const claimTask = () =>
@@ -24,46 +35,43 @@ export const beginClaimTask = (g: Builder) => {
   g.wire('entry.claimId', 'follow.claimId', 'ledger.claimId');
 };
 
-const assigned = (g: Builder, task: string) => {
+export const assigned = (g: Builder, task: string) => {
   g.wire('entry.assignee', `${task}.assignee`);
   g.wire('ledger.reference', `${task}.subject`);
 };
 
-export const claimSummary = (g: Builder, task: string, text: string, refusable = false) => {
-  if (!refusable) {
-    summary(g, task, text, { reference: 'ledger.reference' });
-    return;
-  }
+export const refusedSummary = (
+  g: Builder,
+  task: string,
+  text: string,
+  from: Record<string, Port>
+) => {
   g.add('problem', 'std.var.get', { label: 'Why It Was Refused', config: { name: 'problem' } });
-  summary(g, task, `[Not saved: {problem}. ]${text}`, {
-    reference: 'ledger.reference',
-    problem: 'problem.value'
-  });
+  summary(g, task, `[Not saved: {problem}. ]${text}`, { ...from, problem: 'problem.value' });
 };
-const rememberRefusal = (g: Builder, node: string, retry: `${string}.${string}`) => {
-  g.add('remember', 'std.var.set', { label: 'Remember Why', config: { name: 'problem' } });
-  g.wire(`${node}.refused`, 'remember.exec');
-  g.wire(`${node}.reason`, 'remember.value');
-  g.wire('remember.then', retry);
+
+export const claimSummary = (g: Builder, task: string, text: string, refusable = false) =>
+  (refusable ? refusedSummary : summary)(g, task, text, { reference: 'ledger.reference' });
+
+export const rememberRefusal = (g: Builder, node: string, retry: Port, id = 'remember') => {
+  g.add(id, 'std.var.set', { label: 'Remember Why', config: { name: 'problem' } });
+  g.wire(`${node}.refused`, `${id}.exec`);
+  g.wire(`${node}.reason`, `${id}.value`);
+  g.wire(`${id}.then`, retry);
 };
 
 const correctClaimData = (): GraphDef => {
   const g = claimTask();
   beginClaimTask(g);
   g.add('check', 'billing.check-claim', { label: 'Check Claim', values: { all: true } });
-  g.add('context', 'std.object.make', {
-    label: 'Correction Context',
-    config: {
-      fields: [
-        { name: 'issues', type: T.issues },
-        { name: 'claim', type: { object: {} } }
-      ]
-    }
+  const context = makeObject(g, 'context', 'Issues and Claim', {
+    issues: [T.issues, 'check.issues'],
+    claim: [{ object: {} }, 'check.claim']
   });
   claimSummary(
     g,
     'task',
-    'Correct what claim {reference} sends on its 837P; charges are priced again when the trip, service, miles or payers change, and the claim is checked again.'
+    'Correct what claim {reference} sends on its 837P; charges are priced again when the trip, service, miles or payers change, and the claim is checked again'
   );
   g.add('task', 'std.human.task', {
     label: 'Correct Claim Data',
@@ -100,11 +108,9 @@ const correctClaimData = (): GraphDef => {
   );
   g.wire('check.valid', 'task.exec');
   g.wire('check.invalid', 'task.exec');
-  g.wire('check.issues', 'context.issues');
-  g.wire('check.claim', 'context.claim');
   for (const pin of ['visible', 'defaults', 'options']) g.wire(`check.${pin}`, `task.${pin}`);
   g.wire('check.defaults', 'patch.shown');
-  g.wire('context.object', 'task.context', 'reprice.context');
+  g.wire(context, 'task.context', 'reprice.context');
   assigned(g, 'task');
   g.wire('ledger.reference', 'reprice.subject');
   g.wire('task.save', 'patch.exec');
@@ -128,21 +134,20 @@ const correctClaimData = (): GraphDef => {
 const changeResponsibleParty = (): GraphDef => {
   const g = claimTask();
   beginClaimTask(g);
-  g.add('read', 'billing.read-claim-checks', { label: 'Read the Payers' });
+  g.add('read', 'billing.read-claim', { label: 'Read the Payers' });
   g.add('choices', 'billing.facility-choices', { label: 'Facility Choices' });
   g.add('claimPayers', 'std.object.get', {
     label: 'Payers on the Claim',
     values: { path: 'payers' }
   });
   g.add('payerNames', 'std.list.pluck', { label: 'Their Names', values: { field: 'name' } });
-  g.add('defaults', 'std.object.make', {
-    label: 'Payers Now',
-    config: { fields: [{ name: 'payers', type: { list: 'string' } }] }
+  const defaults = makeObject(g, 'defaults', 'Payers Now', {
+    payers: [{ list: 'string' }, 'payerNames.list']
   });
   claimSummary(
     g,
     'task',
-    'Say who pays for the trip on claim {reference}: its payers, in billing order (the patient is billed after the last one), or a facility that is responsible instead.',
+    'Say who pays for the trip on claim {reference}: its payers, in billing order (the patient is billed after the last one), or a facility that is responsible instead',
     true
   );
   g.add('task', 'std.human.task', {
@@ -175,7 +180,7 @@ const changeResponsibleParty = (): GraphDef => {
   });
   g.add('set', 'billing.set-claim-payers', { label: 'Set the Payers' });
   rememberRefusal(g, 'set', 'read.exec');
-  g.add('facts', 'billing.claim-ledger.break');
+  g.add('facts', 'billing.claim-ledger.break', { label: 'Claim Ledger' });
   g.add('wasFacility', 'std.flow.branch', { label: 'Was a Facility Responsible?' });
   g.add('toPayers', 'billing.record-responsibility', {
     label: 'Bill the Payers',
@@ -185,9 +190,8 @@ const changeResponsibleParty = (): GraphDef => {
     label: 'Bill the Facility',
     values: { party: 'facility' }
   });
-  g.add('eligibilityInputs', 'std.object.make', {
-    label: 'Eligibility Inputs',
-    config: { fields: [{ name: 'claimId', type: { id: 'claim' } }] }
+  const eligibilityInputs = makeObject(g, 'eligibilityInputs', 'Eligibility Inputs', {
+    claimId: [{ id: 'claim' }, 'entry.claimId']
   });
   g.add('eligibility', 'std.flow.start-workflow', {
     label: 'Check Eligibility of the Payers',
@@ -198,18 +202,10 @@ const changeResponsibleParty = (): GraphDef => {
   g.wire('read.then', 'choices.exec');
   g.wire('choices.then', 'task.exec');
   g.wire('choices.options', 'task.options');
-  g.wire(
-    'entry.claimId',
-    'read.claimId',
-    'set.claimId',
-    'toPayers.claimId',
-    'toFacility.claimId',
-    'eligibilityInputs.claimId'
-  );
+  g.wire('entry.claimId', 'read.claimId', 'set.claimId', 'toPayers.claimId', 'toFacility.claimId');
   g.wire('read.claim', 'claimPayers.object');
   g.wire('claimPayers.value', 'payerNames.list');
-  g.wire('payerNames.list', 'defaults.payers');
-  g.wire('defaults.object', 'task.defaults');
+  g.wire(defaults, 'task.defaults');
   assigned(g, 'task');
   g.wire('task.save', 'set.exec');
   g.wire('task.payers', 'set.payers');
@@ -220,7 +216,7 @@ const changeResponsibleParty = (): GraphDef => {
   g.wire('wasFacility.false', 'eligibility.exec');
   g.wire('toPayers.then', 'eligibility.exec');
   g.wire('task.note', 'toPayers.note', 'toFacility.note');
-  g.wire('eligibilityInputs.object', 'eligibility.inputs');
+  g.wire(eligibilityInputs, 'eligibility.inputs');
   g.wire('eligibility.then', 'done.exec');
   g.wire('task.billFacility', 'toFacility.exec');
   g.wire('task.facilityId', 'toFacility.facilityId');
@@ -262,9 +258,9 @@ const PAYMENT_FIELDS: FieldSpec[] = [
 const postPayment = (): GraphDef => {
   const g = claimTask();
   beginClaimTask(g);
-  g.add('facts', 'billing.claim-ledger.break');
+  g.add('facts', 'billing.claim-ledger.break', { label: 'Claim Ledger' });
   g.add('choices', 'billing.fix-claim-form', {
-    label: 'Payer Choices',
+    label: 'Claim Form Choices',
     values: { all: true, issues: [] }
   });
   g.add('payers', 'std.object.pick', { label: 'Payers', values: { keys: ['coverageId'] } });
@@ -272,13 +268,20 @@ const postPayment = (): GraphDef => {
     label: 'Payer Choices',
     values: { path: 'coverageId' }
   });
-  g.add('noPayers', 'std.logic.is-null', { label: 'No Payer to Choose' });
-  g.add('visible', 'std.logic.select', {
-    label: 'Fields to Ask',
-    values: {
-      whenTrue: PAYMENT_FIELDS.map((f) => f.name).filter((name) => name !== 'coverageId')
-    }
-  });
+  const noPayers = condition(
+    g,
+    'noPayers',
+    'No Payer to Choose',
+    { choices: ['any', 'payerChoices.value'] },
+    [{ field: 'choices', op: 'empty' }]
+  );
+  const visible = select(
+    g,
+    'visible',
+    'Fields to Ask',
+    noPayers,
+    fixed(PAYMENT_FIELDS.map((f) => f.name).filter((name) => name !== 'coverageId'))
+  );
   g.add('defaults', 'std.object.make', {
     label: 'Payment Defaults',
     config: {
@@ -292,7 +295,7 @@ const postPayment = (): GraphDef => {
   claimSummary(
     g,
     'task',
-    'Post a payment or refund for claim {reference} that came outside an 835; it is reconciled like a remittance.',
+    'Post a payment or refund for claim {reference} that came outside an 835; it is reconciled like a remittance',
     true
   );
   g.add('task', 'std.human.task', {
@@ -312,27 +315,24 @@ const postPayment = (): GraphDef => {
       prefill: 'suggested'
     }
   });
-  g.add('routed', 'std.logic.condition', {
-    label: 'From a Payer',
-    config: {
-      inputs: [
-        { name: 'kind', type: 'string' },
-        { name: 'coverageId', type: { id: 'coverage' } }
-      ],
-      rules: [
-        { field: 'kind', op: 'isNot', value: 'refunded' },
-        { field: 'coverageId', op: 'present' }
-      ]
-    }
-  });
+  const fromPayer = condition(
+    g,
+    'routed',
+    'A Payer Paid It',
+    { kind: ['string', 'task.kind'], coverageId: [{ id: 'coverage' }, 'task.coverageId'] },
+    [
+      { field: 'kind', op: 'isNot', value: 'refunded' },
+      { field: 'coverageId', op: 'present' }
+    ]
+  );
   g.add('fromPayer', 'std.flow.branch', { label: 'Route It?' });
   g.add('line', 'billing.payment-line', { label: 'Payment Line' });
   g.add('route', 'billing.route-remittance', { label: 'Route Remittance' });
   g.add('post', 'billing.post-claim-payment', { label: 'Post the Payment' });
   g.add('postRouted', 'billing.post-claim-payment', { label: 'Post the Routed Payment' });
   rememberRefusal(g, 'post', 'choices.exec');
-  g.add('routedRefused', 'std.var.set', { label: 'Remember Why', config: { name: 'problem' } });
-  g.add('lineRefused', 'std.var.set', { label: 'Remember Why', config: { name: 'problem' } });
+  rememberRefusal(g, 'postRouted', 'choices.exec', 'routedRefused');
+  rememberRefusal(g, 'line', 'choices.exec', 'lineRefused');
   g.ret('done');
   g.wire('ledger.ledger', 'facts.ledger');
   g.wire('facts.coverageId', 'defaults.coverageId');
@@ -340,16 +340,12 @@ const postPayment = (): GraphDef => {
   g.wire('entry.claimId', 'choices.claimId', 'post.claimId', 'postRouted.claimId', 'line.claimId');
   g.wire('choices.options', 'payers.object');
   g.wire('payers.object', 'task.options', 'payerChoices.object');
-  g.wire('payerChoices.value', 'noPayers.value');
-  g.wire('noPayers.result', 'visible.condition');
   g.wire('choices.then', 'task.exec');
-  g.wire('visible.result', 'task.visible');
+  g.wire(visible, 'task.visible');
   g.wire('defaults.object', 'task.defaults');
   assigned(g, 'task');
   g.wire('task.post', 'fromPayer.exec');
-  g.wire('task.kind', 'routed.kind');
-  g.wire('task.coverageId', 'routed.coverageId');
-  g.wire('routed.result', 'fromPayer.condition');
+  g.wire(fromPayer, 'fromPayer.condition');
   g.wire('fromPayer.true', 'line.exec');
   g.wire('fromPayer.false', 'post.exec');
   for (const { name } of PAYMENT_FIELDS) {
@@ -358,12 +354,6 @@ const postPayment = (): GraphDef => {
   g.wire('line.read', 'postRouted.exec');
   g.wire('line.line', 'route.line');
   g.wire('route.posting', 'postRouted.posting');
-  g.wire('postRouted.refused', 'routedRefused.exec');
-  g.wire('postRouted.reason', 'routedRefused.value');
-  g.wire('routedRefused.then', 'choices.exec');
-  g.wire('line.refused', 'lineRefused.exec');
-  g.wire('line.reason', 'lineRefused.value');
-  g.wire('lineRefused.then', 'choices.exec');
   g.wire('task.completedBy', 'post.postedBy', 'postRouted.postedBy');
   g.wire('post.posted', 'done.exec');
   g.wire('postRouted.posted', 'done.exec');
@@ -375,19 +365,19 @@ export const claimTaskGraphs: SeedGraph[] = [
   asWorkflow(
     'billing.correct-claim-data',
     'Correct Claim Data',
-    'Started from a claim: a Correct claim data task with every field the claim has, then applies the corrections (logged, so an approved claim is reviewed again), reprices when the Reprice Triggers rule says so and checks the claim again.',
+    'Started from a claim: a Correct claim data task shows every field the claim has. The corrections are applied and logged, so an approved claim is reviewed again; the charges are repriced when the Reprice Triggers rule says so, and the claim is checked again.',
     correctClaimData()
   ),
   asWorkflow(
     'billing.change-responsible-party',
     'Change Responsible Party',
-    'Started from a claim: a Change responsible party task sets who pays for the trip: the payers in billing order (Set Claim Payers, asked again with the reason when refused, then a facility that was responsible is cleared and eligibility is checked), or a facility from the directory that is responsible instead, recorded with the note, which signals the claim cycle.',
+    'Started from a claim: a Change responsible party task says who pays for the trip. Saving payers sets them in billing order (Set Claim Payers; when it refuses, the task comes back with why), clears a facility that was responsible and checks eligibility. Billing a facility from the directory records it as responsible, with the note, which signals the claim cycle.',
     changeResponsibleParty()
   ),
   asWorkflow(
     'billing.post-payment',
     'Post Payment',
-    'Started from a claim: a Post payment task enters a payment or refund that came outside an 835, then posts it like a remittance (Post Claim Payment, asked again with the reason when refused).',
+    'Started from a claim: a Post payment task enters a payment or refund that came outside an 835 and posts it like a remittance (Post Claim Payment; when it refuses, the task comes back with why).',
     postPayment()
   )
 ];

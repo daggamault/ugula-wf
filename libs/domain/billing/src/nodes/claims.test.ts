@@ -123,7 +123,7 @@ describe('claimNodes', () => {
       /No claim to work on/
     );
   });
-  it('saves a draft claim and reads it back as check facts', async () => {
+  it('saves a draft claim and reads it back as stored', async () => {
     const claims = memoryClaims();
     const node = nodesFor(claims.store);
     await run(node('save-claim'), { claimId: 'c1', claim });
@@ -136,19 +136,16 @@ describe('claimNodes', () => {
     assert.equal(saved?.classification, 'emergency');
     assert.equal(saved?.coverages[0]?.memberId, 'M1');
     assert.deepEqual(saved?.details.diagnoses, ['R079']);
-    const read = await run(node('read-claim-checks'), { claimId: 'c1' });
-    const facts = read.outputs.facts as { diagnosisCount: number; pickupMissing: string[] };
-    assert.equal(facts.diagnosisCount, 1);
-    assert.deepEqual(facts.pickupMissing, ['street address', 'city', 'state', 'ZIP code']);
+    const read = await run(node('read-claim'), { claimId: 'c1' });
+    const record = read.outputs.record as { diagnosisCount: number; classification: string };
+    assert.equal(record.diagnosisCount, 1);
+    assert.equal(record.classification, 'emergency');
     assert.deepEqual(read.outputs.skipped, []);
     await assert.rejects(
       async () => run(node('save-claim'), { claimId: 'c1', claim: { ...claim, level: null } }),
       /level of service/
     );
-    await assert.rejects(
-      async () => run(node('read-claim-checks'), { claimId: 'c9' }),
-      /does not exist/
-    );
+    await assert.rejects(async () => run(node('read-claim'), { claimId: 'c9' }), /does not exist/);
   });
 
   it('lists the payers already skipped, whose issues no longer matter', async () => {
@@ -165,10 +162,10 @@ describe('claimNodes', () => {
       adjustments: [],
       at: '2026-01-01T00:00:00.000Z'
     });
-    const read = await run(nodesFor(claims.store)('read-claim-checks'), { claimId: 'c1' });
+    const read = await run(nodesFor(claims.store)('read-claim'), { claimId: 'c1' });
     assert.deepEqual(read.outputs.skipped, ['cov-Blue']);
     const unledgered = { ...claims.store, ledger: async () => null };
-    const bare = await run(nodesFor(unledgered)('read-claim-checks'), { claimId: 'c1' });
+    const bare = await run(nodesFor(unledgered)('read-claim'), { claimId: 'c1' });
     assert.deepEqual(bare.outputs.skipped, []);
   });
 
@@ -322,21 +319,13 @@ describe('claimNodes', () => {
     );
   });
 
-  it('notes revisions and says whether the claim can be worked again', async () => {
+  it('notes revisions with the status the claim had and its previous report', async () => {
     const claims = memoryClaims({ status: 'submitted', previous: { bucket: 'b', key: 'old' } });
     const node = nodesFor(claims.store);
     const report = { bucket: 'ugula', key: 'imports/t/g.xml.reports/00000.json' };
     const noted = await run(node('note-revision'), { claimId: 'c1', report });
-    assert.deepEqual(
-      [noted.pin, noted.outputs],
-      ['billed', { status: 'submitted', previous: { bucket: 'b', key: 'old' } }]
-    );
+    assert.deepEqual(noted.outputs, { status: 'submitted', previous: { bucket: 'b', key: 'old' } });
     assert.deepEqual(claims.revisions, [report]);
-    const draft = memoryClaims({ status: 'void' });
-    assert.equal(
-      (await run(nodesFor(draft.store)('note-revision'), { claimId: 'c1', report })).pin,
-      'restartable'
-    );
     await assert.rejects(
       async () => run(node('note-revision'), { claimId: 'c1', report: { bucket: 'ugula' } }),
       /needs a key/

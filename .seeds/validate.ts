@@ -6,13 +6,15 @@ import {
   createRegistry,
   createStdNodes,
   documentationIssues,
+  isRecord,
   mergeKinds,
   type NodeDef,
+  type NodeInstance,
   refKey,
   STD_KINDS,
   stdGraphSource,
   TABLE_NODE_KINDS,
-  tableContract,
+  tableFits,
   tableRefOf,
   tableSchemas,
   validateGraph
@@ -58,7 +60,7 @@ const tableProblems = (tables: SeedTable[], graphs: SeedGraph[]) => {
         if (!ref) return [];
         return table &&
           TABLE_NODE_KINDS[n.type as keyof typeof TABLE_NODE_KINDS] === table.kind &&
-          tableContract(table.definition) === tableContract(n.config ?? null)
+          tableFits(n, table.definition)
           ? []
           : [`${g.key}#${n.id}: table ${ref.key} is missing or has other fields`];
       })
@@ -66,7 +68,19 @@ const tableProblems = (tables: SeedTable[], graphs: SeedGraph[]) => {
   ];
 };
 
+const isFormula = (n: NodeInstance) =>
+  (isRecord(n.config) && 'expression' in n.config) ||
+  Object.values(n.inputs ?? {}).some((b) => 'expr' in b);
+
+const formulaProblems = (graphs: SeedGraph[]) =>
+  graphs.flatMap((g) =>
+    g.definition.nodes
+      .filter(isFormula)
+      .map((n) => `${g.key}#${n.id}: draw this with primitives instead of a formula`)
+  );
+
 export const seedProblems = (graphs: SeedGraph[], tables: SeedTable[], nodes: NodeDef[]) => [
   ...graphProblems(graphs, nodes),
+  ...formulaProblems(graphs),
   ...tableProblems(tables, graphs)
 ];

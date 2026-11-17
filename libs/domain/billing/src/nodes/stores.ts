@@ -96,16 +96,29 @@ type OpenedClaim = { id: string; duplicate: boolean };
 
 type TrackedLedger = ClaimLedger & { signalsSeen: number; reference: string };
 
-export type Deadline = {
-  kind: string;
-  claimId: string;
-  coverageId: string | null;
-  reference: string;
-  dueOn: string;
-  daysLeft: number;
-  taskId: string | null;
-  priority: number;
-  reminded: boolean;
+type DeadlineClaim = { claimId: string; patientId: string | null; reference: string };
+
+export type DeadlineFacts = {
+  filings: (DeadlineClaim & {
+    coverageId: string;
+    claimFiling: string | null;
+    filingLimitDays: number | null;
+    serviceDate: string;
+  })[];
+  certifications: (DeadlineClaim & { signedOn: string; serviceDate: string })[];
+  tasks: (DeadlineClaim & {
+    workflow: string;
+    dueOn: string;
+    taskId: string;
+    priority: number;
+  })[];
+  reminders: {
+    kind: string;
+    claimId: string;
+    patientId: string | null;
+    dueOn: string;
+    openedOn: string;
+  }[];
 };
 
 export type RecoveryStore = {
@@ -150,7 +163,7 @@ export type CalendarStore = {
 };
 
 export type ScheduleStore = {
-  deadlines: (runId: string, today: string) => Promise<Deadline[]>;
+  deadlineFacts: (runId: string, since: string) => Promise<DeadlineFacts>;
   raiseTask: (runId: string, taskId: string, priority: number) => Promise<void>;
   facilityInvoices: (runId: string, period: string) => Promise<FacilityInvoiceSource[]>;
   saveFacilityInvoice: (

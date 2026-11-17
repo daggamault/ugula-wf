@@ -80,7 +80,7 @@ export const readPayment = (
   }
   const routed = isRefund ? null : posting;
   if (routed && !POSTABLE.includes(routed.route)) {
-    return routed.message || 'Remittance Routing leaves this payment to be posted another way';
+    return routed.message || 'Route Remittance leaves this payment to be posted another way';
   }
   if (routed && routed.adjustedCents < 0) {
     return 'The adjustments that lower the balance add up to less than zero';

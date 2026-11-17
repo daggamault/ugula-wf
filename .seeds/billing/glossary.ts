@@ -15,7 +15,7 @@ const PINS: Record<string, Doc> = {
   candidates: { label: 'Candidates', description: 'Existing patients that may be this person.' },
   claimId: { label: 'Claim', description: 'The claim being worked.' },
   context: { label: 'Task Details', description: 'What tasks show a biller about the claim.' },
-  count: { label: 'Reports', description: 'How many reports the file held.' },
+  count: { label: 'Reports in File', description: 'How many reports the file held.' },
   coverageId: {
     label: 'Payer',
     description: 'The coverage (payer on the claim) this step is about.'
@@ -43,7 +43,7 @@ const PINS: Record<string, Doc> = {
       'The medications and procedures the narrative documents, as read by the local model.'
   },
   kind: {
-    label: 'Kind',
+    label: 'File Kind',
     description: 'What kind of file it is (835, TA1, 999, 277CA, 277 or 271).'
   },
   message: { label: 'Message', description: 'What a biller needs to know about the line.' },
@@ -59,9 +59,12 @@ const PINS: Record<string, Doc> = {
   pcr: { label: 'PCR', description: 'The patient care report the claim is billed from.' },
   pcrNumber: { label: 'PCR Number', description: 'The PCR number of the report.' },
   reason: { label: 'Reason', description: 'Why, in words a biller reads.' },
-  reference: { label: 'Reference', description: 'The claim number the line names.' },
+  reference: { label: 'Claim Number', description: 'The claim number the line names.' },
   report: { label: 'Report', description: 'The stored patient care report the claim came from.' },
-  reviews: { label: 'Reviews', description: 'How many lines a biller was asked to look at.' },
+  reviews: {
+    label: 'Lines to Review',
+    description: 'How many lines a biller was asked to look at.'
+  },
   runId: { label: 'Run', description: 'The workflow run that was started.' },
   runIds: { label: 'Runs', description: 'The Encounter to Claim run started for each report.' },
   sentAs: {
@@ -81,12 +84,16 @@ const PINS: Record<string, Doc> = {
   trip: { label: 'Trip Summary', description: 'The trip as billers read it.' },
   classification: {
     label: 'Classification',
-    description: 'emergency, scheduled, treatNoTransport, refusal or notBillable.'
+    description:
+      'How the trip is billed: one of emergency, scheduled, treatNoTransport, refusal or notBillable.'
   }
 };
 
+export const thenExit = (doc: ExitDoc): Record<string, ExitDoc> =>
+  Object.fromEntries([['then', doc]]);
+
 const EXITS: Record<string, Doc> = {
-  ...Object.fromEntries([['then', { label: 'Then', description: 'Done; the flow goes on.' }]]),
+  ...thenExit({ label: 'Then', description: 'Done; the flow goes on.' }),
   done: { label: 'Done', description: 'The step is done; the cycle decides the next one.' },
   void: { label: 'Void', description: 'A biller voided the claim.' },
   voided: { label: 'Voided', description: 'A biller voided the claim.' },
@@ -115,5 +122,9 @@ const exitsOf = (names: string[], given: Record<string, ExitDoc> = {}) =>
 export const graph = (signature: Signature, variables: VariableDef[] = []) =>
   build({ ...signature, exits: exitsOf(signature.execOut, signature.exits) }, variables);
 
-export const action = (inputs: PinSpec[], outputs: PinSpec[], execOut = ['then']) =>
-  graph({ execIn: ['exec'], execOut, inputs, outputs });
+export const action = (
+  inputs: PinSpec[],
+  outputs: PinSpec[],
+  execOut = ['then'],
+  variables: VariableDef[] = []
+) => graph({ execIn: ['exec'], execOut, inputs, outputs }, variables);

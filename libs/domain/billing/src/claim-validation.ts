@@ -3,8 +3,6 @@ import {
   type Classification,
   isClassification,
   isServiceLevel,
-  isTransport,
-  NO_TRANSPORT_TRIPS,
   type PricedLine,
   readPricedLines,
   SERVICE_LEVELS,
@@ -13,18 +11,14 @@ import {
 import {
   type ClaimDetails,
   type Coverage,
-  isOriginDestination,
   readClaimDetails,
-  readCoverages,
-  SELF
+  readCoverages
 } from './claim-details.ts';
 import type { DocumentKind } from './claim-documents.ts';
-import { formatIcd10, ICD10CM_FROM } from './code-sets.ts';
-import { daysBetween } from './documentation.ts';
+import { formatIcd10 } from './code-sets.ts';
 import type { CheckedFacility, ResponsibleParty } from './facilities.ts';
 import type { Address } from './patients.ts';
 import type { EligibilityStatus } from './payer-files.ts';
-import { filingLimitOf, isMedicareFiling } from './payers.ts';
 import { localDate } from './statements.ts';
 import { recordOf, textOrNull } from './values.ts';
 
@@ -141,134 +135,9 @@ export type ClaimCheck = {
   timeZone: string;
 };
 
-const ADDRESS_PARTS = [
-  ['addressLine', 'street address'],
-  ['city', 'city'],
-  ['state', 'state'],
-  ['postalCode', 'ZIP code']
-] as const;
-
-const missingParts = (a: Address | null) =>
-  a ? ADDRESS_PARTS.flatMap(([part, name]) => (a[part] ? [] : [name])) : [];
-
 export const STAY_KINDS = ['inpatient', 'snf'] as const;
 
 export type StayKind = (typeof STAY_KINDS)[number];
-
-const checkedDiagnoses = (c: ClaimCheck) =>
-  c.details.serviceDate !== null && c.details.serviceDate < ICD10CM_FROM ? [] : c.diagnosisCodes;
-
-const zipStateMismatches = (c: ClaimCheck) =>
-  (
-    [
-      ['pickup', c.details.pickup.state],
-      ['destination', c.details.destination.state],
-      ['patient', c.patient?.state ?? null]
-    ] as const
-  ).flatMap(([place, state]) => {
-    const zipState = c.zipStates[place];
-    return zipState && state && zipState !== state ? [place] : [];
-  });
-
-const before = (a: string | null, b: string | null) =>
-  a !== null && b !== null && Date.parse(b) < Date.parse(a);
-
-const transports = (c: ClaimCheck) =>
-  !c.deceased &&
-  (c.classification
-    ? !NO_TRANSPORT_TRIPS.includes(c.classification as Classification)
-    : isTransport(c.lines));
-
-const within = (day: string | null, stay: ReportedStay) =>
-  day !== null &&
-  (stay.admittedOn === null || stay.admittedOn <= day) &&
-  (stay.dischargedOn === null || day <= stay.dischargedOn);
-
-const payerFacts = (serviceDate: string | null, today: string) => (p: CheckedPayer) => {
-  const limit = filingLimitOf(p.claimFiling, p.filingLimitDays);
-  return {
-    coverageId: p.coverageId,
-    name: p.name,
-    linked: Boolean(p.payerId && p.claimFiling),
-    memberId: p.memberId,
-    needsInsured: p.relationship !== SELF,
-    insuredLastName: p.insuredLastName,
-    eligibility: p.eligibility,
-    eligibilityNote: p.eligibilityNote,
-    filingLimitDays: limit,
-    filingDaysLeft: limit === null || !serviceDate ? null : limit - daysBetween(serviceDate, today),
-    medicare: isMedicareFiling(p.claimFiling),
-    stayReported: p.stay && within(serviceDate, p.stay) ? p.stay.kind : null
-  };
-};
-
-export const checkFactsOf = (c: ClaimCheck, asOf: Date) => {
-  const { serviceDate, documentation: d } = c.details;
-  return {
-    patientLinked: c.patientId !== null,
-    patientAddressMissing: missingParts(c.patient),
-    pcrNumber: c.pcrNumber,
-    serviceDate,
-    classification: c.classification,
-    transports: transports(c),
-    level: c.level,
-    levelValid: isServiceLevel(c.level),
-    emergency: c.emergency,
-    lineCount: c.lines.length,
-    linesAddUp: c.lines.reduce((sum, l) => sum + l.totalCents, 0) === c.totalCents,
-    diagnosisCount: c.details.diagnoses.length,
-    unknownDiagnoses: checkedDiagnoses(c).flatMap((d) =>
-      d.description === null ? [formatIcd10(d.code)] : []
-    ),
-    unbillableDiagnoses: checkedDiagnoses(c).flatMap((d) =>
-      d.description !== null && !d.billable ? [`${d.description} (${formatIcd10(d.code)})`] : []
-    ),
-    pickupMissing: missingParts(c.details.pickup),
-    pickupZipPriced: c.details.pickup.postalCode ? c.pickupLocality !== null : null,
-    pickupZipNeedsPlusFour:
-      c.pickupLocality?.needsPlusFour === true && (c.details.pickup.postalCode ?? '').length < 9,
-    zipStateMismatches: zipStateMismatches(c),
-    destinationMissing: missingParts(c.details.destination),
-    originDestinationValid: isOriginDestination(c.details.originDestination),
-    transportReason: d.transportReason,
-    conditionsDocumented: d.conditionCodes.length > 0,
-    timesRecorded: Boolean(d.leftScene && d.atDestination),
-    timesInOrder: !before(d.atScene, d.leftScene) && !before(d.leftScene, d.atDestination),
-    loadedMiles: c.loadedMiles,
-    signature: d.signature,
-    signatureNote: d.signatureNote,
-    pcsOnFile: d.pcsOnFile,
-    pcsSignedOn: d.pcsSignedOn,
-    pcsDaysBeforeTrip:
-      d.pcsSignedOn && serviceDate ? daysBetween(d.pcsSignedOn, serviceDate) : null,
-    billsMedicare: c.payers.some((p) => isMedicareFiling(p.claimFiling)),
-    payers: c.payers.map(payerFacts(serviceDate, localDate(asOf, c.timeZone))),
-    deceased: c.deceased,
-    nonCoveredMiles: c.nonCoveredMiles,
-    patientCount: d.patientCount,
-    abnOnFile: d.abnOnFile,
-    abnSignedOn: d.abnSignedOn,
-    denialExpected: d.denialExpected,
-    mspEmployerPlan: d.mspEmployerPlan,
-    mspEsrd: d.mspEsrd,
-    mspDisability: d.mspDisability,
-    mspEmployerSize: d.mspEmployerSize,
-    mspAccident: d.mspAccident,
-    priorAuthorization: d.priorAuthorization,
-    priorAuthorizationDaysLeft:
-      d.priorAuthorizationExpiresOn && serviceDate
-        ? daysBetween(serviceDate, d.priorAuthorizationExpiresOn)
-        : null,
-    pcsType: d.pcsType,
-    roundTrips: d.roundTrips,
-    facilityStay: d.facilityStay,
-    pickupFacility: c.pickupFacility,
-    destinationFacility: c.destinationFacility,
-    responsibleParty: c.responsibleParty,
-    recordedParty: c.responsibilityRecorded ? c.responsibleParty : null,
-    documents: c.documents
-  };
-};
 
 const addressOf = (a: Address | null) => ({
   addressLine: a?.addressLine ?? null,

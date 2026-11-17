@@ -2,10 +2,6 @@ import { type ClaimEvent, type ClaimLedger, claimProgress, PATIENT_KIND } from '
 
 const dayOf = (e: ClaimEvent) => e.paidOn ?? e.at.slice(0, 10);
 
-const MEDICAID = 'MC';
-
-const MEDICARE: readonly string[] = ['MA', 'MB'];
-
 const codesOf = (e: ClaimEvent | undefined) =>
   (e?.adjustments ?? []).map((a) => `${a.group}-${a.reason}`);
 
@@ -98,43 +94,27 @@ export const patientBalanceFactsOf = (ledger: ClaimLedger) => {
   const lastPayer = coverageOf(ledger, responses.at(-1)?.coverageId ?? null);
   return {
     balanceCents,
-    costShareCents: responses
+    adjustments: responses
       .filter((e) => e.coverageId === lastPayer?.id)
-      .flatMap((e) => e.adjustments)
-      .filter((a) => a.group === 'PR')
-      .reduce((sum, a) => sum + a.cents, 0),
+      .flatMap((e) => e.adjustments),
+    claimFilings: ledger.coverages.flatMap((c) => (c.claimFiling ? [c.claimFiling] : [])),
     state: ledger.pickupState ?? null,
     serviceDate: ledger.serviceDate ?? null,
     planType: lastPayer?.planType ?? null,
     payerKind: lastPayer ? (lastPayer.claimFiling ?? null) : PATIENT_KIND,
-    dualEligible:
-      ledger.coverages.some((c) => c.claimFiling === MEDICAID) &&
-      ledger.coverages.some((c) => MEDICARE.includes(c.claimFiling ?? '')),
     protectedCents: ledger.events
       .filter((e) => e.kind === 'balance_protected')
       .reduce((sum, e) => sum + e.adjustedCents, 0)
   };
 };
 
-const SEQUESTRATION = 'CO-253';
-
-const COST_SHARE = ['PR-1', 'PR-2', 'PR-3'];
-
 export const responseFactsOf = (ledger: ClaimLedger, coverageId: string) => {
   if (!coverageOf(ledger, coverageId)) throw new Error(`Payer ${coverageId} is not on the claim`);
   const responses = ledger.events.filter(
     (e) => e.coverageId === coverageId && e.kind === 'response'
   );
-  const adjustments = responses.flatMap((e) => e.adjustments);
-  const sum = (cents: number[]) => cents.reduce((total, c) => total + c, 0);
-  const paidCents = sum(responses.map((e) => e.paidCents));
-  const centsOf = (codes: readonly string[]) =>
-    sum(adjustments.filter((a) => codes.includes(`${a.group}-${a.reason}`)).map((a) => a.cents));
-  const patientCents = centsOf(COST_SHARE);
   return {
-    paidCents,
-    patientCents,
-    allowedCents: paidCents + patientCents + centsOf([SEQUESTRATION]),
-    reasonCoded: adjustments.length > 0
+    paidCents: responses.reduce((sum, e) => sum + e.paidCents, 0),
+    adjustments: responses.flatMap((e) => e.adjustments)
   };
 };

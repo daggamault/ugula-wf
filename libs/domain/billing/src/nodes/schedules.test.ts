@@ -5,7 +5,7 @@ import { invokeNode } from '@ugula/graph/testing';
 import type { FacilityInvoiceSource } from '../documents.ts';
 import { billingStores } from '../testing.ts';
 import { scheduleNodes } from './schedules.ts';
-import type { ScheduleStore } from './stores.ts';
+import type { DeadlineFacts, ScheduleStore } from './stores.ts';
 
 const source: FacilityInvoiceSource = {
   facilityId: 'f1',
@@ -32,12 +32,39 @@ const source: FacilityInvoiceSource = {
   ]
 };
 
+const claim = { claimId: 'c1', patientId: 'p1', reference: '20261002-0012 · PCR-1 · Jane Doe' };
+
+const facts: DeadlineFacts = {
+  filings: [
+    {
+      ...claim,
+      coverageId: 'cov1',
+      claimFiling: 'MB',
+      filingLimitDays: null,
+      serviceDate: '2026-10-02'
+    }
+  ],
+  certifications: [{ ...claim, signedOn: '2026-09-15', serviceDate: '2026-10-02' }],
+  tasks: [
+    {
+      workflow: 'billing.work-denial',
+      ...claim,
+      dueOn: '2026-11-10',
+      taskId: 't1',
+      priority: 0
+    }
+  ],
+  reminders: [
+    { kind: 'pcs', claimId: 'c1', patientId: 'p1', dueOn: '2026-11-14', openedOn: '2026-10-31' }
+  ]
+};
+
 const setup = () => {
   const calls: unknown[][] = [];
   const schedules: ScheduleStore = {
-    deadlines: async (_, today) => {
-      calls.push(['deadlines', today]);
-      return [];
+    deadlineFacts: async (_, since) => {
+      calls.push(['deadlines', since]);
+      return facts;
     },
     raiseTask: async (_, taskId, priority) => void calls.push(['raise', taskId, priority]),
     facilityInvoices: async (_, period) => (period === '2026-10-01' ? [source] : []),
@@ -60,15 +87,20 @@ const setup = () => {
 };
 
 describe('scheduleNodes', () => {
-  it("finds the deadlines as of the agency's today and raises tasks", async () => {
+  it('reads what the deadlines are worked out from and raises tasks', async () => {
     const { calls, run } = setup();
-    assert.deepEqual((await run('find-deadlines', {})).outputs.deadlines, []);
+    assert.deepEqual((await run('read-deadlines', { since: '2026-09-01' })).outputs, facts);
     await run('raise-task', { taskId: 't1', priority: 3 });
     assert.deepEqual(calls, [
-      ['today', '2026-11-01T03:00:00.000Z'],
-      ['deadlines', '2026-10-31'],
+      ['deadlines', '2026-09-01'],
       ['raise', 't1', 3]
     ]);
+    for (const since of ['soon', '2026-02-30']) {
+      await assert.rejects(
+        () => run('read-deadlines', { since }),
+        new RegExp(`${since} is not a date`)
+      );
+    }
   });
 
   it("gives today's date in the agency's time zone, not UTC", async () => {

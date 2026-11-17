@@ -160,12 +160,6 @@ export type ClosedStatus = (typeof CLOSED_CLAIM_STATUSES)[number];
 export const isClosedStatus = (status: string): status is ClosedStatus =>
   (CLOSED_CLAIM_STATUSES as readonly string[]).includes(status);
 
-export const RESTARTABLE_STATUSES = [
-  'draft',
-  'needs_review',
-  'void'
-] as const satisfies readonly ClaimStatus[];
-
 export type LedgerCoverage = {
   id: string;
   payer: string;
