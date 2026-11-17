@@ -131,7 +131,7 @@ describe('searchGraphs', () => {
     await db.destroy();
   });
 
-  it('filters by kind and scope and searches trimmed, escaped names and keys, sorted by kind', async () => {
+  it('filters by kind and scope and searches trimmed, escaped names, sorted by kind', async () => {
     const { db, queries } = createRecordingDb();
     await searchGraphs(db, S, {
       ...BASE,
@@ -143,16 +143,9 @@ describe('searchGraphs', () => {
     });
     assert.equal(
       tailOf(pageOf(queries)?.sql),
-      `${LATERAL} where ${visibleTo('g', 5)} and (lower(g.name) like $6 or lower(g.key) like $7) and "g"."kind" in ($8) and case when "g"."agency_id" is not null then 'agency' else 'system' end in ($9) order by (g.kind, lower(g.name)) desc nulls last, "g"."id" desc limit $10 offset $11`
+      `${LATERAL} where ${visibleTo('g', 5)} and lower(g.name) like $6 and "g"."kind" in ($7) and case when "g"."agency_id" is not null then 'agency' else 'system' end in ($8) order by (g.kind, lower(g.name)) desc nulls last, "g"."id" desc limit $9 offset $10`
     );
-    assert.deepEqual(pageOf(queries)?.parameters.slice(5), [
-      '%ma\\_ch%',
-      '%ma\\_ch%',
-      'node',
-      'agency',
-      25,
-      0
-    ]);
+    assert.deepEqual(pageOf(queries)?.parameters.slice(5), ['%ma\\_ch%', 'node', 'agency', 25, 0]);
     await db.destroy();
   });
 
@@ -161,8 +154,8 @@ describe('searchGraphs', () => {
     await searchGraphs(db, S, { ...ALL, kind: ['node'], scope: ['agency'], q: 'x' });
     const facets = queries.filter((q) => isFacet(q.sql)).map((q) => flat(q.sql));
     assert.deepEqual(facets, [
-      `select "g"."kind"::text as "value", null as "label", count(*) as "count" from "graphs" as "g" where ${visibleTo('g', 1)} and (lower(g.name) like $2 or lower(g.key) like $3) and case when "g"."agency_id" is not null then 'agency' else 'system' end in ($4) and "g"."kind" is not null group by 1 order by count(*) desc, 1 limit $5`,
-      `select case when "g"."agency_id" is not null then 'agency' else 'system' end::text as "value", null as "label", count(*) as "count" from "graphs" as "g" where ${visibleTo('g', 1)} and (lower(g.name) like $2 or lower(g.key) like $3) and "g"."kind" in ($4) and case when "g"."agency_id" is not null then 'agency' else 'system' end is not null group by 1 order by count(*) desc, 1 limit $5`
+      `select "g"."kind"::text as "value", null as "label", count(*) as "count" from "graphs" as "g" where ${visibleTo('g', 1)} and lower(g.name) like $2 and case when "g"."agency_id" is not null then 'agency' else 'system' end in ($3) and "g"."kind" is not null group by 1 order by count(*) desc, 1 limit $4`,
+      `select case when "g"."agency_id" is not null then 'agency' else 'system' end::text as "value", null as "label", count(*) as "count" from "graphs" as "g" where ${visibleTo('g', 1)} and lower(g.name) like $2 and "g"."kind" in ($3) and case when "g"."agency_id" is not null then 'agency' else 'system' end is not null group by 1 order by count(*) desc, 1 limit $4`
     ]);
     await db.destroy();
   });

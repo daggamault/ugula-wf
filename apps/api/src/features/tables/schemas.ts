@@ -6,7 +6,7 @@ import { pageEntries } from '../../shared/paging.ts';
 import { SCOPES } from '../../shared/scopes.ts';
 import { searchText } from '../../shared/search.ts';
 
-const TABLE_SORTS = ['name', 'key', 'updated'] as const;
+const TABLE_SORTS = ['name', 'updated'] as const;
 
 export type TableSort = (typeof TABLE_SORTS)[number];
 

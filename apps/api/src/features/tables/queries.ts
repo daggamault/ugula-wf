@@ -38,7 +38,6 @@ type TableRow = {
 
 const TABLE_ORDER = {
   name: sql`lower(t.name)`,
-  key: sql.ref('t.key'),
   updated: sql.ref('t.updated_at')
 };
 
@@ -76,9 +75,7 @@ const filteredTables = (db: Db, s: ScopeIds, f: TableFilters, except?: TableFace
   let q = db.selectFrom('data_tables as t').where(visible('t', s));
   if (f.q) {
     const like = containsPattern(f.q);
-    q = q.where((eb) =>
-      eb.or([eb(sql`lower(t.name)`, 'like', like), eb(sql`lower(t.key)`, 'like', like)])
-    );
+    q = q.where(sql`lower(t.name)`, 'like', like);
   }
   return whereFacets(q, TABLE_FACETS, f, except);
 };

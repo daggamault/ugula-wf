@@ -67,7 +67,6 @@ const Branch = ({ node }: { node: MapNode }) => (
   >
     <span className="flex flex-wrap items-center gap-2 text-sm">
       <TextLink to={`/workflows/${node.id}`}>{node.name}</TextLink>
-      <code className="text-surface-fg-muted font-mono text-xs">{node.key}</code>
       {node.customized ? <ScopeBadge scope={node.scope} /> : null}
     </span>
     {node.tables.length || node.children.length ? (

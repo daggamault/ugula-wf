@@ -396,7 +396,6 @@ export const EditorView = ({
         title={graph.name}
         description={
           <span className="flex flex-wrap items-center gap-2">
-            <code className="font-mono">{graph.key}</code>
             <Badge intent={isDraft ? 'warning' : 'success'}>
               {isDraft ? `Draft v${version}` : `Published v${version}`}
             </Badge>

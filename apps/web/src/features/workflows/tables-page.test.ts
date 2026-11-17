@@ -73,22 +73,20 @@ const cellsOf = (row: HTMLElement) =>
     .map((c) => c.lastElementChild?.textContent);
 
 describe('TablesPage', () => {
-  it('lists tables with their key, kind, scope and versions', async () => {
+  it('lists tables with their kind, scope and versions', async () => {
     const { client, queries } = fakeClient();
     show(client);
     const [, built, custom] = within(await list()).getAllByRole('row');
     assert.ok(built && custom);
-    assert.deepEqual(cellsOf(built).slice(0, 6), [
+    assert.deepEqual(cellsOf(built).slice(0, 5), [
       'Base Rate',
-      'billing.base-rate',
       'Decision Table',
       'StandardHas Custom Copy',
       'v1',
       '—'
     ]);
-    assert.deepEqual(cellsOf(custom).slice(0, 6), [
+    assert.deepEqual(cellsOf(custom).slice(0, 5), [
       'Mileage Rate',
-      'billing.mileage',
       'Lookup Table',
       'CustomBase Updated',
       '—',
@@ -109,7 +107,7 @@ describe('TablesPage', () => {
     );
   });
 
-  it('searches tables and highlights the match in names and keys', async () => {
+  it('searches tables and highlights the match in names', async () => {
     const { client, queries } = fakeClient();
     show(client);
     await list();
@@ -122,18 +120,19 @@ describe('TablesPage', () => {
     await waitFor(() =>
       assert.deepEqual(
         [...document.querySelectorAll('mark')].map((m) => m.textContent),
-        ['Rate', 'rate', 'Rate']
+        ['Rate', 'Rate']
       )
     );
   });
 
-  it('sorts tables by key', async () => {
+  it('sorts tables by name and shows no key column', async () => {
     const { client, queries } = fakeClient();
     show(client);
     await list();
-    await userEvent.setup().click(screen.getByRole('link', { name: /^Key/ }));
+    assert.ok(!screen.queryByRole('columnheader', { name: /^Key/ }));
+    await userEvent.setup().click(screen.getByRole('link', { name: /^Name/ }));
     await waitFor(() => assert.equal(queries.length, 2));
-    assert.equal(queries[1], 'page=1&pageSize=25&sort=key&dir=asc');
+    assert.equal(queries[1], 'page=1&pageSize=25&sort=name&dir=desc');
   });
 
   it('asks for the chosen kinds and scopes', async () => {

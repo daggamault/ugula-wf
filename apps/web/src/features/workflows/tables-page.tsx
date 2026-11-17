@@ -18,7 +18,7 @@ export const tableKindLabel = (kind: TableKind) =>
   kind === 'decide' ? 'Decision Table' : 'Lookup Table';
 
 export const TABLES_TABLE = {
-  sorts: { name: 'asc', key: 'asc', updated: 'desc' },
+  sorts: { name: 'asc', updated: 'desc' },
   sort: 'name',
   filters: ['kind', 'scope']
 } as const;
@@ -41,7 +41,6 @@ export const TablesTable = ({
     sorting={search}
     head={[
       { label: 'Name', sort: 'name' },
-      { label: 'Key', isSecondary: true, sort: 'key' },
       'Kind',
       'Scope',
       'Published',
@@ -55,11 +54,6 @@ export const TablesTable = ({
           <span className="font-medium">
             <Highlight text={t.name} query={search.q} />
           </span>
-        </TableCell>
-        <TableCell isMuted isSecondary>
-          <code className="font-mono text-xs">
-            <Highlight text={t.key} query={search.q} />
-          </code>
         </TableCell>
         <TableCell>
           <Badge>{tableKindLabel(t.kind)}</Badge>

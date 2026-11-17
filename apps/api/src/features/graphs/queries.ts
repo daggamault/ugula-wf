@@ -98,9 +98,7 @@ const filteredGraphs = (db: Db, s: ScopeIds, f: GraphFilters, except?: GraphFace
   let q = db.selectFrom('graphs as g').where(visible('g', s));
   if (f.q) {
     const like = containsPattern(f.q);
-    q = q.where((eb) =>
-      eb.or([eb(sql`lower(g.name)`, 'like', like), eb(sql`lower(g.key)`, 'like', like)])
-    );
+    q = q.where(sql`lower(g.name)`, 'like', like);
   }
   return whereFacets(q, GRAPH_FACETS, f, except);
 };

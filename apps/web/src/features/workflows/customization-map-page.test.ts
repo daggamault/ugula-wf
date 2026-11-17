@@ -179,7 +179,7 @@ describe('CustomizationMapView', () => {
       ]
     );
     const charges = screen.getByRole('link', { name: 'Agency Charges' }).parentElement;
-    assert.equal(charges?.textContent, 'Agency Chargesbilling.chargesCustom');
+    assert.equal(charges?.textContent, 'Agency ChargesCustom');
     const rates = screen.getByRole('link', { name: 'Rates' }).parentElement;
     assert.equal(rates?.textContent, 'RatesCustom');
   });

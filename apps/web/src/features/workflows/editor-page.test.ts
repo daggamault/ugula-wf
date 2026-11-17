@@ -149,10 +149,11 @@ const apiError = (message: string, issues: Issue[]) =>
 
 describe('EditorView', () => {
   describe('on a custom draft', () => {
-    it('titles the draft with its key, version and scope', () => {
+    it('titles the draft with its version and scope, without its key', () => {
       show(detail('agency', false));
       assert.ok(screen.getByRole('heading', { level: 1, name: 'Flow' }));
-      for (const text of ['acme.flow', 'Draft v2', 'Custom']) assert.ok(screen.getByText(text));
+      for (const text of ['Draft v2', 'Custom']) assert.ok(screen.getByText(text));
+      assert.ok(!screen.queryByText('acme.flow'));
       assert.ok(!screen.queryByText('Unsaved'));
       assert.equal(
         screen.getByRole('link', { name: 'Back to Workflows' }).getAttribute('href'),
