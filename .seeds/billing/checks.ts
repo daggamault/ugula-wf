@@ -10,28 +10,7 @@ import {
   REJECTED_COVERAGE_IN,
   REJECTION_IN
 } from './check-rules.ts';
-import {
-  asRule,
-  asStage,
-  d,
-  exit,
-  issuesSummary,
-  named,
-  P,
-  rule,
-  shared,
-  stage,
-  summarize,
-  T
-} from './shared.ts';
-
-const BILLED = `(patientOnly == true ? 'the patient' : ${named('context?.payer', "'this claim'")})`;
-
-const FIX_SUMMARY = issuesSummary(
-  'issues',
-  BILLED,
-  `'Nothing blocks billing ' + ${BILLED} + '; correct any field below and save to check the claim again'`
-);
+import { asRule, asStage, d, exit, P, rule, shared, stage, T, template } from './shared.ts';
 
 const ISSUE_TYPE = (T.issues as { list: ValueType }).list;
 
@@ -402,11 +381,31 @@ const fixClaim = (): GraphDef => {
   g.wire('check.defaults', 'fix.defaults', 'patch.shown');
   g.wire('check.options', 'fix.options');
   g.wire('entry.subject', 'fix.subject');
-  summarize(g, 'fix', FIX_SUMMARY, {
-    issues: 'check.issues',
-    context: 'entry.context',
-    patientOnly: 'entry.patientOnly'
+  template(g, 'payerName', 'Payer Name', '{context.payer}', { context: 'entry.context' });
+  g.add('payerOrClaim', 'std.logic.choose', {
+    label: 'Payer, Else This Claim',
+    config: { mode: 'first', type: 'string', count: 2 },
+    values: { option2: 'this claim' }
   });
+  g.add('billed', 'std.logic.choose', {
+    label: 'Who Is Billed',
+    config: { mode: 'byCase', type: 'string', cases: [{ when: 'true' }] },
+    values: { case1: 'the patient' }
+  });
+  template(
+    g,
+    'nothingBlocks',
+    'Nothing Blocks',
+    'Nothing blocks billing {billed}; correct any field below and save to check the claim again'
+  );
+  g.add('fixSummary', 'billing.blocking-summary', { label: 'Task Summary' });
+  g.wire('payerName.text', 'payerOrClaim.option1');
+  g.wire('entry.patientOnly', 'billed.key');
+  g.wire('payerOrClaim.value', 'billed.otherwise');
+  g.wire('billed.value', 'nothingBlocks.billed', 'fixSummary.billed');
+  g.wire('check.issues', 'fixSummary.issues');
+  g.wire('nothingBlocks.text', 'fixSummary.otherwise');
+  g.wire('fixSummary.summary', 'fix.summary');
   g.wire('subjectToReprice.subject', 'reprice.subject');
   g.wire('fix.save', 'stopAsking.exec');
   g.wire('stopAsking.then', 'patch.exec');

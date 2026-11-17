@@ -121,6 +121,23 @@ export const issuesSummary = (issues: string, billed: string, otherwise: string)
     (len(${blocking}) > 2 ? '; and ' + text(len(${blocking}) - 2) + ' more' : '')`;
 };
 
+type Port = `${string}.${string}`;
+
+export const template = (
+  g: Builder,
+  id: string,
+  label: string,
+  text: string,
+  from: Record<string, Port> = {}
+) => {
+  g.add(id, 'std.text.template', { label, config: { template: text } });
+  for (const [pin, port] of Object.entries(from)) g.wire(port, `${id}.${pin}`);
+  return `${id}.text` as const;
+};
+
+export const summary = (g: Builder, task: string, text: string, from: Record<string, Port>) =>
+  g.wire(template(g, `${task}Summary`, 'Task Summary', text, from), `${task}.summary`);
+
 export const summarize = (
   g: Builder,
   task: string,

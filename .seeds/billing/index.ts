@@ -4,6 +4,7 @@ import { checkGraphs } from './checks.ts';
 import { claimGraphs } from './claim.ts';
 import { claimTaskGraphs } from './claim-tasks.ts';
 import { cycleGraphs } from './cycle.ts';
+import { displayGraphs } from './display.ts';
 import { documentGraphs } from './documents.ts';
 import { facilityGraphs } from './facility.ts';
 import { factGraphs } from './facts.ts';
@@ -15,6 +16,7 @@ import { serviceGraphs } from './service.ts';
 import { shared } from './shared.ts';
 
 export const billingGraphs: SeedGraph[] = [
+  ...displayGraphs,
   ...factGraphs,
   ...serviceGraphs,
   ...chargeGraphs,
