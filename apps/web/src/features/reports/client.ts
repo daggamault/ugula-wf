@@ -165,6 +165,7 @@ export type ImportRow = {
   pcrs: number;
   billed: number;
   drafts: number;
+  not_billable: number;
   voided: number;
   revisions: number;
   no_claim: number;

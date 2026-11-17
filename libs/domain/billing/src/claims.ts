@@ -1,4 +1,6 @@
 export const CLAIM_EVENT_KINDS = [
+  'opened',
+  'decided',
   'submitted',
   'resubmitted',
   'resubmit_queued',
@@ -76,6 +78,8 @@ export const isCycleEventKind = (x: string): x is CycleEventKind =>
   (CYCLE_EVENT_KINDS as readonly string[]).includes(x);
 
 export const PATIENT_EVENT_KINDS: readonly ClaimEventKind[] = [
+  'opened',
+  'decided',
   'statement',
   'revised',
   'closed',
@@ -152,6 +156,23 @@ export const CLAIM_STATUSES = [
 ] as const;
 
 export type ClaimStatus = (typeof CLAIM_STATUSES)[number];
+
+export const CLAIM_STATUS_LABELS: Record<ClaimStatus, string> = {
+  draft: 'Draft',
+  needs_review: 'Needs Review',
+  ready: 'Ready to Submit',
+  submitted: 'Submitted',
+  follow_up: 'Needs Follow-Up',
+  reconcile: 'Reconcile Payment',
+  denied: 'Denied',
+  facility_billing: 'Billed to Facility',
+  patient_balance: 'Patient Balance',
+  balance_review: 'Balance Review',
+  paid: 'Paid',
+  written_off: 'Written Off',
+  collections: 'Sent to Collections',
+  void: 'Void'
+};
 
 export const CLOSED_CLAIM_STATUSES = ['paid', 'written_off', 'collections', 'void'] as const;
 

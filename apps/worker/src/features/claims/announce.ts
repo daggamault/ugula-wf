@@ -29,6 +29,7 @@ export const announceClaims = (store: ClaimStore, announce: Announce): ClaimStor
       await changed(runId, opened.id);
       return opened;
     },
+    classifyClaim: after(store.classifyClaim),
     assignPatient: after(store.assignPatient),
     saveClaim: after(store.saveClaim),
     patchClaim: after(store.patchClaim),
@@ -38,6 +39,7 @@ export const announceClaims = (store: ClaimStore, announce: Announce): ClaimStor
     saveStatement: after(store.saveStatement),
     saveSubmission: after(store.saveSubmission),
     recordEvent: after(store.recordEvent),
+    recordDecision: after(store.recordDecision),
     closeClaim: after(store.closeClaim),
     setResponsibility: after(store.setResponsibility)
   };

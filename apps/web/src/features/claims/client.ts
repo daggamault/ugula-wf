@@ -51,6 +51,12 @@ type EventAdjustment = {
 
 type EventRemark = { code: string; description: string | null };
 
+export type EventDecision = {
+  task: string;
+  outcome: string;
+  values: { label: string; value: string }[];
+};
+
 export type ClaimEvent = {
   id: string;
   kind: ClaimEventKind;
@@ -63,6 +69,8 @@ export type ClaimEvent = {
   payer_claim_number: string | null;
   note: string;
   created_at: string;
+  by?: string | null;
+  decision?: EventDecision | null;
   has_document: boolean;
   batch_id?: string | null;
   batch_number?: number | null;

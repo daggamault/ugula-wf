@@ -27,14 +27,30 @@ describe('nextTaskSchema', () => {
 
 describe('completeTaskSchema', () => {
   it('completes with an outcome and no values by default', () => {
-    assert.deepEqual(v.parse(completeTaskSchema, { outcome: 'ok' }), { outcome: 'ok', values: {} });
+    assert.deepEqual(v.parse(completeTaskSchema, { outcome: 'ok' }), {
+      outcome: 'ok',
+      values: {},
+      note: ''
+    });
   });
 
   it('keeps the values entered', () => {
     assert.deepEqual(v.parse(completeTaskSchema, { outcome: 'ok', values: { note: 'x' } }), {
       outcome: 'ok',
-      values: { note: 'x' }
+      values: { note: 'x' },
+      note: ''
     });
+  });
+
+  it('keeps a trimmed note of up to 1000 characters for the claim history', () => {
+    assert.equal(
+      v.parse(completeTaskSchema, { outcome: 'ok', note: ' Called the PSAP ' }).note,
+      'Called the PSAP'
+    );
+    assert.equal(
+      v.safeParse(completeTaskSchema, { outcome: 'ok', note: 'x'.repeat(1001) }).success,
+      false
+    );
   });
 
   it('needs an outcome of 1 to 200 characters', () => {

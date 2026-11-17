@@ -1,7 +1,8 @@
-import { ADJUSTMENT_GROUPS } from '@ugula/billing';
+import { ADJUSTMENT_GROUPS, CLAIM_STATUS_LABELS, isClosedStatus } from '@ugula/billing';
 import { DownloadIcon, FileTextIcon } from 'lucide-react';
 import { type Coded, CodeLabel, coded } from '../../shared/claims/code-text.tsx';
 import { formatCents, formatDate, formatDateTime } from '../../shared/format.ts';
+import { outcomeLabel } from '../../shared/task-outcomes.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
 import { PageLoading } from '../../shared/ui/page.tsx';
@@ -10,7 +11,7 @@ import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/t
 import { type Page as ListPage, useTableState } from '../../shared/url-state.ts';
 import type { Resource } from '../../shared/use-resource.ts';
 import { EVENT_LABELS, fileLinkClasses } from './claim-files.tsx';
-import type { ClaimEvent } from './client.ts';
+import type { ClaimEvent, EventDecision } from './client.ts';
 
 export const paymentDetailsOf = (
   e: Pick<ClaimEvent, 'paid_on' | 'check_number' | 'payer_claim_number'>
@@ -47,6 +48,28 @@ export const amountOf = (e: Pick<ClaimEvent, 'kind' | 'paid_cents' | 'adjusted_c
       ]
         .filter(Boolean)
         .join(' · ');
+
+export const decisionText = (d: EventDecision) => `${d.task}: ${outcomeLabel(d.outcome)}`;
+
+export const noteOf = (e: Pick<ClaimEvent, 'kind' | 'note'>) =>
+  e.kind === 'closed' && isClosedStatus(e.note) ? `As ${CLAIM_STATUS_LABELS[e.note]}` : e.note;
+
+export const byOf = (e: Pick<ClaimEvent, 'by'>) => e.by ?? 'Automatic';
+
+const DecisionNote = ({ decision }: { decision: EventDecision }) => (
+  <span className="flex flex-col gap-0.5">
+    <span className="font-medium">{decisionText(decision)}</span>
+    {decision.values.length ? (
+      <ul className="text-surface-fg-muted flex flex-col gap-0.5 text-xs">
+        {decision.values.map((v) => (
+          <li key={v.label}>
+            {v.label}: {v.value}
+          </li>
+        ))}
+      </ul>
+    ) : null}
+  </span>
+);
 
 const HISTORY_TABLE = {
   prefix: 'history',
@@ -105,9 +128,10 @@ export const EventsTable = ({
     head={[
       { label: 'When', sort: 'when' },
       { label: 'Event', sort: 'event' },
+      { label: 'By' },
       { label: 'Payer', sort: 'payer' },
       { label: 'Amount', sort: 'amount' },
-      { label: 'Note', isSecondary: true }
+      { label: 'Note' }
     ]}
   >
     {events.map((e) => (
@@ -118,10 +142,12 @@ export const EventsTable = ({
         <TableCell>
           <span className="font-medium">{EVENT_LABELS[e.kind]}</span>
         </TableCell>
+        <TableCell isMuted={!e.by}>{byOf(e)}</TableCell>
         <TableCell>{e.payer ?? (e.kind === 'response' ? 'Patient' : emptyValue)}</TableCell>
         <TableCell kind="numeric">{amountOf(e)}</TableCell>
-        <TableCell isSecondary>
+        <TableCell kind="wrap">
           <span className="flex flex-col gap-0.5">
+            {e.decision ? <DecisionNote decision={e.decision} /> : null}
             {paymentDetailsOf(e) ? (
               <span className="text-surface-fg-muted text-xs">{paymentDetailsOf(e)}</span>
             ) : null}
@@ -137,7 +163,7 @@ export const EventsTable = ({
               </ul>
             ) : null}
             <span className="flex items-center gap-3">
-              {e.note}
+              {noteOf(e)}
               {e.has_document ? (
                 <a
                   href={documentUrl(e.id)}

@@ -160,6 +160,8 @@ export const memoryClaims = ({
   const revisions: BlobRef[] = [];
   const events: RecordedEvent[] = [];
   const closed: string[] = [];
+  const classified: string[] = [];
+  const decisions: { key: string; note: string; decidedBy: string | null }[] = [];
   const attached: string[] = [];
   const statements: SavedStatement[] = [];
   const filed: FiledClaim[] = [];
@@ -178,6 +180,9 @@ export const memoryClaims = ({
         id: draft.claimId ?? claimId,
         duplicate: draft.claimId === null && drafts.length > 1
       };
+    },
+    classifyClaim: async (_, __, ___, classification) => {
+      classified.push(classification);
     },
     assignPatient: async (_, __, ___, patientId) => {
       patients.push(patientId);
@@ -239,6 +244,9 @@ export const memoryClaims = ({
         at: '2026-01-01T00:00:00.000Z'
       });
     },
+    recordDecision: async (_, __, key, decision) => {
+      decisions.push({ key, ...decision });
+    },
     closeClaim: async (_, __, ___, closing) => {
       closed.push(closing);
     },
@@ -278,6 +286,8 @@ export const memoryClaims = ({
     revisions,
     events,
     closed,
+    classified,
+    decisions,
     attached,
     statements,
     filed,

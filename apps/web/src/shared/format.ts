@@ -167,3 +167,14 @@ export const labelFromName = (name: string) => {
   if (words.length > 1 && last && UNIT_SUFFIX.has(last)) words[words.length - 1] = `(${last})`;
   return words.length ? titleCaseLabel(words.join(' ')) : name;
 };
+
+export const labelOf = (key: string) => {
+  const words = key
+    .replace(/Cents$/, '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .toLowerCase()
+    .split(' ')
+    .filter(Boolean);
+  return words.length ? titleCaseWords(words) : key;
+};

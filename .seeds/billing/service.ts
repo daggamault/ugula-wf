@@ -1,4 +1,4 @@
-import { CLASSIFICATION_FIELD } from '@ugula/billing';
+import { CLASSIFICATION_FIELD, CLASSIFICATION_LABELS } from '@ugula/billing';
 import type { GraphDef, ValueType } from '@ugula/graph';
 import { slot } from '../builder.ts';
 import type { SeedGraph } from '../graphs.ts';
@@ -22,10 +22,12 @@ import {
   reasonsOf,
   rule,
   select,
+  shared,
   stage,
   summary,
   T,
-  type Test
+  type Test,
+  template
 } from './shared.ts';
 
 type Held = { id: string; label: string; reason: string; tests: Test[] };
@@ -337,59 +339,202 @@ const classifyTrip = (): GraphDef => {
   return g.def;
 };
 
+const REVIEW: Held[] = [
+  {
+    id: 'noDisposition',
+    label: 'No Disposition Reported',
+    reason: 'No disposition was reported',
+    tests: [
+      { field: 'incidentDisposition', op: 'empty' },
+      { field: 'unitDisposition', op: 'empty' },
+      { field: 'transportDisposition', op: 'empty' }
+    ]
+  },
+  {
+    id: 'medicationsNotBilled',
+    label: 'Not Billable, but Medications Were Given',
+    reason: 'Not billable by its disposition, but the report documents medications given',
+    tests: [
+      { field: 'classification', op: 'is', value: 'notBillable' },
+      { field: 'medications', op: 'present' }
+    ]
+  },
+  {
+    id: 'proceduresNotBilled',
+    label: 'Not Billable, but Procedures Were Done',
+    reason: 'Not billable by its disposition, but the report documents procedures done',
+    tests: [
+      { field: 'classification', op: 'is', value: 'notBillable' },
+      { field: 'procedures', op: 'present' }
+    ]
+  },
+  {
+    id: 'transportUnconfirmed',
+    label: 'Billed as a Transport With No Transport Disposition',
+    reason: 'Billed as a transport, but no disposition says this unit transported the patient',
+    tests: [
+      { field: 'classification', op: 'oneOf', value: ['emergency', 'scheduled'] },
+      { field: 'incidentDisposition', op: 'notOneOf', value: TRANSPORTED_INCIDENTS },
+      { field: 'transportDisposition', op: 'notOneOf', value: TRANSPORTED }
+    ]
+  }
+];
+
+const classificationReview = (): GraphDef => {
+  const g = rule(
+    [
+      d('classification', 'string', 'Classification', 'The classification the trip was given.'),
+      P.facts()
+    ],
+    [
+      d(
+        'review',
+        'boolean',
+        'Needs Review',
+        'The report is too incomplete or contradictory to trust the classification.'
+      ),
+      d('reason', 'string', 'Why', 'The first review rule that held.', true),
+      P.reasons('the classification needs a biller')
+    ]
+  );
+  g.add('facts', 'billing.encounter-facts.break', { label: 'Encounter Facts' });
+  g.add('trip', 'billing.trip-facts.break', { label: 'Trip Facts' });
+  g.add('clinical', 'billing.clinical-facts.break', { label: 'Clinical Facts' });
+  g.wire('entry.facts', 'facts.facts');
+  g.wire('facts.trip', 'trip.trip');
+  g.wire('facts.clinical', 'clinical.clinical');
+  const held = heldRules(
+    g,
+    {
+      ...tripInputs('incidentDisposition', 'unitDisposition', 'transportDisposition'),
+      classification: ['string', 'entry.classification'],
+      medications: ['any', 'clinical.medications'],
+      procedures: ['any', 'clinical.procedures']
+    },
+    REVIEW
+  );
+  const reasons = reasonsHeld(g, REVIEW, held);
+  g.add('first', 'std.list.first', { label: 'First Rule That Held' });
+  g.wire(reasons, 'first.list');
+  g.ret('return');
+  g.wire(anyHeld(g, 'review', 'A Review Rule Holds', REVIEW, held), 'return.review');
+  g.wire('first.item', 'return.reason');
+  g.wire(reasons, 'return.reasons');
+  return g.def;
+};
+
+const classificationLabels = () =>
+  shared.lookup(
+    'billing.classification-labels',
+    'Classification Labels',
+    'What each classification is called on the claim history and in tasks.',
+    {
+      type: 'string',
+      rows: Object.entries(CLASSIFICATION_LABELS).map(([key, value]) => ({ key, value }))
+    }
+  );
+
 const decideClaim = (): GraphDef => {
-  const g = stage([P.pcr(), P.facts()], [CLASSIFICATION_OUT, P.reason()], {
+  const g = stage([P.claimId(), P.pcr(), P.facts()], [CLASSIFICATION_OUT, P.reason()], {
     claim: exit(
       'Claim',
-      'The report is billed under the classification it was given or confirmed as.'
+      'The report is billed under the classification it was given or a biller chose.'
     ),
-    skip: exit('Skip', 'A biller confirmed the trip is not billable.')
+    skip: exit('Skip', 'The trip is not billable, by its disposition or by a biller.')
   });
   g.add('classify', 'billing.classify-trip', { label: 'Classify Trip' });
-  g.add('needed', 'std.flow.switch', {
+  g.add('review', 'billing.classification-review', { label: 'Classification Needs Review?' });
+  g.add('label', 'std.table.lookup', {
+    label: 'Classification Label',
+    config: classificationLabels()
+  });
+  g.add('certain', 'std.flow.branch', { label: 'Needs a Biller?' });
+  g.add('billable', 'std.flow.switch', {
     label: 'Classified as Not Billable?',
     config: { cases: ['notBillable'] }
+  });
+  const classified = template(g, 'classifiedAs', 'Classified As', 'Classified as {label}', {
+    label: 'label.value'
+  });
+  g.add('logClaim', 'billing.record-decision', { label: 'Log the Classification' });
+  g.add('logSkip', 'billing.record-decision', {
+    label: 'Log Not Billable',
+    values: { decision: 'Not billable, so the claim is voided' }
   });
   g.add('trip', 'billing.trip-summary', { label: 'Trip Summary' });
   const context = makeObject(g, 'context', 'Task Details', { trip: [{ object: {} }, 'trip.trip'] });
   g.add('subject', 'billing.pcr-subject', { label: 'Task Subject' });
-  g.add('notBillable', 'std.human.task', {
-    label: 'Confirm Not Billable',
+  const suggested = makeObject(g, 'suggested', 'Suggested Classification', {
+    classification: [
+      'string',
+      select(
+        g,
+        'suggestion',
+        'The Classification Unless Not Billable',
+        condition(
+          g,
+          'transportable',
+          'Classified as Billable',
+          { classification: ['string', 'classify.classification'] },
+          [{ field: 'classification', op: 'isNot', value: 'notBillable' }]
+        ),
+        'classify.classification'
+      )
+    ]
+  });
+  g.add('ask', 'std.human.task', {
+    label: 'Review Classification',
     config: {
-      title: 'Confirm Not Billable',
+      title: 'Review classification',
       queue: 'billing-review',
-      instructions: 'Check the Encounter tab for patient contact and care given before you decide.',
+      instructions:
+        'Check the Encounter tab for patient contact, care given and transport before you decide. Reports are often incomplete, so a missing value may only mean it was not recorded.',
       fields: [{ ...CLASSIFICATION_FIELD, required: ['claim'] }],
       outcomes: ['claim', 'skipClaim'],
       hints: {
-        claim: 'Classify this trip and continue to a claim.',
-        skipClaim: 'Confirm this trip is not billable and skip the claim.'
-      }
+        claim: 'Bill the trip as the classification chosen and continue to the claim.',
+        skipClaim: 'The trip is not billable; void the claim with this decision on its history.'
+      },
+      prefill: 'suggested'
     }
   });
   g.ret('classified', 'claim');
   g.ret('confirmed', 'claim');
+  g.ret('notBillable', 'skip');
   g.ret('skipped', 'skip');
-  g.wire('entry.exec', 'needed.exec');
-  g.wire('entry.facts', 'classify.facts');
+  g.wire('entry.exec', 'certain.exec');
+  g.wire('entry.facts', 'classify.facts', 'review.facts');
   g.wire('entry.pcr', 'trip.pcr', 'subject.pcr');
-  g.wire('classify.classification', 'needed.value', 'trip.classification');
-  g.wire('classify.classification', 'classified.classification', 'skipped.classification');
-  g.wire('classify.reason', 'trip.reason', 'classified.reason');
-  g.wire('classify.reason', 'confirmed.reason', 'skipped.reason');
-  g.wire('needed.default', 'classified.exec');
-  g.wire('needed.notBillable', 'notBillable.exec');
-  g.wire(context, 'notBillable.context');
-  g.wire('subject.subject', 'notBillable.subject');
+  g.wire('entry.claimId', 'logClaim.claimId', 'logSkip.claimId');
+  g.wire('classify.classification', 'review.classification', 'label.key', 'billable.value');
+  g.wire('classify.classification', 'trip.classification');
+  for (const ret of ['classified', 'notBillable', 'skipped']) {
+    g.wire('classify.classification', `${ret}.classification`);
+  }
+  for (const ret of ['classified', 'confirmed', 'notBillable', 'skipped']) {
+    g.wire('classify.reason', `${ret}.reason`);
+  }
+  g.wire('classify.reason', 'trip.reason', 'logClaim.reason', 'logSkip.reason');
+  g.wire('review.review', 'certain.condition');
+  g.wire('certain.false', 'billable.exec');
+  g.wire('billable.default', 'logClaim.exec');
+  g.wire(classified, 'logClaim.decision');
+  g.wire('logClaim.then', 'classified.exec');
+  g.wire('billable.notBillable', 'logSkip.exec');
+  g.wire('logSkip.then', 'notBillable.exec');
+  g.wire('certain.true', 'ask.exec');
+  g.wire(context, 'ask.context');
+  g.wire(suggested, 'ask.defaults');
+  g.wire('subject.subject', 'ask.subject');
   summary(
     g,
-    'notBillable',
-    'This trip was classified as not billable[ ({reason})]; confirm it and skip the claim, or classify it and make a claim if care was given',
-    { reason: 'classify.reason' }
+    'ask',
+    '{why}; it was classified as {label}[ ({reason})]. Choose how to bill it, or skip the claim if it is not billable',
+    { why: 'review.reason', label: 'label.value', reason: 'classify.reason' }
   );
-  g.wire('notBillable.claim', 'confirmed.exec');
-  g.wire('notBillable.classification', 'confirmed.classification');
-  g.wire('notBillable.skipClaim', 'skipped.exec');
+  g.wire('ask.claim', 'confirmed.exec');
+  g.wire('ask.classification', 'confirmed.classification');
+  g.wire('ask.skipClaim', 'skipped.exec');
   return g.def;
 };
 
@@ -1181,10 +1326,16 @@ export const serviceGraphs: SeedGraph[] = [
     'Assigns the claim diagnoses: Diagnoses from Coded Impressions, then the Agency Diagnoses rule.',
     assignDiagnoses()
   ),
+  asRule(
+    'billing.classification-review',
+    'Classification Needs Review',
+    'Decides whether the report is too incomplete or contradictory to trust its classification: no disposition at all, a not-billable trip whose report documents medications or procedures, or a transport no disposition says this unit made. Reports are often fragmented, so only these cases go to a biller.',
+    classificationReview()
+  ),
   asStage(
     'billing.decide-claim',
     'Decide Whether to Claim',
-    'Classifies the trip and, when it looks like no claim is needed, asks a biller to skip the report or name the classification to claim it as.',
+    'Classifies the trip and logs the classification on the claim. A clear not-billable trip skips the claim with its reason logged; a report the Classification Needs Review rule doubts goes to a biller, whose decision is logged.',
     decideClaim()
   )
 ];

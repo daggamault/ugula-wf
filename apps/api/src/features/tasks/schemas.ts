@@ -10,7 +10,8 @@ export const nextTaskSchema = v.object({
 
 export const completeTaskSchema = v.object({
   outcome: v.pipe(v.string(), v.nonEmpty(), v.maxLength(200)),
-  values: v.optional(valuesSchema, {})
+  values: v.optional(valuesSchema, {}),
+  note: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(1000)), '')
 });
 
 const TASK_SORTS = ['waiting', 'priority', 'due', 'title', 'queue', 'claim', 'assignee'] as const;

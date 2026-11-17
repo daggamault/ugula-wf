@@ -1052,13 +1052,30 @@ const missingDetailsSummary = (): GraphDef => {
   return g.def;
 };
 
+const PATIENT_BASES = {
+  matched: 'Matched an existing patient on name and birth date',
+  created: 'No existing patient matched, so one was created from the report',
+  reviewed: 'A biller chose between likely matches',
+  completedMatched: 'Matched an existing patient on the details a biller completed',
+  completedCreated: 'Created from the details a biller completed',
+  completedReviewed: 'A biller chose between likely matches for the details they completed'
+};
+
 const resolvePatient = (): GraphDef => {
   const g = graph(
     {
       execIn: ['exec'],
       execOut: ['then'],
       inputs: [p('demographics', DEMOGRAPHICS), p('pcrNumber', 'string', true)],
-      outputs: [p('patient', PATIENT)]
+      outputs: [
+        p('patient', PATIENT),
+        d(
+          'basis',
+          'string',
+          'How It Was Found',
+          'How the patient was found: matched, created from the report or chosen by a biller.'
+        )
+      ]
     },
     [{ name: 'entered', type: DEMOGRAPHICS, default: null }]
   );
@@ -1110,16 +1127,7 @@ const resolvePatient = (): GraphDef => {
   g.add('reviewCompleted', 'billing.review-patient-match', {
     label: 'Review Completed Matches'
   });
-  for (const id of [
-    'matched',
-    'created',
-    'reviewed',
-    'completedMatched',
-    'completedCreated',
-    'completedReviewed'
-  ]) {
-    g.ret(id);
-  }
+  for (const [id, basis] of Object.entries(PATIENT_BASES)) g.ret(id, undefined, { basis });
   g.wire('entry.exec', 'match.exec');
   g.wire('entry.demographics', 'match.demographics', 'create.demographics');
   g.wire('entry.pcrNumber', 'review.pcrNumber', 'reviewCompleted.pcrNumber');
@@ -1443,6 +1451,8 @@ const claimPatient = (): GraphDef => {
   g.add('resolve', 'billing.resolve-patient', { label: 'Resolve Patient' });
   g.add('address', 'billing.update-patient-address', { label: 'Current Patient Address' });
   g.add('assign', 'billing.assign-patient', { label: 'Assign Patient to Claim' });
+  const name = nameOf(g, 'name', 'Patient Name', 'address.patient');
+  g.add('log', 'billing.record-decision', { label: 'Log the Patient' });
   g.ret('done');
   g.wire('entry.exec', 'resolve.exec');
   g.wire('entry.demographics', 'resolve.demographics', 'address.demographics');
@@ -1451,8 +1461,14 @@ const claimPatient = (): GraphDef => {
   g.wire('resolve.patient', 'address.patient');
   g.wire('address.then', 'assign.exec');
   g.wire('address.patient', 'assign.patient', 'done.patient');
-  g.wire('entry.claimId', 'assign.claimId');
-  g.wire('assign.then', 'done.exec');
+  g.wire('entry.claimId', 'assign.claimId', 'log.claimId');
+  g.wire('assign.then', 'log.exec');
+  g.wire(
+    template(g, 'decision', 'Patient Decision', 'Patient is {name}', { name }),
+    'log.decision'
+  );
+  g.wire('resolve.basis', 'log.reason');
+  g.wire('log.then', 'done.exec');
   return g.def;
 };
 
@@ -1557,20 +1573,19 @@ const reviewPcrDetails = (): GraphDef => {
   return g.def;
 };
 
-const reviewPcrSummary = (): GraphDef => {
+const serviceText = (): GraphDef => {
   const g = rule(
-    [P.classification(true), P.service(true), P.findings(true)],
+    [P.classification(true), P.service(true)],
     [
       d(
-        'summary',
+        'text',
         'string',
-        'Task Summary',
-        'What the Review PCR task asks a biller to confirm, with the suggested service.'
+        'Service Text',
+        'The kind of trip, level, emergency, loaded miles and a death before loading, such as ALS1, emergency, 12.4 loaded miles.'
       )
     ]
   );
-  g.add('suggested', 'billing.service.break', { label: 'Suggested Service' });
-  g.add('findings', 'billing.findings.break', { label: 'Narrative Findings' });
+  g.add('suggested', 'billing.service.break', { label: 'Service' });
   g.add('tripKind', 'std.logic.choose', {
     label: 'Kind of Trip',
     config: {
@@ -1605,12 +1620,11 @@ const reviewPcrSummary = (): GraphDef => {
     values: { case1: 'pronounced dead before loading' }
   });
   g.wire('entry.service', 'suggested.service');
-  g.wire('entry.findings', 'findings.findings');
   g.wire('entry.classification', 'tripKind.key');
   g.wire('suggested.emergency', 'emergencyText.key');
   g.wire('suggested.loadedMiles', 'roundedMiles.value');
   g.wire('suggested.deceased', 'deceasedText.key');
-  const parts = makeList(g, 'serviceParts', 'Suggested Service Parts', 'string', [
+  const parts = makeList(g, 'serviceParts', 'Service Parts', 'string', [
     'tripKind.value',
     'suggested.level',
     'emergencyText.value',
@@ -1619,6 +1633,29 @@ const reviewPcrSummary = (): GraphDef => {
     }),
     'deceasedText.value'
   ]);
+  g.ret('return');
+  g.wire(joinText(g, 'text', 'Service Text', ', ', parts), 'return.text');
+  return g.def;
+};
+
+const reviewPcrSummary = (): GraphDef => {
+  const g = rule(
+    [P.classification(true), P.service(true), P.findings(true)],
+    [
+      d(
+        'summary',
+        'string',
+        'Task Summary',
+        'What the Review PCR task asks a biller to confirm, with the suggested service.'
+      )
+    ]
+  );
+  g.add('findings', 'billing.findings.break', { label: 'Narrative Findings' });
+  g.wire('entry.findings', 'findings.findings');
+  use(g, 'service', 'billing.service-text', 'Suggested Service Text', {
+    classification: 'entry.classification',
+    service: 'entry.service'
+  });
   const fromNarrative = select(
     g,
     'fromNarrative',
@@ -1643,8 +1680,8 @@ const reviewPcrSummary = (): GraphDef => {
     g,
     'summary',
     'Task Summary',
-    condition(g, 'nothingSuggested', 'Nothing Suggested', { parts: [{ list: 'string' }, parts] }, [
-      { field: 'parts', op: 'empty' }
+    condition(g, 'nothingSuggested', 'Nothing Suggested', { text: ['string', 'service.text'] }, [
+      { field: 'text', op: 'empty' }
     ]),
     fixed(
       'Confirm the classification, level of service and loaded miles before this claim is priced'
@@ -1655,7 +1692,7 @@ const reviewPcrSummary = (): GraphDef => {
       'Confirm the Service',
       'Confirm the service: {parts}{narrative}, before this claim is priced',
       {
-        parts: joinText(g, 'serviceText', 'Suggested Service Text', ', ', parts),
+        parts: 'service.text',
         narrative: fromNarrative
       }
     )
@@ -2647,6 +2684,12 @@ const billClaim = (): GraphDef => {
     trip: [{ object: {} }, 'trip.trip']
   });
   g.add('subject', 'billing.pcr-subject', { label: 'Task Subject' });
+  g.add('logService', 'billing.record-decision', { label: 'Log the Service' });
+  use(g, 'approvedText', 'billing.service-text', 'Approved Service Text', {
+    classification: 'billedTrip.value',
+    service: 'review.service'
+  });
+  g.add('approved', 'billing.service.break', { label: 'Approved Service' });
   g.add('build', 'billing.build-claim', { label: 'Build Claim' });
   g.add('responsibility', 'billing.decide-responsibility', { label: 'Decide Responsibility' });
   g.add('facility', 'billing.bill-facility', { label: 'Bill Facility' });
@@ -2678,7 +2721,17 @@ const billClaim = (): GraphDef => {
   g.wire('review.classification', 'reviewed.value');
   g.wire('review.voided', 'void.exec');
 
-  g.wire('reviewed.then', 'build.exec');
+  g.wire('reviewed.then', 'logService.exec');
+  g.wire('entry.claimId', 'logService.claimId');
+  g.wire('review.service', 'approved.service');
+  g.wire(
+    template(g, 'serviceDecision', 'Service Decision', 'Bill as {service}', {
+      service: 'approvedText.text'
+    }),
+    'logService.decision'
+  );
+  g.wire(joinText(g, 'serviceBasis', 'Why', '; ', 'approved.basis'), 'logService.reason');
+  g.wire('logService.then', 'build.exec');
   g.wire('entry.reason', 'trip.reason');
   g.wire('billedTrip.value', 'trip.classification', 'build.classification');
   for (const pin of ['claimId', 'report', 'patient', 'coverages']) {
@@ -2723,11 +2776,34 @@ const workDraftClaim = (): GraphDef => {
     label: 'Void Skipped Claim',
     values: { status: 'void' }
   });
+  g.add('classified', 'billing.record-classification', { label: 'Record Classification' });
+  g.add('notBillable', 'billing.record-classification', {
+    label: 'Record Not Billable',
+    values: { classification: 'notBillable' }
+  });
   g.add('findings', 'billing.read-findings', { label: 'Narrative Findings' });
   g.add('patient', 'billing.claim-patient', { label: 'Claim Patient' });
   const patientName = nameOf(g, 'patientName', 'Patient Name', 'parts.patient');
   g.add('payers', 'billing.determine-payers', { label: 'Determine Payers' });
   g.add('bill', 'billing.bill-claim', { label: 'Bill the Claim' });
+  g.add('logPayers', 'billing.record-decision', { label: 'Log the Payers' });
+  g.add('payerNames', 'std.list.pluck', { label: 'Payer Names', values: { field: 'payer' } });
+  const payerDecision = select(
+    g,
+    'payerDecision',
+    'Patient When No Payer, Else the Payers in Order',
+    condition(
+      g,
+      'noPayer',
+      'No Payer on the Report',
+      { payers: [{ list: 'string' }, 'payerNames.list'] },
+      [{ field: 'payers', op: 'empty' }]
+    ),
+    fixed('No payer on the report, so the patient is billed'),
+    template(g, 'payerOrder', 'Payers in Billing Order', 'Payers in billing order: {payers}', {
+      payers: joinText(g, 'payerList', 'Payer List', ', ', 'payerNames.list')
+    })
+  );
   g.ret('skipped', 'skipped');
   g.ret('claimed', 'claimed');
   g.ret('voided', 'voided');
@@ -2738,12 +2814,16 @@ const workDraftClaim = (): GraphDef => {
   g.wire('facts.facts', 'parts.facts', 'decide.facts', 'bill.facts');
   g.wire('parts.trip', 'trip.trip');
   g.wire('parts.clinical', 'clinical.clinical');
-  g.wire('decide.skip', 'skip.exec');
-  g.wire('entry.claimId', 'skip.claimId', 'patient.claimId', 'bill.claimId');
+  g.wire('decide.skip', 'notBillable.exec');
+  g.wire('notBillable.then', 'skip.exec');
+  g.wire('entry.claimId', 'decide.claimId', 'skip.claimId', 'patient.claimId', 'bill.claimId');
+  g.wire('entry.claimId', 'logPayers.claimId', 'classified.claimId', 'notBillable.claimId');
   g.wire('skip.then', 'skipped.exec');
   g.wire('decide.classification', 'skipped.classification', 'bill.classification');
   g.wire('decide.reason', 'bill.reason');
-  g.wire('decide.claim', 'findings.exec');
+  g.wire('decide.claim', 'classified.exec');
+  g.wire('decide.classification', 'classified.classification');
+  g.wire('classified.then', 'findings.exec');
   g.wire('clinical.narrative', 'findings.narrative');
   g.wire('findings.then', 'patient.exec');
   g.wire('parts.patient', 'patient.demographics');
@@ -2752,7 +2832,11 @@ const workDraftClaim = (): GraphDef => {
   g.wire('parts.coverages', 'payers.coverages');
   g.wire('facts.facts', 'payers.facts');
   g.wire(patientName, 'payers.patientName');
-  g.wire('payers.then', 'bill.exec');
+  g.wire('payers.then', 'logPayers.exec');
+  g.wire('payers.coverages', 'payerNames.list');
+  g.wire(payerDecision, 'logPayers.decision');
+  g.wire(joinText(g, 'payerNotes', 'Payer Notes', '; ', 'payers.notes'), 'logPayers.reason');
+  g.wire('logPayers.then', 'bill.exec');
   g.wire('entry.report', 'bill.report');
   g.wire('patient.patient', 'bill.patient', 'claimed.patient', 'voided.patient');
   g.wire('payers.coverages', 'bill.coverages');
@@ -2879,6 +2963,12 @@ export const intakeGraphs: SeedGraph[] = [
     'Review PCR Details',
     'What the Review PCR task shows a biller: the patient, trip, payers, what the narrative documents, the condition and vital signs, the documentation, the suggested service and the warnings.',
     reviewPcrDetails()
+  ),
+  asRule(
+    'billing.service-text',
+    'Service Text',
+    'Writes a service as one line for tasks and the claim history: kind of trip, level, emergency, loaded miles and a death before loading.',
+    serviceText()
   ),
   asRule(
     'billing.review-pcr-summary',

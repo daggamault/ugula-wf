@@ -637,6 +637,7 @@ type ClaimEventsTable = {
   created_by_id: string | null;
   source_key: string | null;
   batch_id: string | null;
+  task_id: string | null;
   created_at: Timestamp;
 };
 

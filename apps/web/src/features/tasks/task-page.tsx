@@ -18,6 +18,17 @@ import type { CodesClient } from '../../shared/codes.ts';
 import { formatAgo, formatDateTime, formatDay, patientName } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { navigate, useUnsavedChanges } from '../../shared/router.tsx';
+import {
+  consequenceOf,
+  fieldLabel,
+  fieldsByOutcome,
+  isDestructive,
+  missingFor,
+  missingReason,
+  outcomeHint,
+  outcomeIcon,
+  outcomeLabel
+} from '../../shared/task-outcomes.ts';
 import { queueInfo } from '../../shared/task-queues.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
@@ -30,6 +41,7 @@ import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Tabs } from '../../shared/ui/tabs.tsx';
 import { TextLink } from '../../shared/ui/text-link.tsx';
+import { Textarea } from '../../shared/ui/textarea.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { Tooltip } from '../../shared/ui/tooltip.tsx';
 import { ValueField } from '../../shared/ui/value-field.tsx';
@@ -38,17 +50,6 @@ import { loadFailure, refreshFailure, useResource } from '../../shared/use-resou
 import type { TaskClaimRecord, TaskDetail, TasksClient } from './client.ts';
 import { ContextView } from './context-view.tsx';
 import { encounterFactsOf, type Mismatch, mismatchesOf } from './encounter-check.ts';
-import {
-  consequenceOf,
-  fieldLabel,
-  fieldsByOutcome,
-  isDestructive,
-  missingFor,
-  missingReason,
-  outcomeHint,
-  outcomeIcon,
-  outcomeLabel
-} from './outcomes.ts';
 import { SourceReportView } from './source-report.tsx';
 import { PatientFacts, TaskIssue } from './task-brief.tsx';
 import { ChangeList, changesOf, FieldWas } from './task-changes.tsx';
@@ -109,7 +110,7 @@ type TaskViewProps = {
   mismatches?: readonly Mismatch[];
   source?: ReactNode;
   claim?: TaskClaimRecord | null;
-  onComplete: (outcome: string, values: Record<string, Json>) => Promise<void>;
+  onComplete: (outcome: string, values: Record<string, Json>, note: string) => Promise<void>;
   onAssign: (assign: boolean) => Promise<void>;
   onNext: () => Promise<void>;
   upload?: Upload | undefined;
@@ -295,7 +296,7 @@ const Decision = ({
   onComplete
 }: Pick<TaskViewProps, 'task' | 'upload' | 'codes'> & {
   errors: FieldErrors;
-  onComplete: (outcome: string, values: Record<string, Json>) => Promise<void>;
+  onComplete: (outcome: string, values: Record<string, Json>, note: string) => Promise<void>;
 }) => {
   const isFault = task.kind === 'fault';
   const can = useCan();
@@ -306,12 +307,13 @@ const Decision = ({
   const [values, setValues] = useState<Record<string, Json>>(() =>
     Object.fromEntries(task.fields.map((f) => [f.name, task.defaults?.[f.name] ?? null]))
   );
+  const [note, setNote] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const act = async (outcome: string) => {
     setBusy(outcome);
     try {
-      await onComplete(outcome, values);
+      await onComplete(outcome, values, note.trim());
     } finally {
       setBusy(null);
     }
@@ -379,6 +381,20 @@ const Decision = ({
       <form className="flex flex-col gap-5" onSubmit={(e) => e.preventDefault()}>
         {fieldGrid(shared)}
         {showChanges ? <ChangeList changes={changes} /> : null}
+        <Textarea
+          id={`task-${task.id}-note`}
+          label="Note (optional)"
+          hint={
+            task.source.claimId
+              ? 'Saved with your decision on the claim history, so others see why.'
+              : 'Saved with your decision.'
+          }
+          maxLength={1000}
+          rows={2}
+          disabled={busy !== null}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
         <ol aria-label="Options" className="flex flex-col gap-4">
           {task.outcomes.map((outcome, i) => {
             const Icon = outcomeIcon(outcome);
@@ -488,11 +504,11 @@ export const TaskView = ({
   const shown = tabs.includes(tab) ? tab : (tabs[0] ?? 'workflow');
   const encounterHref = source != null ? (tabHref?.('encounter') ?? '?tab=encounter') : undefined;
 
-  const complete = async (outcome: string, values: Record<string, Json>) => {
+  const complete = async (outcome: string, values: Record<string, Json>, note: string) => {
     setError('');
     setErrors({});
     try {
-      await onComplete(outcome, values);
+      await onComplete(outcome, values, note);
       setDone(outcome);
       notify({
         title: `${outcomeLabel(outcome)}: ${task.subject ?? task.title}`,
@@ -597,6 +613,9 @@ export const TaskView = ({
                 ? `Completed ${formatDateTime(task.completed_at)} as “${outcomeLabel(task.resolution?.outcome ?? '')}”.`
                 : 'This task was cancelled.'}
             </Alert>
+            {task.resolution?.note ? (
+              <p className="text-sm whitespace-pre-line">{task.resolution.note}</p>
+            ) : null}
             {task.resolution ? (
               <ContextView label="Resolution" value={task.resolution.values} />
             ) : null}
@@ -705,8 +724,8 @@ export const TaskPage = ({ client, codes, live, taskId, back, tab = 'claim' }: T
         await (assign ? client.assign(taskId) : client.unassign(taskId));
         task.reload();
       }}
-      onComplete={async (outcome, values) => {
-        await client.complete(taskId, outcome, values);
+      onComplete={async (outcome, values, note) => {
+        await client.complete(taskId, outcome, values, note);
         queues.reload();
       }}
       onNext={async () => {

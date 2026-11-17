@@ -156,7 +156,7 @@ export const REPORTS: readonly AnyReport[] = [
     id: 'imports',
     title: 'Import Reconciliation',
     description:
-      'Each PCR file received and what its reports became: billed, still in draft, voided, revisions or without a claim.',
+      'Each PCR file received and what its reports became: billed, still in draft, not billable, voided, revisions or without a claim.',
     dates: 'received',
     groups: null,
     columns: fixed(IMPORT_COLUMNS)

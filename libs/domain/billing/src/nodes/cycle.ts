@@ -117,7 +117,7 @@ export const cycleNodes: NodesOf = (stores) => {
       title: 'Record Claim Step',
       category: CATEGORY,
       description:
-        'Records the status of the step a claim is on, so the status a biller filters by is always the step the claim is on; a step without a status (closing) records nothing.',
+        'Records the status of the step a claim is on, so the status a biller filters by is always the step the claim is on, and logs a change of status on the claim history with why; a step without a status (closing) records nothing.',
       level: 'advanced',
       keywords: ['status'],
       effect: true,
@@ -127,7 +127,12 @@ export const cycleNodes: NodesOf = (stores) => {
           optional: true,
           description: 'The status of the step the claim is on, if it has one.'
         }),
-        signalsSeenPin
+        signalsSeenPin,
+        pin('reason', 'string', {
+          optional: true,
+          description:
+            'Why the claim is on this step, logged on its history when the status changes.'
+        })
       ],
       outputs: [],
       exits: {
@@ -144,7 +149,8 @@ export const cycleNodes: NodesOf = (stores) => {
           claimId,
           ctx.key,
           status,
-          inputs.signalsSeen
+          inputs.signalsSeen,
+          textOrNull(inputs.reason)
         );
         return { exit: recorded === 'stale' ? 'stale' : 'recorded', outputs: {} };
       }
@@ -198,6 +204,36 @@ export const cycleNodes: NodesOf = (stores) => {
           coverageId,
           note: textOrNull(inputs.note) ?? '',
           payerClaimNumber: coverageId === null ? null : textOrNull(inputs.payerClaimNumber)
+        });
+        return {};
+      }
+    }),
+    actionNode({
+      type: 'billing.record-decision',
+      title: 'Record Decision',
+      category: CATEGORY,
+      description:
+        "Logs a decision on the claim's history with why it was made, such as how the trip was classified or which patient the report was matched to, once per step. Decided By names the person when a task decided it; a rule's decision is logged as automatic. A completed task on the claim logs its own outcome, so this is for what rules decide and for the meaning of a task's answer.",
+      level: 'basic',
+      keywords: ['log', 'audit', 'decision', 'reason', 'history', 'why'],
+      effect: true,
+      inputs: [
+        claimIdPin,
+        pin('decision', 'string', { description: 'What was decided, as a short sentence.' }),
+        pin('reason', 'string', { optional: true, description: 'Why it was decided.' }),
+        pin('decidedBy', 'string', {
+          optional: true,
+          label: 'Decided By',
+          description: 'The user whose task decided it, or nothing when a rule did.'
+        })
+      ],
+      outputs: [],
+      compute: async (inputs, _, ctx) => {
+        const decision = requiredText(inputs.decision, 'A decision needs to say what was decided');
+        const reason = textOrNull(inputs.reason);
+        await claims().recordDecision(ctx.runId, claimIdOf(inputs.claimId), ctx.key, {
+          note: reason ? `${decision} · ${reason}` : decision,
+          decidedBy: textOrNull(inputs.decidedBy)
         });
         return {};
       }

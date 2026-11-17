@@ -69,7 +69,7 @@ export type TaskDetail = TaskSummary & {
   hints: Readonly<Record<string, string>>;
   defaults: Record<string, Json> | null;
   prefill: 'current' | 'suggested' | null;
-  resolution: { outcome: string; values: Record<string, Json> } | null;
+  resolution: { outcome: string; values: Record<string, Json>; note?: string } | null;
   source: TaskSource;
 };
 
@@ -122,10 +122,11 @@ export const createTasksClient = (api: Api) => ({
         `/api/tasks?runId=${encodeURIComponent(runId)}`
       )
     ).items.find((t) => t.id !== after) ?? null,
-  complete: (id: string, outcome: string, values: Record<string, Json>) =>
+  complete: (id: string, outcome: string, values: Record<string, Json>, note = '') =>
     api.post<{ status: string }>(`/api/tasks/${encodeURIComponent(id)}/complete`, {
       outcome,
-      values
+      values,
+      note
     }),
   uploadFile: (id: string, file: File) => {
     const form = new FormData();

@@ -210,7 +210,10 @@ describe('claim service', () => {
     const { service, ruled } = setup({ events });
     const found = await service.find('t', 'c1');
     assert.ok(found.ok);
-    assert.deepEqual(found.value.files, events);
+    assert.deepEqual(
+      found.value.files,
+      events.map((e) => ({ ...e, decision: null }))
+    );
     assert.deepEqual(found.value.codes, { hcpcs: { A0427: 'ALS1 emergency' } });
     assert.deepEqual(found.value.issues, [
       {
@@ -296,7 +299,7 @@ describe('claim service', () => {
     const { service, queries } = setup({ events });
     assert.deepEqual(await service.events('t', 'c1', page), {
       ok: true,
-      value: { items: [event], total: 1, page: 1, pageSize: 25 }
+      value: { items: [{ ...event, decision: null }], total: 1, page: 1, pageSize: 25 }
     });
     const exists = queries.find((q) => q.sql.startsWith('select "id" from "claims"'));
     assert.deepEqual(exists?.parameters, ['c1', 't']);

@@ -38,9 +38,8 @@ import {
   WalletIcon,
   XIcon
 } from 'lucide-react';
-import { titleCaseLabel } from '../../shared/format.ts';
-import { titleCase } from '../../shared/task-queues.ts';
-import { labelOf } from './context-view.tsx';
+import { labelOf, titleCaseLabel } from './format.ts';
+import { titleCase } from './task-queues.ts';
 
 type OutcomeStyle = { icon: LucideIcon; label?: string };
 

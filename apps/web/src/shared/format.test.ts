@@ -11,6 +11,7 @@ import {
   formatDuration,
   formatMiles,
   labelFromName,
+  labelOf,
   parseDollars,
   patientName,
   sexLabel,
@@ -277,5 +278,27 @@ describe('sexLabel', () => {
   it('names nothing for an unknown or missing code', () => {
     assert.equal(sexLabel('X'), null);
     assert.equal(sexLabel(null), null);
+  });
+});
+
+describe('labelOf', () => {
+  it('turns camel case keys into Title Cased labels', () => {
+    assert.equal(labelOf('loadedMiles'), 'Loaded Miles');
+    assert.equal(labelOf('pcrNumber'), 'PCR Number');
+    assert.equal(labelOf('memberId'), 'Member ID');
+  });
+
+  it('turns snake and kebab case keys into labels', () => {
+    assert.equal(labelOf('first_name'), 'First Name');
+    assert.equal(labelOf('pickup-city'), 'Pickup City');
+  });
+
+  it('drops the Cents unit from money keys', () => {
+    assert.equal(labelOf('balanceCents'), 'Balance');
+  });
+
+  it('keeps a key that has no words left as is', () => {
+    assert.equal(labelOf('Cents'), 'Cents');
+    assert.equal(labelOf('__'), '__');
   });
 });

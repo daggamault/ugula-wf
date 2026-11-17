@@ -13,6 +13,7 @@ describe('announceClaims', () => {
         log.push('open');
         return { id: 'c1', duplicate: false };
       },
+      classifyClaim: async () => void log.push('classify'),
       assignPatient: async () => void log.push('patient'),
       saveClaim: async () => void log.push('save'),
       claimCheck: async () => null,
@@ -39,6 +40,7 @@ describe('announceClaims', () => {
         return 'stale' as const;
       },
       recordEvent: async () => void log.push('event'),
+      recordDecision: async () => void log.push('decision'),
       closeClaim: async () => void log.push('close'),
       setResponsibility: async () => void log.push('responsibility'),
       facilityDirectory: async () => [],
@@ -56,6 +58,7 @@ describe('announceClaims', () => {
         duplicate: false
       }
     );
+    await claims.classifyClaim('r1', 'c1', 'k', 'emergency');
     await claims.assignPatient('r1', 'c1', 'k', 'p1');
     await claims.saveClaim('r1', 'c1', 'k', {} as never);
     await claims.patchClaim('r1', 'c1', 'k', {} as never);
@@ -71,6 +74,7 @@ describe('announceClaims', () => {
       note: '',
       payerClaimNumber: null
     });
+    await claims.recordDecision('r1', 'c1', 'k', { note: 'Classified', decidedBy: null });
     await claims.closeClaim('r1', 'c1', 'k', 'paid');
     await claims.setResponsibility('r1', 'c1', 'k', {
       party: 'facility',
@@ -97,6 +101,8 @@ describe('announceClaims', () => {
     assert.deepEqual(log, [
       'open',
       'announce',
+      'classify',
+      'announce',
       'patient',
       'announce',
       'save',
@@ -111,6 +117,8 @@ describe('announceClaims', () => {
       'announce',
       'event',
       'announce',
+      'decision',
+      'announce',
       'close',
       'announce',
       'responsibility',
@@ -121,7 +129,7 @@ describe('announceClaims', () => {
       'announce',
       'link'
     ]);
-    assert.deepEqual(announced, Array(12).fill(['r1', { kind: 'claim', id: 'c1' }]));
+    assert.deepEqual(announced, Array(14).fill(['r1', { kind: 'claim', id: 'c1' }]));
   });
 
   it('announces nothing when the store refuses the change', async () => {

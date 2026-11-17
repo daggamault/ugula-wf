@@ -4,6 +4,7 @@ import { sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { escapeLike } from '../../shared/search.ts';
+import { withDecision } from './decisions.ts';
 import type { ClaimEventSort, ClaimSort } from './schemas.ts';
 
 export type ClaimFilters = PageRequest<ClaimSort> & {
@@ -311,6 +312,8 @@ const eventRows = (db: Db, claimId: string) =>
     .leftJoin('claim_coverages as cc', 'cc.id', 'e.coverage_id')
     .leftJoin('payers as dp', 'dp.id', 'cc.payer_id')
     .leftJoin('claim_batches as cb', 'cb.id', 'e.batch_id')
+    .leftJoin('users as eu', 'eu.id', 'e.created_by_id')
+    .leftJoin('tasks as t', 't.id', 'e.task_id')
     .select((eb) => [
       'e.id',
       'e.kind',
@@ -326,6 +329,12 @@ const eventRows = (db: Db, claimId: string) =>
       'e.payer_claim_number',
       'e.note',
       'e.created_at',
+      sql<string | null>`nullif(concat_ws(' ', eu.first_name, eu.last_name), '')`.as('by'),
+      't.title as task_title',
+      sql<string | null>`t.resolution->>'outcome'`.as('task_outcome'),
+      't.fields as task_fields',
+      't.defaults as task_defaults',
+      sql<unknown>`t.resolution->'values'`.as('task_values'),
       sql<boolean>`e.document is not null`.as('has_document'),
       jsonArrayFrom(
         eb
@@ -354,15 +363,23 @@ const eventRows = (db: Db, claimId: string) =>
       ).as('remarks')
     ]);
 
-export const listClaimEvents = (db: Db, claimId: string, page: PageRequest<ClaimEventSort>) =>
-  paged(eventRows(db, claimId), page, EVENT_ORDER, sql.ref('e.id'));
+export const listClaimEvents = async (
+  db: Db,
+  claimId: string,
+  page: PageRequest<ClaimEventSort>
+) => {
+  const found = await paged(eventRows(db, claimId), page, EVENT_ORDER, sql.ref('e.id'));
+  return { ...found, items: found.items.map(withDecision) };
+};
 
-export const listClaimFiles = (db: Db, claimId: string) =>
-  eventRows(db, claimId)
-    .where((eb) => eb.or([eb('e.batch_id', 'is not', null), eb('e.document', 'is not', null)]))
-    .orderBy('e.created_at')
-    .orderBy('e.id')
-    .execute();
+export const listClaimFiles = async (db: Db, claimId: string) =>
+  (
+    await eventRows(db, claimId)
+      .where((eb) => eb.or([eb('e.batch_id', 'is not', null), eb('e.document', 'is not', null)]))
+      .orderBy('e.created_at')
+      .orderBy('e.id')
+      .execute()
+  ).map(withDecision);
 
 export const listClaimPayerFiles = (db: Db, claimId: string) =>
   db

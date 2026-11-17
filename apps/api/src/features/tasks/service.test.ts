@@ -184,6 +184,28 @@ describe('task service', () => {
     ]);
   });
 
+  it('logs the decision with its note on every claim the task run works', async () => {
+    const { service, queries } = setup(task());
+    await service.complete(
+      't',
+      'u1',
+      't1',
+      { outcome: 'approve', values: {}, note: 'Spoke with the facility' },
+      []
+    );
+    const [logged] = queries.filter((q) => q.sql.startsWith('insert into "claim_events"'));
+    assert.ok(logged?.sql.includes('from "claim_runs" as "cr" inner join "claims" as "c"'));
+    assert.ok(logged?.sql.endsWith('on conflict ("claim_id", "source_key") do nothing'));
+    assert.deepEqual(logged?.parameters, [
+      'Spoke with the facility',
+      'u1',
+      't1',
+      'task:t1',
+      't',
+      'r1'
+    ]);
+  });
+
   it('names each invalid field and enqueues nothing', async () => {
     const { service, jobs, publishAfter } = setup(task());
     assert.deepEqual(

@@ -2036,6 +2036,7 @@ const cycleClaim = (): GraphDef => {
   g.wire('ledger.then', 'record.exec');
   g.wire('status.value', 'record.status');
   g.wire('ledger.signalsSeen', 'record.signalsSeen', 'wait.after');
+  g.wire(joinText(g, 'stepReason', 'Why This Step', '; ', 'next.reasons'), 'record.reason');
   g.wire('record.recorded', 'clear.exec');
   g.wire('clear.then', 'checkFirst.exec');
   g.wire('next.check', 'checkFirst.condition');

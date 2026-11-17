@@ -1,5 +1,11 @@
 import { actionNode, branchNode, type PinSpec, pin, pureNode } from '@ugula/graph';
-import { priceLines, readLines, readPricedLines } from '../charges.ts';
+import {
+  CLASSIFICATIONS,
+  isClassification,
+  priceLines,
+  readLines,
+  readPricedLines
+} from '../charges.ts';
 import { CLAIM_DOCUMENT, CLAIM_ISSUE, CLAIM_RECORD } from '../check-models.ts';
 import { chargeChanges, editedValues, readClaimPatch } from '../claim-fix.ts';
 import { CLAIM_FIX_FIELDS } from '../claim-fix-fields.ts';
@@ -394,6 +400,31 @@ export const claimNodes: NodesOf = (stores) => {
           claimId: textOrNull(inputs.claimId)
         });
         return { exit: duplicate ? 'duplicate' : 'opened', outputs: { claimId: id } };
+      }
+    }),
+    actionNode({
+      type: 'billing.record-classification',
+      title: 'Record Classification',
+      category: CATEGORY,
+      description:
+        'Sets the classification on a draft claim as soon as the trip is classified, so the claim says what kind of trip it is, and a not-billable one is counted as such, before it is priced.',
+      level: 'basic',
+      keywords: ['classify', 'not billable', 'kind of trip'],
+      effect: true,
+      inputs: [
+        claimIdPin,
+        pin('classification', 'string', {
+          description: `The classification: ${CLASSIFICATIONS.join(', ')}.`
+        })
+      ],
+      outputs: [],
+      compute: async (inputs, _, ctx) => {
+        const { classification } = inputs;
+        if (!isClassification(classification)) {
+          throw new Error(`Unknown classification "${String(classification)}"`);
+        }
+        await claims().classifyClaim(ctx.runId, claimIdOf(inputs.claimId), ctx.key, classification);
+        return {};
       }
     }),
     actionNode({

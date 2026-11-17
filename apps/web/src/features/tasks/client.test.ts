@@ -95,7 +95,11 @@ describe('tasks client', () => {
       status: 'completed'
     });
     assert.deepEqual(calls, [
-      ['POST', '/api/tasks/a%2Fb/complete', { outcome: 'approve', values: { note: 'ok' } }]
+      [
+        'POST',
+        '/api/tasks/a%2Fb/complete',
+        { outcome: 'approve', values: { note: 'ok' }, note: '' }
+      ]
     ]);
   });
 

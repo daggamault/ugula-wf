@@ -16,7 +16,12 @@ export const importsReport = report({
               count.as('pcrs'),
               countWhere(sql`c.status not in ('draft', 'void')`).as('billed'),
               countWhere(sql`c.status = 'draft'`).as('drafts'),
-              countWhere(sql`c.status = 'void'`).as('voided'),
+              countWhere(sql`c.status = 'void' and c.classification = 'notBillable'`).as(
+                'not_billable'
+              ),
+              countWhere(
+                sql`c.status = 'void' and c.classification is distinct from 'notBillable'`
+              ).as('voided'),
               countWhere(
                 sql`c.id is null and exists (select 1 from claims o where o.agency_id = i.agency_id and o.pcr_number = ir.pcr_number)`
               ).as('revisions'),
@@ -48,6 +53,7 @@ export const importsReport = report({
         sql<number>`coalesce(i.report_count, x.pcrs)`.as('pcrs'),
         'x.billed',
         'x.drafts',
+        'x.not_billable',
         'x.voided',
         'x.revisions',
         'x.no_claim',
@@ -65,6 +71,7 @@ export const importsReport = report({
     'pcrs',
     'billed',
     'drafts',
+    'not_billable',
     'voided',
     'revisions',
     'no_claim',
@@ -74,5 +81,15 @@ export const importsReport = report({
   order: 'received_at',
   tiebreak: 'id',
   dir: 'asc',
-  totals: ['pcrs', 'billed', 'drafts', 'voided', 'revisions', 'no_claim', 'failed', 'charges_cents']
+  totals: [
+    'pcrs',
+    'billed',
+    'drafts',
+    'not_billable',
+    'voided',
+    'revisions',
+    'no_claim',
+    'failed',
+    'charges_cents'
+  ]
 });

@@ -55,6 +55,8 @@ const PROTECTED = sql.lit('balance_protected' satisfies ClaimEventKind);
 
 const DENIED = sql.lit('denied' satisfies ClaimEventKind);
 
+const DECIDED = sql.lit('decided' satisfies ClaimEventKind);
+
 const buildClaimsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('claims')
@@ -472,6 +474,9 @@ const buildClaimEventsTable = (db: Kysely<Database>) =>
     )
     .addColumn('source_key', 'text')
     .addColumn('batch_id', 'uuid')
+    .addColumn('task_id', 'uuid', (col) =>
+      col.references('tasks.id').onDelete('set null').onUpdate('cascade')
+    )
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addForeignKeyConstraint(
       'claim_events_claim_id_fkey',
@@ -504,6 +509,10 @@ const buildClaimEventsTable = (db: Kysely<Database>) =>
     .addCheckConstraint(
       'claim_events_route_check',
       sql`(kind = ${DENIED} and route is not null and route in (${list(DENIAL_ROUTES)})) or (kind <> ${DENIED} and route is null)`
+    )
+    .addCheckConstraint(
+      'claim_events_decided_check',
+      sql`kind <> ${DECIDED} or note <> '' or task_id is not null`
     )
     .addCheckConstraint(
       'claim_events_check_number_check',
@@ -673,6 +682,7 @@ const buildClaimsIndexes = (db: Kysely<Database>) => [
     .on('claim_events')
     .column('created_by_id'),
   db.schema.createIndex('idx_claim_events_batch_id').on('claim_events').column('batch_id'),
+  db.schema.createIndex('idx_claim_events_task_id').on('claim_events').column('task_id'),
   db.schema
     .createIndex('idx_claim_events_agency_kind_created')
     .on('claim_events')

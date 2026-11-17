@@ -1,23 +1,22 @@
-import { Badge, type StatusBadgeStyle } from '../../shared/ui/badge.tsx';
+import { CLAIM_STATUS_LABELS } from '@ugula/billing';
+import { Badge } from '../../shared/ui/badge.tsx';
+import type { Intent } from '../../shared/ui/intent.ts';
 import type { ClaimStatus } from './client.ts';
 
-const STATUS: Record<ClaimStatus, StatusBadgeStyle> = {
-  draft: { label: 'Draft' },
-  needs_review: { intent: 'warning', label: 'Needs Review' },
-  ready: { intent: 'primary', label: 'Ready to Submit' },
-  submitted: { intent: 'info', label: 'Submitted' },
-  follow_up: { intent: 'warning', label: 'Needs Follow-Up' },
-  reconcile: { intent: 'warning', label: 'Reconcile Payment' },
-  denied: { intent: 'danger', label: 'Denied' },
-  facility_billing: { intent: 'info', label: 'Billed to Facility' },
-  patient_balance: { intent: 'info', label: 'Patient Balance' },
-  balance_review: { intent: 'warning', label: 'Balance Review' },
-  paid: { intent: 'success', label: 'Paid' },
-  written_off: { label: 'Written Off' },
-  collections: { intent: 'danger', label: 'Sent to Collections' },
-  void: { label: 'Void' }
+const INTENTS: Partial<Record<ClaimStatus, Intent>> = {
+  needs_review: 'warning',
+  ready: 'primary',
+  submitted: 'info',
+  follow_up: 'warning',
+  reconcile: 'warning',
+  denied: 'danger',
+  facility_billing: 'info',
+  patient_balance: 'info',
+  balance_review: 'warning',
+  paid: 'success',
+  collections: 'danger'
 };
 
 export const ClaimStatusBadge = ({ status }: { status: ClaimStatus }) => (
-  <Badge intent={STATUS[status].intent}>{STATUS[status].label}</Badge>
+  <Badge intent={INTENTS[status]}>{CLAIM_STATUS_LABELS[status]}</Badge>
 );

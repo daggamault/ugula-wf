@@ -277,6 +277,25 @@ describe('cycleNodes', () => {
     );
   });
 
+  it('logs a decision with its reason and who made it', async () => {
+    const { claims, node } = world();
+    const decide = node('record-decision');
+    await run(decide, {
+      claimId: 'c1',
+      decision: ' Classified as emergency ',
+      reason: ' Patient transported by this unit '
+    });
+    await run(decide, { claimId: 'c1', decision: 'Patient confirmed', decidedBy: 'user-1' });
+    assert.deepEqual(
+      claims.decisions.map((d) => [d.note, d.decidedBy]),
+      [
+        ['Classified as emergency · Patient transported by this unit', null],
+        ['Patient confirmed', 'user-1']
+      ]
+    );
+    await assert.rejects(async () => run(decide, { claimId: 'c1', decision: ' ' }), /decided/);
+  });
+
   it('links its run to the claim it follows', async () => {
     const { claims, node } = world();
     await run(node('follow-claim'), { claimId: 'c1' });

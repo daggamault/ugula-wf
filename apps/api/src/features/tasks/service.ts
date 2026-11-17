@@ -22,6 +22,7 @@ import {
   findTask,
   findTaskSource,
   listQueues,
+  logTaskDecision,
   searchTasks,
   type TaskFilters
 } from './queries.ts';
@@ -37,6 +38,7 @@ type TaskServiceDeps = {
 type Completion = {
   outcome: string;
   values: Record<string, Json>;
+  note?: string | undefined;
 };
 
 const notFound = fail('not_found', 'Task not found');
@@ -202,6 +204,13 @@ export const createTaskService = ({ db, boss, publish, blobs, maxBytes }: TaskSe
           if (!(await completeTask(tx, { agencyId, id, userId, resolution: completion }))) {
             return blocked(await findTask(tx, agencyId, id), userId) ?? closed;
           }
+          await logTaskDecision(tx, {
+            agencyId,
+            taskId: id,
+            runId: task.run_id,
+            userId,
+            note: completion.note ?? ''
+          });
           await enqueueRuns(boss, sqlExecutor(tx), [jobFor(task, userId, completion)]);
           return ok({ status: 'completed' });
         }),

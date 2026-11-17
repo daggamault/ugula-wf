@@ -12,7 +12,7 @@ import {
   outcomeHint,
   outcomeIcon,
   outcomeLabel
-} from './outcomes.ts';
+} from './task-outcomes.ts';
 
 const FIELDS: FieldSpec[] = [
   { name: 'payerId', type: 'string', label: 'Directory payer', required: ['link'] },

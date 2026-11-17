@@ -1,4 +1,5 @@
 import type { NodeDef } from '@ugula/graph';
+import type { Classification } from '../charges.ts';
 import type { ClaimDocument, DocumentKind } from '../claim-documents.ts';
 import type { ClaimPatch } from '../claim-fix.ts';
 import type { ManualPayment } from '../claim-payments.ts';
@@ -209,6 +210,12 @@ export type ClaimStore = {
     patientId: string
   ) => Promise<void>;
   saveClaim: (runId: string, claimId: string, sourceKey: string, claim: NewClaim) => Promise<void>;
+  classifyClaim: (
+    runId: string,
+    claimId: string,
+    sourceKey: string,
+    classification: Classification
+  ) => Promise<void>;
   claimCheck: (runId: string, claimId: string) => Promise<ClaimCheck | null>;
   patchClaim: (
     runId: string,
@@ -221,7 +228,8 @@ export type ClaimStore = {
     claimId: string,
     sourceKey: string,
     status: ClaimStatus,
-    signalsSeen: number
+    signalsSeen: number,
+    reason?: string | null
   ) => Promise<'set' | 'stale'>;
   noteRevision: (
     runId: string,
@@ -262,6 +270,12 @@ export type ClaimStore = {
       note: string;
       payerClaimNumber: string | null;
     }
+  ) => Promise<void>;
+  recordDecision: (
+    runId: string,
+    claimId: string,
+    sourceKey: string,
+    decision: { note: string; decidedBy: string | null }
   ) => Promise<void>;
   closeClaim: (
     runId: string,

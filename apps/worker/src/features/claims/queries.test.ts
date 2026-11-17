@@ -311,6 +311,20 @@ describe('createDraftStore', () => {
     );
     assert.ok(link?.sql.endsWith('on conflict ("run_id") do nothing'));
     assert.deepEqual(link?.parameters.slice(0, 2), [ID, 'r1']);
+    const [opened] = sqlOf(queries, 'insert into "claim_events"');
+    assert.deepEqual(opened?.parameters, ['From PCR PCR-1', 'r1:s:open:0', ID]);
+    assert.ok(opened?.sql.endsWith('on conflict ("claim_id", "source_key") do nothing'));
+  });
+
+  it('sets the classification on a draft claim only', async () => {
+    const { db, queries } = createRecordingDb((q) => (ownedClaim(q) ? [owned] : []));
+    await createDraftStore(db, boss).classifyClaim('r1', ID, 'k', 'notBillable');
+    const update = queries.at(-1);
+    assert.equal(
+      update?.sql,
+      'update "claims" set "classification" = $1, "updated_at" = now() where "id" = $2 and "status" = $3'
+    );
+    assert.deepEqual(update?.parameters, ['notBillable', ID, 'draft']);
   });
 
   it('assigns a patient of the same agency to a draft, or again to the same patient', async () => {
@@ -370,6 +384,8 @@ describe('createDraftStore', () => {
     ]);
     assert.equal(sqlOf(queries, 'insert into "claims"').length, 0);
     assert.equal(sqlOf(queries, 'insert into "claim_runs"').length, 1);
+    const [opened] = sqlOf(queries, 'insert into "claim_events"');
+    assert.ok(opened?.parameters.includes('Worked again from its report'));
     assert.deepEqual(jobs, [{ runId: OLD_RUN, command: { type: 'cancel' } }]);
     await assert.rejects(
       createDraftStore(createRecordingDb().db, boss).openDraft('r1', 'k', {
@@ -577,10 +593,15 @@ describe('createCycleStore', () => {
         'paid',
         'written_off',
         'collections',
-        'void'
+        'void',
+        'Moved to Submitted',
+        'k'
       ]
     );
+    assert.ok(write?.sql.includes('insert into claim_events'));
     assert.ok(write?.parameters.includes(4));
+    await store.setStatus('r1', ID, 'k2', 'denied', 4, 'A denial waits to be worked');
+    assert.ok(queries.at(-1)?.parameters.includes('Moved to Denied · A denial waits to be worked'));
     received = 5;
     assert.equal(await store.setStatus('r1', ID, 'k', 'submitted', 4), 'stale');
     assert.equal(await store.setStatus('r1', ID, 'k', 'submitted', 5), 'set');
@@ -725,7 +746,7 @@ describe('createCycleStore', () => {
           : q.sql.startsWith('select "id" from "workflow_runs"')
             ? [{ id: CYCLE }]
             : q.sql.startsWith('update "claims"') && free
-              ? [{}]
+              ? [{ was: 'draft' }]
               : []
       );
     const { db, queries } = attach(true);
@@ -738,6 +759,13 @@ describe('createCycleStore', () => {
     assert.ok(update?.sql.includes('"status" = case when c.status = $2 then $3 else c.status end'));
     assert.ok(update?.sql.includes('"c"."cycle_run_id" is null'));
     assert.ok(update?.sql.includes('not exists (select "r"."id" from "workflow_runs" as "r"'));
+    assert.ok(update?.sql.endsWith('returning old.status as "was"'));
+    const [moved] = sqlOf(queries, 'insert into "claim_events"');
+    assert.ok(
+      moved?.parameters.includes(
+        'Moved to Needs Review · The claim is built and its payer cycle started'
+      )
+    );
     const [link] = sqlOf(queries, 'insert into "claim_runs"');
     assert.deepEqual(link?.parameters.slice(0, 2), [ID, CYCLE]);
     const [signal] = sqlOf(queries, 'insert into "signals"');
@@ -1169,6 +1197,29 @@ describe('createLedgerStore', () => {
       'k1'
     ]);
     assert.ok(insert?.sql.includes('on conflict ("claim_id", "source_key") do nothing'));
+  });
+
+  it('records a decision once per step, by a user only when one exists', async () => {
+    const { db, queries } = createRecordingDb((q) => (ownedClaim(q) ? [owned] : []));
+    const store = createLedgerStore(db);
+    await store.recordDecision('r1', ID, 'k1', {
+      note: 'Classified as Emergency',
+      decidedBy: null
+    });
+    const automatic = queries.at(-1);
+    assert.deepEqual(automatic?.parameters, [
+      't-1',
+      ID,
+      'decided',
+      'Classified as Emergency',
+      null,
+      'k1'
+    ]);
+    assert.ok(automatic?.sql.includes('on conflict ("claim_id", "source_key") do nothing'));
+    await store.recordDecision('r1', ID, 'k2', { note: 'Skipped', decidedBy: ID });
+    assert.ok(queries.at(-1)?.sql.includes('(select "id" from "users" where "id" = $'));
+    await store.recordDecision('r1', ID, 'k3', { note: 'Skipped', decidedBy: 'not-a-user' });
+    assert.ok(queries.at(-1)?.parameters.includes(null));
   });
 });
 

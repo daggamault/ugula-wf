@@ -35,6 +35,10 @@ const EVENT_ROWS =
   'case when e.coverage_id is null then null else coalesce(dp.name, cc.payer_name) end as "payer", ' +
   '"e"."paid_cents", "e"."adjusted_cents", "e"."paid_on", "e"."check_number", ' +
   '"e"."payer_claim_number", "e"."note", "e"."created_at", ' +
+  "nullif(concat_ws(' ', eu.first_name, eu.last_name), '') as \"by\", " +
+  '"t"."title" as "task_title", t.resolution->>\'outcome\' as "task_outcome", ' +
+  '"t"."fields" as "task_fields", "t"."defaults" as "task_defaults", ' +
+  't.resolution->\'values\' as "task_values", ' +
   'e.document is not null as "has_document", ' +
   '(select coalesce(json_agg(agg), \'[]\') from (select "a"."group_code" as "group", ' +
   '"a"."reason_code" as "reason", "a"."amount_cents" as "cents", "d"."description" ' +
@@ -48,7 +52,9 @@ const EVENT_ROWS =
 const EVENT_JOINS =
   'from "claim_events" as "e" left join "claim_coverages" as "cc" on "cc"."id" = "e"."coverage_id" ' +
   'left join "payers" as "dp" on "dp"."id" = "cc"."payer_id" ' +
-  'left join "claim_batches" as "cb" on "cb"."id" = "e"."batch_id"';
+  'left join "claim_batches" as "cb" on "cb"."id" = "e"."batch_id" ' +
+  'left join "users" as "eu" on "eu"."id" = "e"."created_by_id" ' +
+  'left join "tasks" as "t" on "t"."id" = "e"."task_id"';
 
 const idsOf = (rows: { id: string }[], total: number) =>
   createRecordingDb((q) =>

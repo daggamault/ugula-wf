@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
   type Adjustment,
+  CLAIM_STATUS_LABELS,
   CLOSED_CLAIM_STATUSES,
   type ClaimStatus,
   type ClaimStore,
@@ -343,21 +344,45 @@ const reopenDraft = async (
   return claim.id;
 };
 
+const logOpened = (tx: Db, claimId: string, sourceKey: string, note: string) =>
+  tx
+    .insertInto('claim_events')
+    .columns(['agency_id', 'claim_id', 'kind', 'note', 'source_key'])
+    .expression((eb) =>
+      eb
+        .selectFrom('claims')
+        .select([
+          'agency_id',
+          'id',
+          sql.lit('opened').as('kind'),
+          sql.val(note).as('note'),
+          sql.val(sourceKey).as('source_key')
+        ])
+        .where('id', '=', claimId)
+    )
+    .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
+    .execute();
+
 export const createDraftStore = (
   db: Db,
   boss: RunQueueClient
-): Pick<ClaimStore, 'openDraft' | 'assignPatient' | 'saveClaim'> => ({
+): Pick<ClaimStore, 'openDraft' | 'classifyClaim' | 'assignPatient' | 'saveClaim'> => ({
   openDraft: (runId, sourceKey, d) =>
     db.transaction().execute(async (tx) => {
       if (d.claimId !== null) {
-        return {
-          id: await reopenDraft(tx, boss, runId, d.claimId, d.reportKey),
-          duplicate: false
-        };
+        const id = await reopenDraft(tx, boss, runId, d.claimId, d.reportKey);
+        await logOpened(tx, id, sourceKey, 'Worked again from its report');
+        return { id, duplicate: false };
       }
       const id = await insertDraft(tx, runId, sourceKey, d);
       if (id) {
         await linkClaimRun(tx, runId, id);
+        await logOpened(
+          tx,
+          id,
+          sourceKey,
+          d.pcrNumber ? `From PCR ${d.pcrNumber}` : 'From an imported report'
+        );
         return { id, duplicate: false };
       }
       const existing = await tx
@@ -375,6 +400,16 @@ export const createDraftStore = (
       await linkClaimRun(tx, runId, existing.id);
       return { id: existing.id, duplicate: existing.source_key !== sourceKey };
     }),
+
+  classifyClaim: async (runId, claimId, _sourceKey, classification) => {
+    const claim = await agencyClaim(db, runId, claimId);
+    await db
+      .updateTable('claims')
+      .set({ classification, updated_at: sql`now()` })
+      .where('id', '=', claim.id)
+      .where('status', '=', 'draft')
+      .execute();
+  },
 
   assignPatient: async (runId, claimId, _sourceKey, patientId) => {
     const claim = await agencyClaim(db, runId, claimId);
@@ -414,6 +449,9 @@ export const createDraftStore = (
 });
 
 const DRAFT: ClaimStatus = 'draft';
+
+export const statusNote = (status: ClaimStatus, reason: string | null) =>
+  [`Moved to ${CLAIM_STATUS_LABELS[status]}`, reason].filter(Boolean).join(' · ');
 
 const REVIEWABLE: ClaimStatus = 'needs_review';
 
@@ -458,7 +496,7 @@ export const createCycleStore = (
       if (edited) await nudgeClaim(tx, boss, claim.agency_id, claim.id);
     }),
 
-  setStatus: (runId, claimId, _sourceKey, status, signalsSeen) =>
+  setStatus: (runId, claimId, sourceKey, status, signalsSeen, reason = null) =>
     db.transaction().execute(async (tx) => {
       const claim = await agencyClaim(tx, runId, claimId);
       await lockClaim(tx, claim.agency_id, claim.id);
@@ -472,13 +510,17 @@ export const createCycleStore = (
           and status <> ${status}
           and status not in (${sql.join(['draft', ...CLOSED_CLAIM_STATUSES])})
           and (select received from current) = ${signalsSeen}
-        returning id
+        returning id, agency_id
+      ), logged as (
+        insert into claim_events (agency_id, claim_id, kind, note, source_key)
+        select agency_id, id, 'decided', ${statusNote(status, reason)}, ${sourceKey} from changed
+        on conflict (claim_id, source_key) do nothing
       )
       select received from current`.execute(tx);
       return Number(rows[0]?.received ?? 0) === signalsSeen ? 'set' : 'stale';
     }),
 
-  attachCycle: async (runId, claimId, _sourceKey, cycleRunId) => {
+  attachCycle: async (runId, claimId, sourceKey, cycleRunId) => {
     const claim = await agencyClaim(db, runId, claimId);
     await db.transaction().execute(async (tx) => {
       const cycle = isUuid(cycleRunId)
@@ -490,7 +532,7 @@ export const createCycleStore = (
             .executeTakeFirst()
         : undefined;
       if (!cycle) throw new Error(`Run ${cycleRunId} does not exist`);
-      const { numUpdatedRows } = await tx
+      const attached = await tx
         .updateTable('claims as c')
         .set({
           cycle_run_id: cycle.id,
@@ -513,8 +555,22 @@ export const createCycleStore = (
             )
           ])
         )
+        .returning(sql<ClaimStatus>`old.status`.as('was'))
         .executeTakeFirst();
-      if (!numUpdatedRows) throw new Error(`Claim ${claimId} already has an active payer cycle`);
+      if (!attached) throw new Error(`Claim ${claimId} already has an active payer cycle`);
+      if (attached.was === DRAFT) {
+        await tx
+          .insertInto('claim_events')
+          .values({
+            agency_id: claim.agency_id,
+            claim_id: claim.id,
+            kind: 'decided',
+            note: statusNote(REVIEWABLE, 'The claim is built and its payer cycle started'),
+            source_key: sourceKey
+          })
+          .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
+          .execute();
+      }
       await linkClaimRun(tx, cycle.id, claim.id);
       await nudgeClaim(tx, boss, claim.agency_id, claim.id);
     });
@@ -660,7 +716,10 @@ const remarksOf = sql<string[]>`coalesce((
 
 export const createLedgerStore = (
   db: Db
-): Pick<ClaimStore, 'ledger' | 'recordEvent' | 'noteRevision' | 'claimDocument'> => ({
+): Pick<
+  ClaimStore,
+  'ledger' | 'recordEvent' | 'recordDecision' | 'noteRevision' | 'claimDocument'
+> => ({
   noteRevision: async (runId, claimId, sourceKey, report) => {
     const claim = await agencyClaim(db, runId, claimId);
     if (
@@ -811,6 +870,25 @@ export const createLedgerStore = (
         coverage_id: e.coverageId,
         note: e.note,
         payer_claim_number: e.coverageId === null ? null : e.payerClaimNumber,
+        source_key: sourceKey
+      })
+      .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
+      .execute();
+  },
+
+  recordDecision: async (runId, claimId, sourceKey, d) => {
+    const claim = await agencyClaim(db, runId, claimId);
+    const decidedBy = d.decidedBy !== null && isUuid(d.decidedBy) ? d.decidedBy : null;
+    await db
+      .insertInto('claim_events')
+      .values({
+        agency_id: claim.agency_id,
+        claim_id: claim.id,
+        kind: 'decided',
+        note: d.note,
+        created_by_id: decidedBy
+          ? db.selectFrom('users').select('id').where('id', '=', decidedBy)
+          : null,
         source_key: sourceKey
       })
       .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())

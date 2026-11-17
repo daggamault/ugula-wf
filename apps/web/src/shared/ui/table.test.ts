@@ -86,6 +86,8 @@ describe('Table', () => {
     assert.equal(header('Started').classList.contains('@4xl:hidden'), true);
     assert.equal(header('Started').classList.contains('@6xl:table-cell'), true);
     assert.equal(cells()[2]?.classList.contains('@4xl:hidden'), true);
+    assert.equal(cells()[2]?.classList.contains('@4xl:table-cell'), false);
+    assert.equal(cells()[1]?.classList.contains('@4xl:table-cell'), true);
     assert.equal(header('Total').classList.contains('@4xl:hidden'), false);
   });
 

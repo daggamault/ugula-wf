@@ -205,3 +205,29 @@ export const completeTask = (
     .where((eb) => eb.or([eb('assignee_id', 'is', null), eb('assignee_id', '=', input.userId)]))
     .returning('id')
     .executeTakeFirst();
+
+export const logTaskDecision = (
+  db: Db,
+  input: { agencyId: string; taskId: string; runId: string; userId: string; note: string }
+) =>
+  db
+    .insertInto('claim_events')
+    .columns(['agency_id', 'claim_id', 'kind', 'note', 'created_by_id', 'task_id', 'source_key'])
+    .expression((eb) =>
+      eb
+        .selectFrom('claim_runs as cr')
+        .innerJoin('claims as c', 'c.id', 'cr.claim_id')
+        .select([
+          'cr.agency_id',
+          'cr.claim_id',
+          sql.lit('decided').as('kind'),
+          sql.val(input.note).as('note'),
+          sql.val(input.userId).as('created_by_id'),
+          sql.val(input.taskId).as('task_id'),
+          sql.val(`task:${input.taskId}`).as('source_key')
+        ])
+        .where('cr.agency_id', '=', input.agencyId)
+        .where('cr.run_id', '=', input.runId)
+    )
+    .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
+    .execute();

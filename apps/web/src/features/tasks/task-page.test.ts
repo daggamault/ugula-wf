@@ -372,7 +372,14 @@ describe('TaskView decision', () => {
   it('records the chosen outcome with the field values', async () => {
     const { completed, user } = showView(task());
     await user.click(screen.getByRole('button', { name: 'Approve' }));
-    assert.deepEqual(completed, [['approve', { note: 'looks fine' }]]);
+    assert.deepEqual(completed, [['approve', { note: 'looks fine' }, '']]);
+  });
+
+  it('sends the note written for the claim history with the decision', async () => {
+    const { completed, user } = showView(task());
+    await user.type(screen.getByRole('textbox', { name: 'Note (optional)' }), ' Called the crew ');
+    await user.click(screen.getByRole('button', { name: 'Approve' }));
+    assert.deepEqual(completed, [['approve', { note: 'looks fine' }, 'Called the crew']]);
   });
 
   it('starts fields without a default blank', () => {
@@ -455,7 +462,7 @@ describe('TaskView decision', () => {
     const approve = screen.getByRole('button', { name: 'Approve' });
     assert.equal(approve.getAttribute('aria-disabled'), null);
     await userEvent.setup().click(approve);
-    assert.deepEqual(completed, [['approve', { note: 'looks fine' }]]);
+    assert.deepEqual(completed, [['approve', { note: 'looks fine' }, '']]);
   });
 });
 
@@ -847,7 +854,7 @@ describe('TaskPage working a task', () => {
     await user.type(note, 'fixed the level');
     await user.click(screen.getByRole('button', { name: 'Approve' }));
     await screen.findByRole('heading', { name: 'Done' });
-    assert.deepEqual(calls, [['complete', 't1', 'approve', { note: 'fixed the level' }]]);
+    assert.deepEqual(calls, [['complete', 't1', 'approve', { note: 'fixed the level' }, '']]);
     assert.deepEqual(toasts, [
       { title: 'Approve: PCR-1 · Jane Doe', description: 'Recorded in Billing Review.' }
     ]);
@@ -935,7 +942,7 @@ describe('TaskPage working a task', () => {
     await user.click(screen.getByRole('button', { name: 'Void' }));
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Void' }));
     await screen.findByRole('heading', { name: 'Done' });
-    assert.deepEqual(calls, [['complete', 't1', 'void', { note: 'looks fine' }]]);
+    assert.deepEqual(calls, [['complete', 't1', 'void', { note: 'looks fine' }, '']]);
   });
 
   it('cancels an ordinary task without asking', async () => {
@@ -945,7 +952,7 @@ describe('TaskPage working a task', () => {
     const { user } = await openTask(client);
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     await screen.findByRole('heading', { name: 'Done' });
-    assert.deepEqual(calls, [['complete', 't1', 'cancel', { note: 'looks fine' }]]);
+    assert.deepEqual(calls, [['complete', 't1', 'cancel', { note: 'looks fine' }, '']]);
   });
 
   it('confirms cancelling a stuck run before it ends the run', async () => {
@@ -959,7 +966,7 @@ describe('TaskPage working a task', () => {
     assert.deepEqual(calls, []);
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     await screen.findByRole('heading', { name: 'Done' });
-    assert.deepEqual(calls, [['complete', 't1', 'cancel', {}]]);
+    assert.deepEqual(calls, [['complete', 't1', 'cancel', {}, '']]);
   });
 
   it('shows why completing failed next to the field and keeps the decision open', async () => {
@@ -1005,7 +1012,7 @@ describe('TaskPage working a task', () => {
     assert.equal(ready.getAttribute('aria-disabled'), null);
     await user.click(ready);
     await screen.findByRole('heading', { name: 'Done' });
-    assert.deepEqual(calls, [['complete', 't1', 'link', { payerId: 'P-77' }]]);
+    assert.deepEqual(calls, [['complete', 't1', 'link', { payerId: 'P-77' }, '']]);
   });
 
   it('holds the other outcomes while one is being recorded', async () => {

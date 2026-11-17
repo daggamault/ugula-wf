@@ -4,7 +4,7 @@ import type { Json } from '@ugula/graph';
 import { createElement } from 'react';
 import { formatDate, formatDateTime } from '../../shared/format.ts';
 import { render, screen, within } from '../../shared/testing-dom.ts';
-import { ContextView, labelOf } from './context-view.tsx';
+import { ContextView } from './context-view.tsx';
 
 const CLAIM = '01a169fa-2534-79ed-97b7-d7789e899bd6';
 
@@ -70,28 +70,6 @@ const sectionOf = (title: string) => {
   const heading = within(context()).getByRole('heading', { name: title });
   return heading.parentElement as HTMLElement;
 };
-
-describe('labelOf', () => {
-  it('turns camel case keys into Title Cased labels', () => {
-    assert.equal(labelOf('loadedMiles'), 'Loaded Miles');
-    assert.equal(labelOf('pcrNumber'), 'PCR Number');
-    assert.equal(labelOf('memberId'), 'Member ID');
-  });
-
-  it('turns snake and kebab case keys into labels', () => {
-    assert.equal(labelOf('first_name'), 'First Name');
-    assert.equal(labelOf('pickup-city'), 'Pickup City');
-  });
-
-  it('drops the Cents unit from money keys', () => {
-    assert.equal(labelOf('balanceCents'), 'Balance');
-  });
-
-  it('keeps a key that has no words left as is', () => {
-    assert.equal(labelOf('Cents'), 'Cents');
-    assert.equal(labelOf('__'), '__');
-  });
-});
 
 describe('ContextView values', () => {
   it('lists plain values with readable text', () => {

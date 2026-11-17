@@ -9,6 +9,7 @@ import {
   amountOf,
   ClaimHistory,
   EventsTable,
+  noteOf,
   paymentDetailsOf,
   reasonsOf
 } from './claim-history.tsx';
@@ -70,6 +71,14 @@ describe('paymentDetailsOf', () => {
       paymentDetailsOf({ paid_on: null, check_number: null, payer_claim_number: null }),
       ''
     );
+  });
+});
+
+describe('noteOf', () => {
+  it('names the status a claim closed as, and keeps other notes as written', () => {
+    assert.equal(noteOf({ kind: 'closed', note: 'void' }), 'As Void');
+    assert.equal(noteOf({ kind: 'closed', note: 'written_off' }), 'As Written Off');
+    assert.equal(noteOf({ kind: 'statement', note: 'void' }), 'void');
   });
 });
 
@@ -154,6 +163,7 @@ describe('EventsTable', () => {
         [
           formatDateTime(submitted.created_at),
           'EventSubmitted',
+          'ByAutomatic',
           'PayerMedicare',
           'Amount',
           'Note837P batch #4837P File #4'
@@ -161,6 +171,7 @@ describe('EventsTable', () => {
         [
           formatDateTime(paid.created_at),
           'EventResponse',
+          'ByAutomatic',
           'PayerPatient',
           'Amount$400.00 paid · $100.00 adjusted',
           'NotePaid Oct 20, 2026 · Check or EFT EFT-9 · Payer claim ICN1Contractual obligation: CO-45 · $100.00N130Paid by the patientView PDF'
@@ -190,8 +201,51 @@ describe('EventsTable', () => {
 
   it('shows a dash for an event with no payer that is not a response', () => {
     showTable([{ ...submitted, kind: 'statement', payer: null }]);
-    const payer = within(rowsOf()[1] as HTMLElement).getAllByRole('cell')[2];
+    const payer = within(rowsOf()[1] as HTMLElement).getAllByRole('cell')[3];
     assert.equal(payer?.textContent, 'Payer—');
+  });
+
+  it('shows who decided, the task, its outcome, what was set and the note', () => {
+    showTable([
+      {
+        ...submitted,
+        kind: 'decided',
+        payer: null,
+        batch_id: null,
+        by: 'Pat Biller',
+        note: 'No patient contact; crew was cancelled en route',
+        decision: {
+          task: 'Review classification',
+          outcome: 'skipClaim',
+          values: [{ label: 'Classification', value: 'Not Billable' }]
+        }
+      },
+      {
+        ...submitted,
+        id: 'e9',
+        kind: 'decided',
+        payer: null,
+        batch_id: null,
+        note: 'Classified as Emergency Transport · Patient transported by this unit'
+      }
+    ]);
+    const [manual, automatic] = rowsOf()
+      .slice(1)
+      .map((r) =>
+        within(r)
+          .getAllByRole('cell')
+          .map((c) => c.textContent)
+      );
+    assert.deepEqual(manual?.slice(1, 3), ['EventDecision', 'ByPat Biller']);
+    assert.equal(
+      manual?.at(-1),
+      'NoteReview classification: Skip ClaimClassification: Not BillableNo patient contact; crew was cancelled en route'
+    );
+    assert.deepEqual(automatic?.slice(1, 3), ['EventDecision', 'ByAutomatic']);
+    assert.equal(
+      automatic?.at(-1),
+      'NoteClassified as Emergency Transport · Patient transported by this unit'
+    );
   });
 });
 

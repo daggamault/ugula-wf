@@ -12,6 +12,8 @@ import { withBack } from '../../shared/url-state.ts';
 import type { ClaimEvent } from './client.ts';
 
 export const EVENT_LABELS: Record<ClaimEvent['kind'], string> = {
+  opened: 'Claim opened',
+  decided: 'Decision',
   approved: 'Approved for submission',
   submitted: 'Submitted',
   follow_up: 'Followed up',

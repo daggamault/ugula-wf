@@ -1,7 +1,7 @@
 import { isRecord, type Json } from '@ugula/graph';
 import type { ReactNode } from 'react';
 import { ClaimIssues, isIssueList } from '../../shared/claims/claim-issues.tsx';
-import { formatCents, formatDate, formatDateTime, titleCaseWords } from '../../shared/format.ts';
+import { formatCents, formatDate, formatDateTime, labelOf } from '../../shared/format.ts';
 import { AlertList } from '../../shared/ui/alert.tsx';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
 import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
@@ -13,17 +13,6 @@ type ContextViewProps = {
   value: Json | undefined;
   label: string;
   hideNotices?: boolean;
-};
-
-export const labelOf = (key: string) => {
-  const words = key
-    .replace(/Cents$/, '')
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/[_-]+/g, ' ')
-    .toLowerCase()
-    .split(' ')
-    .filter(Boolean);
-  return words.length ? titleCaseWords(words) : key;
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

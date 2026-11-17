@@ -1,9 +1,9 @@
 import { type FieldSpec, isRecord, type Json } from '@ugula/graph';
 import { ArrowRightIcon, UndoIcon } from 'lucide-react';
 import { classNamesOf } from '../../shared/class-names.ts';
+import { fieldLabel } from '../../shared/task-outcomes.ts';
 import { emptyValue } from '../../shared/ui/empty-state.tsx';
 import { interactiveClasses } from '../../shared/ui/interactive.ts';
-import { fieldLabel } from './outcomes.ts';
 
 type FieldChange = { field: FieldSpec; was: Json; now: Json };
 

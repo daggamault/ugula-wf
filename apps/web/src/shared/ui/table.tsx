@@ -210,10 +210,10 @@ export const TableCell = ({
   return (
     <td
       className={classNamesOf(
-        'flex min-w-0 items-center gap-4 @4xl:table-cell @4xl:px-4 @4xl:py-3 @4xl:align-middle',
+        'flex min-w-0 items-center gap-4 @4xl:px-4 @4xl:py-3 @4xl:align-middle',
+        isSecondary ? secondaryClasses : '@4xl:table-cell',
         isTitle ? 'text-base font-semibold @4xl:text-sm @4xl:font-normal' : 'justify-between',
         isMuted && 'text-surface-fg-muted',
-        isSecondary && secondaryClasses,
         cellKindClasses[kind]
       )}
       {...props}

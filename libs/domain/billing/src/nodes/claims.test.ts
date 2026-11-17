@@ -138,6 +138,12 @@ describe('claimNodes', () => {
       async () => run(node('assign-patient'), { claimId: ' ', patient: jane }),
       /No claim to work on/
     );
+    await run(node('record-classification'), { claimId: 'c1', classification: 'notBillable' });
+    assert.deepEqual(claims.classified, ['notBillable']);
+    await assert.rejects(
+      async () => run(node('record-classification'), { claimId: 'c1', classification: 'maybe' }),
+      /Unknown classification "maybe"/
+    );
   });
   it('saves a draft claim and reads it back as stored', async () => {
     const claims = memoryClaims();

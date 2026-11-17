@@ -386,6 +386,7 @@ export const IMPORT_COLUMNS: readonly ReportColumn<ImportRow>[] = [
   count('PCRs', 'pcrs'),
   count('Billed', 'billed'),
   count('In Draft', 'drafts'),
+  count('Not Billable', 'not_billable'),
   count('Voided', 'voided'),
   count('Revisions', 'revisions'),
   count('Without Claim', 'no_claim'),
