@@ -384,7 +384,7 @@ describe('graph service reads', () => {
       pageSize: 25,
       sort: 'name',
       dir: 'asc',
-      show: 'all'
+      show: 'workflows'
     });
     assert.deepEqual(search, { ok: true, value: { items: [], total: 0, page: 1, pageSize: 25 } });
     assert.ok(queries.at(-1)?.parameters.includes('t-1'));

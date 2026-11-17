@@ -45,8 +45,11 @@ describe('createWorkflowsClient graphs', () => {
   it('searches workflows with the given query and forwards the abort signal', async () => {
     const page = { items: [], total: 0, page: 1, pageSize: 25 };
     const { client, calls } = recording(page);
-    assert.deepEqual(await client.search('show=all&q=bat', new AbortController().signal), page);
-    assert.deepEqual(calls, [get('/api/graphs?show=all&q=bat', true)]);
+    assert.deepEqual(
+      await client.search('show=customized&q=bat', new AbortController().signal),
+      page
+    );
+    assert.deepEqual(calls, [get('/api/graphs?show=customized&q=bat', true)]);
   });
 
   it('unwraps the published node types', async () => {

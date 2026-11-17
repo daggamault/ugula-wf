@@ -121,12 +121,7 @@ export const searchGraphs = async (
     .where(visible('g', s));
   if (f.show === 'workflows') q = q.where('g.kind', '=', 'workflow');
   if (f.show === 'blocks') q = q.where('g.kind', '!=', 'workflow');
-  if (f.show === 'mine') q = q.where('g.agency_id', 'is not', null);
-  if (f.show === 'customized') {
-    q = q.where((eb) =>
-      eb.or([eb(overriddenBy(s), 'is not', null), eb(overridesOf(s), 'is not', null)])
-    );
-  }
+  if (f.show === 'customized') q = q.where('g.agency_id', 'is not', null);
   if (f.q) {
     const like = containsPattern(f.q);
     q = q.where((eb) =>

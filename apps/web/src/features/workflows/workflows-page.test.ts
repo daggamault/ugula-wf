@@ -103,9 +103,8 @@ describe('graphFilterOf', () => {
   it('reads a known kind filter and defaults to workflows', () => {
     assert.equal(graphFilterOf(new URLSearchParams()), 'workflows');
     assert.equal(graphFilterOf(new URLSearchParams('kind=blocks')), 'blocks');
-    assert.equal(graphFilterOf(new URLSearchParams('kind=mine')), 'mine');
     assert.equal(graphFilterOf(new URLSearchParams('kind=customized')), 'customized');
-    assert.equal(graphFilterOf(new URLSearchParams('kind=all')), 'all');
+    assert.equal(graphFilterOf(new URLSearchParams('kind=mine')), 'workflows');
     assert.equal(graphFilterOf(new URLSearchParams('kind=nope')), 'workflows');
   });
 });
@@ -113,8 +112,8 @@ describe('graphFilterOf', () => {
 describe('graphsQueryOf', () => {
   it('asks the API for the chosen filter after the search query', () => {
     assert.equal(
-      graphsQueryOf(search('q=bat').apiQuery, 'mine'),
-      'q=bat&page=1&pageSize=25&sort=name&dir=asc&show=mine'
+      graphsQueryOf(search('q=bat').apiQuery, 'customized'),
+      'q=bat&page=1&pageSize=25&sort=name&dir=asc&show=customized'
     );
   });
 });
@@ -177,10 +176,10 @@ describe('WorkflowsTable', () => {
 describe('WorkflowsPage', () => {
   it('searches graphs of the chosen filter and lists them', async () => {
     const { client, queries } = fakeClient();
-    showPage(client, 'mine');
+    showPage(client, 'customized');
     await screen.findByRole('table', { name: 'Workflows and subworkflows' });
     assert.equal(rowsOf().length, 4);
-    assert.deepEqual(queries, ['page=1&pageSize=25&sort=name&dir=asc&show=mine']);
+    assert.deepEqual(queries, ['page=1&pageSize=25&sort=name&dir=asc&show=customized']);
   });
 
   it('creates a workflow from a name and opens it, without asking for a key', async () => {
@@ -259,7 +258,7 @@ describe('WorkflowsPage', () => {
       within(screen.getByRole('listbox', { name: 'Show' }))
         .getAllByRole('option')
         .map((o) => o.textContent),
-      ['Workflows', 'Subworkflows', 'Your Copies', 'Customized', 'All']
+      ['Workflows', 'Subworkflows', 'Customized']
     );
     await user.click(screen.getByRole('button', { name: 'Show' }));
     await user.click(screen.getByRole('option', { name: 'Customized' }));
@@ -271,16 +270,11 @@ describe('WorkflowsPage', () => {
 
   for (const [show, title, text] of [
     [
-      'mine',
-      'No Copies Yet',
-      'Your agency has no workflows of its own yet. Create one, or override a built-in one.'
-    ],
-    [
       'customized',
       'Nothing Customized Yet',
-      'Every workflow runs as built. Customize one for your agency to change it.'
+      'Every workflow runs as built. Customize a built-in one or create your own to change it.'
     ],
-    ['all', 'Nothing Here Yet', 'Nothing matches this filter.']
+    ['blocks', 'Nothing Here Yet', 'Nothing matches this filter.']
   ] as const) {
     it(`explains an empty ${show} list`, async () => {
       const { client } = fakeClient([]);

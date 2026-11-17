@@ -27,14 +27,12 @@ export const WORKFLOWS_PATH = '/workflows';
 
 export const CUSTOMIZED_PATH = `${WORKFLOWS_PATH}/customized`;
 
-type GraphFilter = 'workflows' | 'blocks' | 'mine' | 'customized' | 'all';
+type GraphFilter = 'workflows' | 'blocks' | 'customized';
 
 const GRAPH_FILTERS: readonly { value: GraphFilter; label: string }[] = [
   { value: 'workflows', label: 'Workflows' },
   { value: 'blocks', label: 'Subworkflows' },
-  { value: 'mine', label: 'Your Copies' },
-  { value: 'customized', label: 'Customized' },
-  { value: 'all', label: 'All' }
+  { value: 'customized', label: 'Customized' }
 ];
 
 export const graphFilterOf = (query: URLSearchParams): GraphFilter =>
@@ -152,19 +150,13 @@ export const WorkflowsPage = ({ client, live, show }: WorkflowsPageProps) => {
           />
         }
         empty={
-          show === 'mine'
+          show === 'customized'
             ? {
-                title: 'No Copies Yet',
+                title: 'Nothing Customized Yet',
                 children:
-                  'Your agency has no workflows of its own yet. Create one, or override a built-in one.'
+                  'Every workflow runs as built. Customize a built-in one or create your own to change it.'
               }
-            : show === 'customized'
-              ? {
-                  title: 'Nothing Customized Yet',
-                  children:
-                    'Every workflow runs as built. Customize one for your agency to change it.'
-                }
-              : { title: 'Nothing Here Yet', children: 'Nothing matches this filter.' }
+            : { title: 'Nothing Here Yet', children: 'Nothing matches this filter.' }
         }
       >
         {(items) => <WorkflowsTable graphs={items} search={search} />}

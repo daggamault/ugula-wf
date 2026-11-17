@@ -48,7 +48,7 @@ const row = {
 describe('searchGraphs', () => {
   it('maps a page of graphs with versions, override links and staleness', async () => {
     const { db } = createRecordingDb(() => [row]);
-    assert.deepEqual(await searchGraphs(db, S, { ...BASE, show: 'all' }), {
+    assert.deepEqual(await searchGraphs(db, S, { ...BASE, show: 'customized' }), {
       items: [
         {
           id: 'g1',
@@ -76,14 +76,14 @@ describe('searchGraphs', () => {
 
   it('marks system graphs', async () => {
     const { db } = createRecordingDb(() => [{ ...row, scope: 'system', overrides: null }]);
-    const page = await searchGraphs(db, S, { ...BASE, show: 'all' });
+    const page = await searchGraphs(db, S, { ...BASE, show: 'blocks' });
     assert.equal(page.items[0]?.isSystem, true);
     await db.destroy();
   });
 
-  it('shows every visible graph by name with its scope, links and staleness', async () => {
+  it('selects each visible graph with its scope, links and staleness', async () => {
     const { db, queries } = createRecordingDb();
-    await searchGraphs(db, S, { ...BASE, show: 'all' });
+    await searchGraphs(db, S, { ...BASE, show: 'workflows' });
     const sql = flat(queries[0]?.sql);
     assert.ok(
       sql.startsWith(
@@ -105,11 +105,6 @@ describe('searchGraphs', () => {
         '"g"."agency_id" is not null and exists ( select 1 from "graphs" sg join lateral ( select sv.contract from "graph_versions" sv where sv."graph_id" = sg.id and sv.published_at is not null order by sv.version desc limit 1 ) base on true where sg.key = "g"."key" and sg.agency_id is null and not exists ( select 1 from "graph_versions" mv where mv."graph_id" = "g"."id" and mv.published_at is not null and mv.contract = base.contract ) ) as "is_stale", count(*) over () as "total"'
       )
     );
-    assert.equal(
-      tailOf(queries[0]?.sql),
-      `${LATERAL} where ${visibleTo('g', 5)} order by lower(g.name) asc nulls last, "g"."id" asc limit $6 offset $7`
-    );
-    assert.deepEqual(queries[0]?.parameters, ['a-1', 'a-1', 'a-1', 'a-1', 'a-1', 25, 0]);
     await db.destroy();
   });
 
@@ -141,10 +136,10 @@ describe('searchGraphs', () => {
     await db.destroy();
   });
 
-  it('shows only the agency graphs, by kind or update time', async () => {
+  it('shows everything the agency owns as customized, by kind or update time', async () => {
     const { db, queries } = createRecordingDb();
-    await searchGraphs(db, S, { ...BASE, sort: 'kind', show: 'mine' });
-    await searchGraphs(db, S, { ...BASE, sort: 'updated', show: 'mine' });
+    await searchGraphs(db, S, { ...BASE, sort: 'kind', show: 'customized' });
+    await searchGraphs(db, S, { ...BASE, sort: 'updated', show: 'customized' });
     const [byKind, byUpdate] = queries;
     assert.equal(
       tailOf(byKind?.sql),
@@ -155,21 +150,6 @@ describe('searchGraphs', () => {
         'order by "g"."updated_at" asc nulls last, "g"."id" asc limit $6 offset $7'
       )
     );
-    await db.destroy();
-  });
-
-  it('shows only graphs that override or are overridden', async () => {
-    const { db, queries } = createRecordingDb();
-    await searchGraphs(db, S, { ...BASE, show: 'customized' });
-    const tail = tailOf(queries[0]?.sql);
-    assert.ok(tail.startsWith(`${LATERAL} where ${visibleTo('g', 5)} and (( select o.id from`));
-    assert.ok(tail.includes(') is not null or ( select o.id from "graphs" o where o.key'));
-    assert.ok(
-      tail.endsWith(
-        ') is not null) order by lower(g.name) asc nulls last, "g"."id" asc limit $10 offset $11'
-      )
-    );
-    assert.deepEqual(queries[0]?.parameters, [...Array(9).fill('a-1'), 25, 0]);
     await db.destroy();
   });
 

@@ -190,7 +190,7 @@ describe('graph search query', () => {
 
   it('refuses unknown views and sorts, page zero and long searches', () => {
     assert.deepEqual(issues(searchGraphsQuery, { show: 'system' }), [
-      'Invalid type: Expected ("workflows" | "blocks" | "mine" | "customized" | "all") but received "system"'
+      'Invalid type: Expected ("workflows" | "blocks" | "customized") but received "system"'
     ]);
     assert.deepEqual(issues(searchGraphsQuery, { sort: 'status' }), [
       'Invalid type: Expected ("name" | "kind" | "updated") but received "status"'

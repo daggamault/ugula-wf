@@ -8,7 +8,7 @@ const GRAPH_SORTS = ['name', 'kind', 'updated'] as const;
 
 export type GraphSort = (typeof GRAPH_SORTS)[number];
 
-const GRAPH_SHOWS = ['workflows', 'blocks', 'mine', 'customized', 'all'] as const;
+const GRAPH_SHOWS = ['workflows', 'blocks', 'customized'] as const;
 
 export type GraphShow = (typeof GRAPH_SHOWS)[number];
 
