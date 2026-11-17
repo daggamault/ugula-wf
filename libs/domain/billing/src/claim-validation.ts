@@ -270,6 +270,90 @@ export const checkFactsOf = (c: ClaimCheck, asOf: Date) => {
   };
 };
 
+const addressOf = (a: Address | null) => ({
+  addressLine: a?.addressLine ?? null,
+  city: a?.city ?? null,
+  state: a?.state ?? null,
+  postalCode: a?.postalCode ?? null
+});
+
+export const claimRecordOf = (c: ClaimCheck, asOf: Date) => {
+  const { serviceDate, documentation: d } = c.details;
+  return {
+    today: localDate(asOf, c.timeZone),
+    patientId: c.patientId,
+    patient: c.patient ? addressOf(c.patient) : null,
+    pcrNumber: c.pcrNumber,
+    serviceDate,
+    classification: c.classification,
+    level: c.level,
+    emergency: c.emergency,
+    lineCodes: c.lines.map((l) => l.code),
+    lineTotalCents: c.lines.map((l) => l.totalCents),
+    totalCents: c.totalCents,
+    diagnosisCount: c.details.diagnoses.length,
+    diagnoses: c.diagnosisCodes.map((x) => ({
+      code: formatIcd10(x.code),
+      description: x.description,
+      billable: x.billable
+    })),
+    pickup: addressOf(c.details.pickup),
+    destination: addressOf(c.details.destination),
+    pickupZipKnown: c.details.pickup.postalCode ? c.pickupLocality !== null : null,
+    pickupZipSplit: c.pickupLocality?.needsPlusFour === true,
+    pickupZipState: c.zipStates.pickup,
+    destinationZipState: c.zipStates.destination,
+    patientZipState: c.zipStates.patient,
+    originDestination: c.details.originDestination,
+    transportReason: d.transportReason,
+    conditionCodes: d.conditionCodes,
+    atScene: d.atScene,
+    leftScene: d.leftScene,
+    atDestination: d.atDestination,
+    loadedMiles: c.loadedMiles,
+    signature: d.signature,
+    signatureNote: d.signatureNote,
+    pcsOnFile: d.pcsOnFile,
+    pcsSignedOn: d.pcsSignedOn,
+    pcsType: d.pcsType,
+    roundTrips: d.roundTrips,
+    priorAuthorization: d.priorAuthorization,
+    priorAuthorizationExpiresOn: d.priorAuthorizationExpiresOn,
+    deceased: c.deceased,
+    nonCoveredMiles: c.nonCoveredMiles,
+    patientCount: d.patientCount,
+    abnOnFile: d.abnOnFile,
+    abnSignedOn: d.abnSignedOn,
+    denialExpected: d.denialExpected,
+    mspEmployerPlan: d.mspEmployerPlan,
+    mspEsrd: d.mspEsrd,
+    mspDisability: d.mspDisability,
+    mspEmployerSize: d.mspEmployerSize,
+    mspAccident: d.mspAccident,
+    facilityStay: d.facilityStay,
+    payers: c.payers.map((p) => ({
+      coverageId: p.coverageId,
+      name: p.name,
+      payerId: p.payerId,
+      claimFiling: p.claimFiling,
+      memberId: p.memberId,
+      relationship: p.relationship,
+      insuredLastName: p.insuredLastName,
+      filingLimitDays: p.filingLimitDays,
+      eligibility: p.eligibility,
+      eligibilityNote: p.eligibilityNote,
+      stayKind: p.stay?.kind ?? null,
+      stayAdmittedOn: p.stay?.admittedOn ?? null,
+      stayDischargedOn: p.stay?.dischargedOn ?? null
+    })),
+    pickupFacility: c.pickupFacility,
+    destinationFacility: c.destinationFacility,
+    responsibleParty: c.responsibleParty,
+    responsibilityRecorded: c.responsibilityRecorded,
+    documents: c.documents
+  };
+};
+
 const isSeverity = (x: unknown): x is ClaimIssueSeverity =>
   CLAIM_ISSUE_SEVERITIES.includes(x as ClaimIssueSeverity);
 

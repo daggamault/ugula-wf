@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { type ClaimCheck, checkFactsOf, readIssues, readNewClaim } from './claim-validation.ts';
+import {
+  type ClaimCheck,
+  checkFactsOf,
+  claimRecordOf,
+  readIssues,
+  readNewClaim
+} from './claim-validation.ts';
 import { COMPLETE_DOCUMENTATION } from './testing.ts';
 
 const claim = {
@@ -70,6 +76,25 @@ const check: ClaimCheck = {
 };
 
 const asOf = new Date('2027-09-20T12:00:00Z');
+
+describe('claimRecordOf', () => {
+  it('states the saved claim as it is stored, for the Check Facts rule', () => {
+    const record = claimRecordOf(
+      { ...check, diagnosisCodes: [{ code: 'R079', description: 'Chest pain', billable: true }] },
+      asOf
+    );
+    assert.equal(record.today, '2027-09-20');
+    assert.deepEqual(record.lineCodes, ['A0427', 'A0425']);
+    assert.deepEqual(record.lineTotalCents, [85_000, 7_300]);
+    assert.deepEqual(record.diagnoses, [
+      { code: 'R07.9', description: 'Chest pain', billable: true }
+    ]);
+    assert.deepEqual(record.pickup, place);
+    assert.equal(record.payers[0]?.claimFiling, 'MB');
+    assert.equal(record.payers[0]?.stayKind, null);
+    assert.equal(claimRecordOf({ ...check, patient: null }, asOf).patient, null);
+  });
+});
 
 describe('checkFactsOf', () => {
   it('states what the checks read about a complete claim', () => {

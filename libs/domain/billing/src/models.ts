@@ -4,7 +4,10 @@ import {
   CHECKED_PAYER,
   CLAIM_DOCUMENT,
   CLAIM_ISSUE,
-  FACILITY
+  CLAIM_RECORD,
+  FACILITY,
+  RECORDED_DIAGNOSIS,
+  RECORDED_PAYER
 } from './check-models.ts';
 import {
   CLAIM,
@@ -53,6 +56,7 @@ export const billingTypes = {
   findings: FINDINGS.type,
   issues: { list: CLAIM_ISSUE.type },
   checkFacts: CHECK_FACTS.type,
+  claimRecord: CLAIM_RECORD.type,
   facility: FACILITY.type,
   document: CLAIM_DOCUMENT.type,
   ledger: CLAIM_LEDGER.type,
@@ -85,6 +89,9 @@ export const billingModels: Model[] = [
   CHECKED_PAYER,
   FACILITY,
   CHECK_FACTS,
+  RECORDED_PAYER,
+  RECORDED_DIAGNOSIS,
+  CLAIM_RECORD,
   CLAIM_LEDGER,
   DENIAL_FACTS,
   REFUND_FACTS,

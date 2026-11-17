@@ -142,6 +142,106 @@ export const CHECK_FACTS = model(
   ]
 );
 
+const ADDRESS_TYPE = {
+  object: { addressLine: 'string', city: 'string', state: 'string', postalCode: 'string' }
+} as const;
+
+export const RECORDED_PAYER = model(
+  'billing.recorded-payer',
+  'payer',
+  'Recorded Payer',
+  'one payer on the claim as saved, before any check works anything out',
+  [
+    f('coverageId', { id: 'coverage' }, 'Coverage ID'),
+    f('name', 'string', 'Payer name'),
+    f('payerId', { id: 'payer' }, 'Payer in the directory'),
+    f('claimFiling', 'string', 'Claim filing indicator'),
+    f('memberId', 'string', 'Member ID'),
+    f('relationship', 'string', 'Patient relationship to the insured (18 is self)'),
+    f('insuredLastName', 'string', 'Insured last name'),
+    f('filingLimitDays', 'integer', 'Filing limit the directory gives (days)'),
+    f('eligibility', 'string', 'Eligibility answer (active or inactive)'),
+    f('eligibilityNote', 'string', 'What the eligibility answer said'),
+    f('stayKind', 'string', 'Facility stay its 271 reports (inpatient or snf)'),
+    f('stayAdmittedOn', 'string', 'Reported stay admitted on (YYYY-MM-DD)'),
+    f('stayDischargedOn', 'string', 'Reported stay discharged on (YYYY-MM-DD)')
+  ]
+);
+
+export const RECORDED_DIAGNOSIS = model(
+  'billing.recorded-diagnosis',
+  'diagnosis',
+  'Recorded Diagnosis',
+  'one diagnosis on the claim with what the loaded ICD-10-CM code set says about it',
+  [
+    f('code', 'string', 'Code as written, such as R10.9'),
+    f('description', 'string', 'Meaning, when the code set knows the code'),
+    f('billable', 'boolean', 'Billable as is (not a category that needs more characters)')
+  ]
+);
+
+export const CLAIM_RECORD = model(
+  'billing.claim-record',
+  'record',
+  'Claim Record',
+  'the saved claim as it is stored, with its documentation, places and payers, for the Check Facts rule to work out what the checks read',
+  [
+    f('today', 'string', 'Today in the time zone of the agency (YYYY-MM-DD)'),
+    f('patientId', { id: 'patient' }, 'Patient'),
+    f('patient', ADDRESS_TYPE, 'Patient mailing address'),
+    f('pcrNumber', 'string', 'PCR number'),
+    f('serviceDate', 'string', 'Date of service'),
+    f('classification', 'string', 'Classification'),
+    f('level', 'string', 'Level of service'),
+    f('emergency', 'boolean', 'Emergency response'),
+    f('lineCodes', { list: { code: 'hcpcs' } }, 'Charge line codes'),
+    f('lineTotalCents', { list: 'integer' }, 'Charge line totals (cents)'),
+    f('totalCents', 'integer', 'Claim total (cents)'),
+    f('diagnosisCount', 'integer', 'Diagnoses on the claim'),
+    f('diagnoses', { list: RECORDED_DIAGNOSIS.type }, 'Diagnoses with what the code set says'),
+    f('pickup', ADDRESS_TYPE, 'Pickup address'),
+    f('destination', ADDRESS_TYPE, 'Destination address'),
+    f('pickupZipKnown', 'boolean', 'The CMS ZIP file lists the pickup ZIP code'),
+    f('pickupZipSplit', 'boolean', 'CMS splits the pickup ZIP code between localities'),
+    f('pickupZipState', 'string', 'State GeoNames gives the pickup ZIP code'),
+    f('destinationZipState', 'string', 'State GeoNames gives the destination ZIP code'),
+    f('patientZipState', 'string', 'State GeoNames gives the patient ZIP code'),
+    f('originDestination', 'string', 'Origin/destination modifier, when valid'),
+    f('transportReason', 'string', 'Ambulance transport reason'),
+    f('conditionCodes', { list: 'string' }, 'Ambulance condition codes documented'),
+    f('atScene', 'datetime', 'Arrived at the scene'),
+    f('leftScene', 'datetime', 'Left the scene'),
+    f('atDestination', 'datetime', 'Arrived at the destination'),
+    f('loadedMiles', 'number', 'Loaded miles'),
+    f('signature', 'string', 'Billing signature'),
+    f('signatureNote', 'string', 'Why the patient did not sign, or who signed'),
+    f('pcsOnFile', 'boolean', 'Physician certification statement on file'),
+    f('pcsSignedOn', 'string', 'Physician certification statement signed on'),
+    f('pcsType', 'string', 'Physician certification type (repetitive or nonRepetitive)'),
+    f('roundTrips', 'integer', 'Round trips in the repetitive series'),
+    f('priorAuthorization', 'string', 'Prior authorization number (UTN)'),
+    f('priorAuthorizationExpiresOn', 'string', 'Prior authorization expires on'),
+    f('deceased', 'boolean', 'Pronounced dead before loading (QL)'),
+    f('nonCoveredMiles', 'number', 'Miles beyond the nearest appropriate facility (A0888)'),
+    f('patientCount', 'integer', 'Patients transported on the trip'),
+    f('abnOnFile', 'boolean', 'Advance Beneficiary Notice on file'),
+    f('abnSignedOn', 'string', 'Advance Beneficiary Notice signed on'),
+    f('denialExpected', 'boolean', 'A biller expects Medicare to deny the transport'),
+    f('mspEmployerPlan', 'boolean', 'MSP: group health plan from current employment'),
+    f('mspEsrd', 'boolean', 'MSP: end-stage renal disease coordination period'),
+    f('mspDisability', 'boolean', 'MSP: disabled with a group health plan through employment'),
+    f('mspEmployerSize', 'integer', 'MSP: employees at the employer'),
+    f('mspAccident', 'string', 'MSP: accident or work injury'),
+    f('facilityStay', 'string', 'Facility stay a biller confirmed (none, inpatient or snf)'),
+    f('payers', { list: RECORDED_PAYER.type }, 'Payers, in billing order'),
+    f('pickupFacility', FACILITY.type, 'Pickup facility in the directory'),
+    f('destinationFacility', FACILITY.type, 'Destination facility in the directory'),
+    f('responsibleParty', 'string', 'Who the claim is billed to (payer or facility)'),
+    f('responsibilityRecorded', 'boolean', 'Who pays was decided and recorded'),
+    f('documents', { list: 'string' }, 'Kinds of documents on file')
+  ]
+);
+
 export const CLAIM_DOCUMENT = model(
   'billing.claim-document',
   'document',

@@ -6,6 +6,7 @@ export {
   HCPCS_PATTERN,
   MAX_LOADED_MILES,
   NO_TRANSPORT_CODE,
+  NO_TRANSPORT_TRIPS,
   type PricedLine,
   SERVICE_LEVELS,
   type ServiceLevel,
@@ -52,6 +53,7 @@ export {
   type ClaimField,
   type ClaimIssue,
   checkFactsOf,
+  claimRecordOf,
   type NewClaim,
   type ReportedStay,
   readIssues,
@@ -116,6 +118,7 @@ export {
   claimCodeRefs,
   describeCode,
   formatIcd10,
+  ICD10CM_FROM,
   isCodeSet,
   normalizeCode
 } from './code-sets.ts';
