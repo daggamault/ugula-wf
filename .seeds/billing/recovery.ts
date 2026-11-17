@@ -1,5 +1,5 @@
 import { CLAIM_FIX_FIELDS, CLAIM_SIGNAL } from '@ugula/billing';
-import type { GraphDef } from '@ugula/graph';
+import type { GraphDef, Json, ValueType } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import { graph, p } from './glossary.ts';
 import {
@@ -10,71 +10,77 @@ import {
   atMost,
   type Builder,
   d,
-  dollars,
   exit,
-  expr,
   field,
   is,
-  named,
   oneOf,
   P,
   rule,
   shared,
-  summarize,
+  summary,
   T,
-  table
+  table,
+  template
 } from './shared.ts';
 
 const DAY_MS = 86_400_000;
 
-const DENIED_BY = named('denial?.payer', "'The payer'");
+const MEDICARE = ['MA', 'MB'];
 
-const SUGGESTED = `({
+const SUGGESTIONS: Record<string, string> = {
   correctClaim: 'correcting it is suggested',
   appeal: 'an appeal is suggested',
   billAnotherPayer: 'billing another payer is suggested',
   moveToPatient: 'moving the balance to the patient is suggested',
   writeOff: 'writing it off is suggested'
-}[suggestion ?? ''] ?? 'decide whether to correct, appeal, rebill or write it off')`;
+};
 
-const DENIAL_SUMMARY = `${DENIED_BY} + ' denied this claim' +
-  (len(denial?.codes ?? []) > 0 ? ' (' + join(denial?.codes, ', ') + ')' : '') +
-  ((denial?.balanceCents ?? 0) > 0 ? ', leaving ' + ${dollars('denial?.balanceCents')} + ' open' : '') +
-  '; ' + ${SUGGESTED}`;
+const recordEvent = (
+  g: Builder,
+  id: string,
+  kind: string,
+  label: string,
+  fixed: Record<string, Json> = {}
+) => g.add(id, 'billing.record-claim-event', { label, values: { kind, ...fixed } });
 
-const REOPENING_SUMMARY = `'Request a reopening from ' + ${named('denial?.payer', "'the payer'")} +
-  (${named('denial?.payerClaimNumber', 'null')} != null ? ' of its claim ' + denial?.payerClaimNumber : '') +
-  ', since it takes no corrected claims, and enter the reference you are given'`;
+const orElse = (
+  g: Builder,
+  id: string,
+  label: string,
+  fallback: Json,
+  type: ValueType = 'string'
+) =>
+  g.add(id, 'std.logic.choose', {
+    label,
+    config: { mode: 'first', type, count: 2 },
+    values: { option2: fallback }
+  });
 
-const LEVEL = `lower(${named('levelName', "'appeal'")})`;
+const above = (g: Builder, id: string, label: string, name: string, value: number) =>
+  g.add(id, 'std.logic.condition', {
+    label,
+    config: {
+      inputs: [{ name, type: 'integer' }],
+      rules: [{ field: name, op: 'gt', value }]
+    }
+  });
 
-const SEND_APPEAL_SUMMARY = `'Send the ' + ${LEVEL} + ' to ' + ${named('denial?.payer', "'the payer'")} +
-  (len(denial?.codes ?? []) > 0 ? ' against its ' + join(denial?.codes, ', ') + ' denial' : '') +
-  (${named('dueOn', 'null')} != null ? ' by ' + dueOn : '') + '; the packet is in the claim files'`;
-
-const APPEAL_OVERDUE_SUMMARY = `${DENIED_BY} + ' has not decided the ' + ${LEVEL} +
-  ' in time; check its status, then keep waiting, record it upheld or withdraw it'`;
-
-const RECORDS_SUMMARY = `${named('payer', "'The payer'")} + ' asked for records on this claim' +
-  (${named('dueOn', 'null')} != null ? ', due ' + dueOn : '') +
-  (${named('note', 'null')} != null ? ' (' + note + ')' : '') + '; send them and mark it sent'`;
-
-const REFUND_SUMMARY = `${named('refund?.payer', "'The patient'")} +
-  (refund?.overpaidCents != null ? ' paid ' + ${dollars('refund?.overpaidCents')} + ' more than this claim charges' : ' overpaid this claim') +
-  '; refund it' + (${named('dueOn', 'null')} != null ? ' by ' + dueOn : '') + ' or keep the credit'`;
-
-const BALANCE = `(balanceCents != null ? ${dollars('balanceCents')} : 'this balance')`;
-
-const WRITE_OFF_SUMMARY = `'Approve writing off ' + ${BALANCE} +
-  (thresholdCents != null ? ', above the ' + ${dollars('thresholdCents')} + ' limit,' : ',') +
-  ' or reject it to send it back'`;
-
-const COLLECTIONS_SUMMARY = `'Approve sending ' + ${BALANCE} + ' to collections, or reject it to send it back'`;
-
-const MEDICARE = ['MA', 'MB'];
-
-const recordEvent = (g: Builder, id: string, kind: string, label: string) =>
-  g.add(id, 'billing.record-claim-event', { label, values: { kind } });
+const taskDetails = (
+  g: Builder,
+  label: string,
+  addedLabel: string,
+  fields: { name: string; type: ValueType }[]
+) => {
+  g.add('claimDetails', 'std.logic.coalesce', {
+    label: 'Claim Details, Else None',
+    values: { fallback: {} }
+  });
+  g.add('added', 'std.object.make', { label: addedLabel, config: { fields } });
+  g.add('details', 'std.object.merge', { label });
+  g.wire('entry.context', 'claimDetails.value');
+  g.wire('claimDetails.result', 'details.a');
+  g.wire('added.object', 'details.b');
+};
 
 const DENIAL_IN = d(
   'denial',
@@ -214,11 +220,9 @@ const correctionMethod = (): GraphDef => {
     ]
   );
   g.add('denial', 'billing.denial-facts.break');
-  g.add(
-    'adjudicated',
-    'std.expr',
-    expr('Adjudicated by the Payer', '(payerClaimNumber ?? denied) != null')
-  );
+  g.add('number', 'std.logic.coalesce', { label: 'Claim Number Entered, Else Denied' });
+  g.add('noNumber', 'std.logic.is-null', { label: 'No Payer Claim Number' });
+  g.add('adjudicated', 'std.logic.not', { label: 'Adjudicated by the Payer' });
   g.add('decide', 'std.table.decide', {
     label: 'Correction Methods',
     config: shared.decision(
@@ -285,8 +289,10 @@ const correctionMethod = (): GraphDef => {
   });
   g.ret('return');
   g.wire('entry.denial', 'denial.denial');
-  g.wire('entry.payerClaimNumber', 'adjudicated.payerClaimNumber');
-  g.wire('denial.payerClaimNumber', 'adjudicated.denied');
+  g.wire('entry.payerClaimNumber', 'number.value');
+  g.wire('denial.payerClaimNumber', 'number.fallback');
+  g.wire('number.result', 'noNumber.value');
+  g.wire('noNumber.result', 'adjudicated.value');
   g.wire('adjudicated.result', 'decide.adjudicated');
   g.wire('denial.correctionMethod', 'decide.correctionMethod');
   g.wire('denial.payerKind', 'decide.payerKind');
@@ -371,43 +377,82 @@ const appealLevel = (): GraphDef => {
             30
           ])
         ],
-        { level: 'appeal', levelName: 'Second Level Appeal', days: 60, decisionDays: 30 }
+        { level: 'appeal', levelName: 'Second Level Appeal', days: 60, decisionDays: 30 },
+        'Second appeal to the payer within 60 days (verify)'
       )
     )
   });
-  g.add(
-    'days',
-    'std.expr',
-    expr(
-      'Days Allowed',
-      `contains(${JSON.stringify(MEDICARE)}, payerKind) ? days : coalesce(appealDays, days)`
-    )
-  );
-  g.add('dueOn', 'std.expr', expr('Due On', 'addDays(coalesce(deniedOn, date(now())), days)'));
-  g.add('wait', 'std.expr', expr('Decision Wait', `decisionDays * ${DAY_MS}`));
-  g.add(
-    'reasons',
-    'std.expr',
-    expr(
-      'Why',
-      'concat(rule != null ? [rule] : ["Second appeal to the payer within 60 days (verify)"], appealDays != null && days == appealDays ? ["The payer directory allows " + text(appealDays) + " days"] : [])'
-    )
-  );
+  g.add('medicare', 'std.logic.condition', {
+    label: 'Medicare',
+    config: {
+      inputs: [{ name: 'payerKind', type: 'string' }],
+      rules: [{ field: 'payerKind', op: 'oneOf', value: MEDICARE }]
+    }
+  });
+  g.add('directoryDays', 'std.logic.coalesce', { label: 'Payer Directory Days, Else the Table' });
+  g.add('days', 'std.logic.select', { label: 'Days Allowed' });
+  g.add('dueOn', 'billing.due-after-days', { label: 'Due On' });
+  g.add('wait', 'std.math.multiply', { label: 'Decision Wait', values: { b: DAY_MS } });
+  g.add('byDirectory', 'std.logic.equal', { label: 'Days Are the Payer Directory Limit' });
+  template(g, 'directoryText', 'Payer Directory Text', 'The payer directory allows {days} days');
+  g.add('directoryReason', 'std.logic.select', { label: 'Payer Directory Reason' });
+  g.add('directoryReasons', 'std.list.make', {
+    label: 'Payer Directory Reasons',
+    config: { count: 1, type: 'string' }
+  });
+  g.add('reasons', 'std.list.join', { label: 'Why', config: { count: 2, type: 'string' } });
   g.ret('return');
   g.wire('entry.denial', 'denial.denial');
-  g.wire('denial.payerKind', 'decide.payerKind', 'days.payerKind');
+  g.wire('denial.payerKind', 'decide.payerKind', 'medicare.payerKind');
   g.wire('denial.appeals', 'decide.appeals');
-  g.wire('denial.appealDays', 'days.appealDays', 'reasons.appealDays');
-  g.wire('decide.days', 'days.days');
-  g.wire('days.result', 'dueOn.days', 'reasons.days');
-  g.wire('denial.deniedOn', 'dueOn.deniedOn');
-  g.wire('decide.decisionDays', 'wait.decisionDays');
+  g.wire('denial.appealDays', 'directoryDays.value', 'byDirectory.b', 'directoryText.days');
+  g.wire('decide.days', 'directoryDays.fallback', 'days.whenTrue');
+  g.wire('medicare.result', 'days.condition');
+  g.wire('directoryDays.result', 'days.whenFalse');
+  g.wire('days.result', 'dueOn.days', 'byDirectory.a');
+  g.wire('denial.deniedOn', 'dueOn.from');
+  g.wire('decide.decisionDays', 'wait.a');
+  g.wire('byDirectory.result', 'directoryReason.condition');
+  g.wire('directoryText.text', 'directoryReason.whenTrue');
+  g.wire('directoryReason.result', 'directoryReasons.item1');
+  g.wire('decide.reasons', 'reasons.list1');
+  g.wire('directoryReasons.list', 'reasons.list2');
   g.wire('decide.level', 'return.level');
   g.wire('decide.levelName', 'return.levelName');
-  g.wire('dueOn.result', 'return.dueOn');
+  g.wire('dueOn.dueOn', 'return.dueOn');
   g.wire('wait.result', 'return.decisionWaitMs');
-  g.wire('decide.rule', 'reasons.rule');
-  g.wire('reasons.result', 'return.reasons');
+  g.wire('reasons.list', 'return.reasons');
+  return g.def;
+};
+
+const dueAfterDays = (): GraphDef => {
+  const g = rule(
+    [
+      d(
+        'from',
+        'string',
+        'From',
+        'The day the days are counted from (YYYY-MM-DD); today when empty.',
+        true
+      ),
+      d('days', 'integer', 'Days', 'How many days are allowed.')
+    ],
+    [d('dueOn', 'string', 'Due On', 'The last day (YYYY-MM-DD).')]
+  );
+  g.add('now', 'std.time.now', { label: 'Now' });
+  g.add('start', 'std.logic.choose', {
+    label: 'From, Else Today',
+    config: { mode: 'first', type: 'datetime', count: 2 }
+  });
+  g.add('later', 'std.time.add', { label: 'Days Later', config: { unit: 'days' } });
+  g.add('day', 'std.time.parts', { label: 'Due Day' });
+  g.ret('return');
+  g.wire('entry.from', 'start.option1');
+  g.wire('now.now', 'start.option2');
+  g.wire('start.value', 'later.time');
+  g.wire('entry.days', 'later.amount');
+  g.wire('later.time', 'day.time');
+  g.wire('day.date', 'return.dueOn');
   return g.def;
 };
 
@@ -422,8 +467,14 @@ const appealDecision = (): GraphDef => {
       P.reasons('the appeal was decided this way')
     ]
   );
-  g.add('paid', 'std.expr', expr('Paid Something', 'paidCents > 0'));
-  g.add('settled', 'std.expr', expr('Nothing Owed', 'balanceCents <= 0'));
+  above(g, 'paid', 'Paid Something', 'paidCents', 0);
+  g.add('settled', 'std.logic.condition', {
+    label: 'Nothing Owed',
+    config: {
+      inputs: [{ name: 'balanceCents', type: 'integer' }],
+      rules: [{ field: 'balanceCents', op: 'lte', value: 0 }]
+    }
+  });
   g.add('decide', 'std.table.decide', {
     label: 'Appeal Decisions',
     config: shared.decision(
@@ -496,13 +547,13 @@ const dueRule = (
       )
     )
   });
-  g.add('dueOn', 'std.expr', expr('Due On', `addDays(coalesce(${dateField}, date(now())), days)`));
+  g.add('dueOn', 'billing.due-after-days', { label: 'Due On' });
   g.ret('return');
   g.wire(`entry.${factsIn.name}`, `facts.${factsIn.name}`);
   g.wire('facts.payerKind', 'decide.payerKind');
-  g.wire(`facts.${dateField}`, `dueOn.${dateField}`);
+  g.wire(`facts.${dateField}`, 'dueOn.from');
   g.wire('decide.days', 'dueOn.days');
-  g.wire('dueOn.result', 'return.dueOn');
+  g.wire('dueOn.dueOn', 'return.dueOn');
   g.wire('decide.reasons', 'return.reasons');
   return g.def;
 };
@@ -573,32 +624,35 @@ const recordsDue = (): GraphDef => {
             set: { days: 45 }
           }
         ],
-        { days: 30 }
+        { days: 30 },
+        'Records are due 30 days after the request'
       )
     )
   });
-  g.add(
-    'dueOn',
-    'std.expr',
-    expr(
-      'Due On',
-      'requestedDue != null && requestedDue != "" ? date(requestedDue) : addDays(date(now()), days)'
-    )
-  );
-  g.add(
-    'reasons',
-    'std.expr',
-    expr(
-      'Why',
-      'requestedDue != null && requestedDue != "" ? ["The request names its due date"] : rule != null ? [rule] : ["Records are due 30 days after the request"]'
-    )
-  );
+  g.add('allowed', 'billing.due-after-days', { label: 'Due After the Days Allowed' });
+  g.add('dueOn', 'std.logic.choose', {
+    label: 'Requested Due Date, Else the Days Allowed',
+    config: { mode: 'first', type: 'string', count: 2 }
+  });
+  g.add('requested', 'std.logic.condition', {
+    label: 'The Request Names a Due Date',
+    config: {
+      inputs: [{ name: 'requestedDue', type: 'string' }],
+      rules: [{ field: 'requestedDue', op: 'present' }]
+    }
+  });
+  g.add('reasons', 'std.logic.select', {
+    label: 'Why',
+    values: { whenTrue: ['The request names its due date'] }
+  });
   g.ret('return');
   g.wire('entry.payerKind', 'decide.payerKind');
-  g.wire('entry.requestedDue', 'dueOn.requestedDue', 'reasons.requestedDue');
-  g.wire('decide.days', 'dueOn.days');
-  g.wire('dueOn.result', 'return.dueOn');
-  g.wire('decide.rule', 'reasons.rule');
+  g.wire('entry.requestedDue', 'dueOn.option1', 'requested.requestedDue');
+  g.wire('decide.days', 'allowed.days');
+  g.wire('allowed.dueOn', 'dueOn.option2');
+  g.wire('dueOn.value', 'return.dueOn');
+  g.wire('requested.result', 'reasons.condition');
+  g.wire('decide.reasons', 'reasons.whenFalse');
   g.wire('reasons.result', 'return.reasons');
   return g.def;
 };
@@ -624,19 +678,18 @@ const closingApproval = (): GraphDef => {
       P.reasons('approval is or is not needed')
     ]
   );
-  g.add('needs', 'std.expr', expr('Above the Threshold', 'balanceCents > thresholdCents'));
-  g.add(
-    'reasons',
-    'std.expr',
-    expr(
-      'Why',
-      'balanceCents > thresholdCents ? ["The balance is above the approval threshold of the Claim Policy"] : ["The balance is within the approval threshold of the Claim Policy"]'
-    )
-  );
+  g.add('needs', 'std.logic.greater', { label: 'Above the Threshold' });
+  g.add('reasons', 'std.logic.select', {
+    label: 'Why',
+    values: {
+      whenTrue: ['The balance is above the approval threshold of the Claim Policy'],
+      whenFalse: ['The balance is within the approval threshold of the Claim Policy']
+    }
+  });
   g.ret('return');
-  g.wire('entry.balanceCents', 'needs.balanceCents', 'reasons.balanceCents');
-  g.wire('entry.thresholdCents', 'needs.thresholdCents', 'reasons.thresholdCents');
-  g.wire('needs.result', 'return.needsApproval');
+  g.wire('entry.balanceCents', 'needs.a');
+  g.wire('entry.thresholdCents', 'needs.b');
+  g.wire('needs.result', 'return.needsApproval', 'reasons.condition');
   g.wire('reasons.result', 'return.reasons');
   return g.def;
 };
@@ -729,22 +782,27 @@ const patientResponsibility = (): GraphDef => {
       )
     )
   });
-  g.add(
-    'excess',
-    'std.expr',
-    expr(
-      'Protected Amount',
-      'protection == "block" ? max(balanceCents, 0) : protection == "cap" ? max(balanceCents - costShareCents, 0) : 0'
-    )
-  );
-  g.add('owed', 'std.expr', expr('Patient Responsibility', 'max(balanceCents - excess, 0)'));
+  g.add('wholeBalance', 'std.math.max', { label: 'Whole Balance', values: { b: 0 } });
+  g.add('beyondShare', 'std.math.subtract', { label: 'Beyond the Cost Share' });
+  g.add('beyondShareOwed', 'std.math.max', { label: 'Above the Cost Share', values: { b: 0 } });
+  g.add('excess', 'std.logic.choose', {
+    label: 'Protected Amount',
+    config: { mode: 'byCase', type: 'integer', cases: [{ when: 'block' }, { when: 'cap' }] },
+    values: { otherwise: 0 }
+  });
+  g.add('left', 'std.math.subtract', { label: 'Balance Less Protected' });
+  g.add('owed', 'std.math.max', { label: 'Patient Responsibility', values: { b: 0 } });
   g.ret('return');
   g.wire('entry.patientBalance', 'facts.patientBalance');
   for (const { name } of PROTECTION_INPUTS) g.wire(`facts.${name}`, `decide.${name}`);
-  g.wire('decide.protection', 'excess.protection', 'return.protection');
-  g.wire('facts.balanceCents', 'excess.balanceCents', 'owed.balanceCents');
-  g.wire('facts.costShareCents', 'excess.costShareCents');
-  g.wire('excess.result', 'owed.excess', 'return.excessCents');
+  g.wire('decide.protection', 'excess.key', 'return.protection');
+  g.wire('facts.balanceCents', 'wholeBalance.a', 'beyondShare.a', 'left.a');
+  g.wire('facts.costShareCents', 'beyondShare.b');
+  g.wire('beyondShare.result', 'beyondShareOwed.a');
+  g.wire('wholeBalance.result', 'excess.case1');
+  g.wire('beyondShareOwed.result', 'excess.case2');
+  g.wire('excess.value', 'left.b', 'return.excessCents');
+  g.wire('left.result', 'owed.a');
   g.wire('owed.result', 'return.responsibilityCents');
   g.wire('decide.reasons', 'return.reasons');
   return g.def;
@@ -780,19 +838,39 @@ const workDenial = (): GraphDef => {
     label: 'Directory Payers',
     values: { keys: ['payerId'] }
   });
-  g.add(
-    'details',
-    'std.expr',
-    expr(
-      'Denial Details',
-      'merge(context ?? {}, { denial: denial, suggested: suggestion, why: reasons })'
-    )
-  );
-  g.add(
-    'defaults',
-    'std.expr',
-    expr('Prefilled', '{ correction: "replace", payerClaimNumber: denial.payerClaimNumber }')
-  );
+  taskDetails(g, 'Denial Details', 'Denial and Suggestion', [
+    { name: 'denial', type: T.denial },
+    { name: 'suggested', type: 'string' },
+    { name: 'why', type: { list: 'string' } }
+  ]);
+  g.add('facts', 'billing.denial-facts.break');
+  g.add('defaults', 'std.object.make', {
+    label: 'Prefilled',
+    config: {
+      fields: [
+        { name: 'correction', type: 'string' },
+        { name: 'payerClaimNumber', type: 'string' }
+      ]
+    },
+    values: { correction: 'replace' }
+  });
+  orElse(g, 'payer', 'Payer, Else The Payer', 'The payer');
+  g.add('codes', 'std.text.join', { label: 'Reason Codes', values: { separator: ', ' } });
+  above(g, 'owes', 'Balance Left', 'balanceCents', 0);
+  g.add('balance', 'std.text.money', { label: 'Balance' });
+  g.add('leaving', 'std.logic.select', { label: 'Balance Left Open' });
+  g.add('suggested', 'std.logic.choose', {
+    label: 'Suggested Decision Text',
+    config: {
+      mode: 'byCase',
+      type: 'string',
+      cases: Object.keys(SUGGESTIONS).map((when) => ({ when }))
+    },
+    values: {
+      ...Object.fromEntries(Object.values(SUGGESTIONS).map((text, i) => [`case${i + 1}`, text])),
+      otherwise: 'decide whether to correct, appeal, rebill or write it off'
+    }
+  });
   g.add('decide', 'std.human.task', {
     label: 'Denial Decision',
     config: {
@@ -846,18 +924,31 @@ const workDenial = (): GraphDef => {
     'toPatient.coverageId'
   );
   g.wire('entry.subject', 'decide.subject', 'correct.subject', 'appeal.subject');
-  g.wire('entry.context', 'details.context', 'correct.context', 'appeal.context');
+  g.wire('entry.context', 'correct.context', 'appeal.context');
   g.wire('follow.then', 'read.exec');
   g.wire('read.then', 'choices.exec');
-  g.wire('read.denial', 'category.denial', 'details.denial', 'defaults.denial');
-  g.wire('category.suggestion', 'details.suggestion');
-  g.wire('category.reasons', 'details.reasons');
-  g.wire('details.result', 'decide.context');
-  summarize(g, 'decide', DENIAL_SUMMARY, {
-    denial: 'read.denial',
-    suggestion: 'category.suggestion'
-  });
-  g.wire('defaults.result', 'decide.defaults');
+  g.wire('read.denial', 'category.denial', 'added.denial', 'facts.denial');
+  g.wire('category.suggestion', 'added.suggested', 'suggested.key');
+  g.wire('category.reasons', 'added.why');
+  g.wire('details.object', 'decide.context');
+  g.wire('facts.payerClaimNumber', 'defaults.payerClaimNumber');
+  g.wire('facts.payer', 'payer.option1');
+  g.wire('facts.codes', 'codes.items');
+  g.wire('facts.balanceCents', 'owes.balanceCents', 'balance.cents');
+  g.wire('owes.result', 'leaving.condition');
+  g.wire('balance.text', 'leaving.whenTrue');
+  summary(
+    g,
+    'decide',
+    '{payer} denied this claim[ ({codes})][, leaving {balance} open]; {suggested}',
+    {
+      payer: 'payer.value',
+      codes: 'codes.text',
+      balance: 'leaving.result',
+      suggested: 'suggested.value'
+    }
+  );
+  g.wire('defaults.object', 'decide.defaults');
   g.wire('choices.then', 'decide.exec');
   g.wire('choices.options', 'directory.object');
   g.wire('directory.object', 'decide.options');
@@ -914,11 +1005,9 @@ const correctClaim = (): GraphDef => {
     label: 'By Method',
     config: { cases: ['newClaim', 'replacement', 'void', 'reopening'] }
   });
-  g.add(
-    'number',
-    'std.expr',
-    expr('Claim Number to Replace', 'coalesce(payerClaimNumber, denial.payerClaimNumber)')
-  );
+  g.add('facts', 'billing.denial-facts.break');
+  g.add('number', 'std.logic.coalesce', { label: 'Claim Number to Replace' });
+  orElse(g, 'payer', 'Payer, Else the Payer', 'the payer');
   recordEvent(g, 'replace', 'resubmit_queued', 'Queue the Replacement Claim');
   recordEvent(g, 'newClaim', 'resubmit_queued', 'Queue a New Claim');
   g.add('fix', 'billing.fix-claim', { label: 'Correct the Claim Data', values: { all: true } });
@@ -949,7 +1038,7 @@ const correctClaim = (): GraphDef => {
       }
     }
   });
-  g.add('reopenNote', 'std.expr', expr('Reopening Note', '"Reopening requested: " + reference'));
+  template(g, 'reopenNote', 'Reopening Note', 'Reopening requested: {reference}');
   recordEvent(g, 'requested', 'reopening_requested', 'Log the Reopening Request');
   g.ret('doneReturn', 'done');
   g.ret('voidReturn', 'void');
@@ -978,8 +1067,10 @@ const correctClaim = (): GraphDef => {
   g.wire('entry.subject', 'fix.subject', 'submit.subject', 'reopening.subject');
   g.wire('entry.context', 'fix.context', 'submit.context', 'reopening.context');
   g.wire('entry.correction', 'method.correction');
-  g.wire('entry.payerClaimNumber', 'number.payerClaimNumber', 'method.payerClaimNumber');
-  g.wire('read.denial', 'method.denial', 'number.denial');
+  g.wire('entry.payerClaimNumber', 'number.value', 'method.payerClaimNumber');
+  g.wire('read.denial', 'method.denial', 'facts.denial');
+  g.wire('facts.payerClaimNumber', 'number.fallback');
+  g.wire('facts.payer', 'payer.option1');
   g.wire('read.then', 'route.exec');
   g.wire('method.method', 'route.value');
   g.wire('number.result', 'replace.payerClaimNumber', 'reopenVoid.payerClaimNumber');
@@ -1001,10 +1092,15 @@ const correctClaim = (): GraphDef => {
   g.wire('voided.then', 'doneReturn.exec');
   g.wire('route.reopening', 'reopening.exec');
   g.wire('route.default', 'doneReturn.exec');
-  summarize(g, 'reopening', REOPENING_SUMMARY, { denial: 'read.denial' });
+  summary(
+    g,
+    'reopening',
+    'Request a reopening from {payer}[ of its claim {number}], since it takes no corrected claims, and enter the reference you are given',
+    { payer: 'payer.value', number: 'facts.payerClaimNumber' }
+  );
   g.wire('reopening.requested', 'requested.exec');
   g.wire('reopening.reference', 'reopenNote.reference');
-  g.wire('reopenNote.result', 'requested.note');
+  g.wire('reopenNote.text', 'requested.note');
   g.wire('requested.then', 'doneReturn.exec');
   g.wire('reopening.cannotReopen', 'doneReturn.exec');
   return g.def;
@@ -1027,14 +1123,26 @@ const appealClaim = (): GraphDef => {
   g.add('read', 'billing.read-denial', { label: 'Read Denial' });
   g.add('level', 'billing.appeal-level', { label: 'Appeal Level and Deadline' });
   g.add('packet', 'billing.build-appeal-packet', { label: 'Build Appeal Packet' });
-  g.add(
-    'details',
-    'std.expr',
-    expr(
-      'Appeal Details',
-      'merge(context ?? {}, { appeal: { level: levelName, dueOn: dueOn }, denial: denial, why: reasons })'
-    )
-  );
+  g.add('appealAt', 'std.object.make', {
+    label: 'Appeal Level and Due Date',
+    config: {
+      fields: [
+        { name: 'level', type: 'string' },
+        { name: 'dueOn', type: 'string' }
+      ]
+    }
+  });
+  taskDetails(g, 'Appeal Details', 'Appeal and Denial', [
+    { name: 'appeal', type: { object: { level: 'string', dueOn: 'string' } } },
+    { name: 'denial', type: T.denial },
+    { name: 'why', type: { list: 'string' } }
+  ]);
+  g.add('facts', 'billing.denial-facts.break');
+  orElse(g, 'levelOrAppeal', 'Level, Else Appeal', 'appeal');
+  g.add('levelWords', 'std.text.lower', { label: 'Level in Words' });
+  orElse(g, 'payer', 'Payer, Else the Payer', 'the payer');
+  orElse(g, 'deniedBy', 'Payer, Else The Payer', 'The payer');
+  g.add('codes', 'std.text.join', { label: 'Reason Codes', values: { separator: ', ' } });
   g.add('send', 'std.human.task', {
     label: 'Send Appeal',
     config: {
@@ -1051,20 +1159,10 @@ const appealClaim = (): GraphDef => {
       }
     }
   });
-  g.add(
-    'sentNote',
-    'std.expr',
-    expr(
-      'Appeal Note',
-      'levelName + " sent" + (note != null && note != "" ? " (" + note + ")" : "") + ", due by " + dueOn'
-    )
-  );
+  template(g, 'sentNote', 'Appeal Note', '{levelName} sent[ ({note})], due by {dueOn}');
   recordEvent(g, 'appealed', 'appealed', 'Log the Appeal');
-  g.add(
-    'deadline',
-    'std.expr',
-    expr('Decision Deadline', `addDays(now(), decisionWaitMs / ${DAY_MS})`)
-  );
+  g.add('waitDays', 'std.math.divide', { label: 'Decision Wait in Days', values: { b: DAY_MS } });
+  g.add('deadline', 'std.time.add', { label: 'Decision Deadline', config: { unit: 'days' } });
   g.add('setDeadline', 'std.var.set', { label: 'Decide By', config: { name: 'decideBy' } });
   g.add('extendDeadline', 'std.var.set', {
     label: 'Wait Another Period',
@@ -1076,13 +1174,14 @@ const appealClaim = (): GraphDef => {
     label: 'Seconds Until Due',
     config: { unit: 'seconds' }
   });
-  g.add('timeLeft', 'std.expr', expr('Time Left', 'max(0, seconds) * 1000'));
+  g.add('secondsLeft', 'std.math.max', { label: 'Seconds Left', values: { b: 0 } });
+  g.add('timeLeft', 'std.math.multiply', { label: 'Time Left', values: { b: 1000 } });
   g.add('waiting', 'std.var.get', { label: 'Still Waiting', config: { name: 'waiting' } });
   g.add('loop', 'std.flow.while', { label: 'Until the Appeal Is Decided' });
   g.add('outcome', 'billing.read-appeal', { label: 'Read Appeal Outcome' });
   g.add('answered', 'std.flow.branch', { label: 'Did the Payer Answer?' });
   g.add('decision', 'billing.appeal-decision', { label: 'Appeal Decision' });
-  g.add('decisionNote', 'std.expr', expr('Decision Note', 'levelName + " " + decision'));
+  template(g, 'decisionNote', 'Decision Note', '{levelName} {decision}');
   recordEvent(g, 'decided', 'appeal_decided', 'Log the Decision');
   g.add('wait', 'std.flow.wait-signal', {
     label: 'Await the Decision',
@@ -1136,40 +1235,49 @@ const appealClaim = (): GraphDef => {
     'upheld.coverageId'
   );
   g.wire('entry.subject', 'send.subject', 'overdue.subject');
-  g.wire('entry.context', 'details.context');
-  g.wire('read.denial', 'level.denial', 'details.denial');
+  g.wire('read.denial', 'level.denial', 'added.denial', 'facts.denial');
   g.wire('read.then', 'packet.exec');
   g.wire(
     'level.levelName',
     'packet.level',
-    'details.levelName',
+    'appealAt.level',
     'sentNote.levelName',
-    'decisionNote.levelName'
+    'decisionNote.levelName',
+    'levelOrAppeal.option1'
   );
-  g.wire('level.dueOn', 'packet.dueOn', 'details.dueOn', 'send.due', 'sentNote.dueOn');
-  g.wire('level.reasons', 'details.reasons');
-  g.wire('details.result', 'send.context', 'overdue.context');
-  summarize(g, 'send', SEND_APPEAL_SUMMARY, {
-    levelName: 'level.levelName',
-    denial: 'read.denial',
-    dueOn: 'level.dueOn'
-  });
-  summarize(g, 'overdue', APPEAL_OVERDUE_SUMMARY, {
-    levelName: 'level.levelName',
-    denial: 'read.denial'
-  });
+  g.wire('level.dueOn', 'packet.dueOn', 'appealAt.dueOn', 'send.due', 'sentNote.dueOn');
+  g.wire('appealAt.object', 'added.appeal');
+  g.wire('level.reasons', 'added.why');
+  g.wire('details.object', 'send.context', 'overdue.context');
+  g.wire('levelOrAppeal.value', 'levelWords.text');
+  g.wire('facts.payer', 'payer.option1', 'deniedBy.option1');
+  g.wire('facts.codes', 'codes.items');
+  summary(
+    g,
+    'send',
+    'Send the {level} to {payer}[ against its {codes} denial][ by {dueOn}]; the packet is in the claim files',
+    { level: 'levelWords.result', payer: 'payer.value', codes: 'codes.text', dueOn: 'level.dueOn' }
+  );
+  summary(
+    g,
+    'overdue',
+    '{payer} has not decided the {level} in time; check its status, then keep waiting, record it upheld or withdraw it',
+    { payer: 'deniedBy.value', level: 'levelWords.result' }
+  );
   g.wire('packet.then', 'send.exec');
   g.wire('send.notAppealing', 'doneReturn.exec');
   g.wire('send.sent', 'appealed.exec');
   g.wire('send.note', 'sentNote.note');
-  g.wire('sentNote.result', 'appealed.note');
+  g.wire('sentNote.text', 'appealed.note');
   g.wire('appealed.then', 'setDeadline.exec');
   g.wire('setDeadline.then', 'loop.exec');
-  g.wire('level.decisionWaitMs', 'deadline.decisionWaitMs');
-  g.wire('deadline.result', 'setDeadline.value', 'extendDeadline.value');
-  g.wire('clock.now', 'untilDue.start');
+  g.wire('level.decisionWaitMs', 'waitDays.a');
+  g.wire('clock.now', 'deadline.time', 'untilDue.start');
+  g.wire('waitDays.result', 'deadline.amount');
+  g.wire('deadline.time', 'setDeadline.value', 'extendDeadline.value');
   g.wire('decideBy.value', 'untilDue.end');
-  g.wire('untilDue.amount', 'timeLeft.seconds');
+  g.wire('untilDue.amount', 'secondsLeft.a');
+  g.wire('secondsLeft.result', 'timeLeft.a');
   g.wire('overdue.keepWaiting', 'extendDeadline.exec');
   g.wire('waiting.value', 'loop.condition');
   g.wire('loop.body', 'outcome.exec');
@@ -1179,7 +1287,7 @@ const appealClaim = (): GraphDef => {
   g.wire('outcome.paidCents', 'decision.paidCents');
   g.wire('outcome.balanceCents', 'decision.balanceCents');
   g.wire('decision.decision', 'decisionNote.decision');
-  g.wire('decisionNote.result', 'decided.note');
+  g.wire('decisionNote.text', 'decided.note');
   g.wire('answered.true', 'decided.exec');
   g.wire('decided.then', 'stopDecided.exec');
   g.wire('answered.false', 'wait.exec');
@@ -1189,13 +1297,10 @@ const appealClaim = (): GraphDef => {
   g.wire('overdue.upheld', 'upheld.exec');
   g.wire('upheld.then', 'stopUpheld.exec');
   g.wire('overdue.withdrawn', 'stopWithdrawn.exec');
-  g.add(
-    'upheldNote',
-    'std.expr',
-    expr('Upheld Note', 'levelName + " upheld, as a biller recorded"')
-  );
-  g.wire('level.levelName', 'upheldNote.levelName');
-  g.wire('upheldNote.result', 'upheld.note');
+  template(g, 'upheldNote', 'Upheld Note', '{levelName} upheld, as a biller recorded', {
+    levelName: 'level.levelName'
+  });
+  g.wire('upheldNote.text', 'upheld.note');
   return g.def;
 };
 
@@ -1213,28 +1318,31 @@ const logRecordsRequest = (): GraphDef => {
   g.add('follow', 'billing.follow-claim', { label: 'Show on the Claim' });
   g.add('ledger', 'billing.read-claim-ledger', { label: 'Read Claim Ledger' });
   g.add('facts', 'billing.claim-ledger.break');
-  g.add(
-    'payer',
-    'std.expr',
-    expr('Payer Asking', 'coalesce(coverageId, unreconciledCoverageId, current)')
-  );
+  g.add('payer', 'std.logic.choose', {
+    label: 'Payer Asking',
+    config: { mode: 'first', type: { id: 'coverage' }, count: 3 }
+  });
   g.add('asking', 'billing.read-payer', { label: 'Read the Payer Asking' });
   g.add('due', 'billing.records-due', { label: 'Records Due' });
-  g.add(
+  template(
+    g,
     'requestNote',
-    'std.expr',
-    expr(
-      'Request Note',
-      '"Records requested" + (payer != null ? " by " + payer : "") + ", due " + dueOn + (note != null && note != "" ? ": " + note : "")'
-    )
+    'Request Note',
+    'Records requested[ by {payer}], due {dueOn}[: {note}]'
   );
   recordEvent(g, 'requested', 'records_requested', 'Log the Records Request');
-  g.add('subject', 'std.expr', expr('Task Subject', 'reference'));
-  g.add(
-    'details',
-    'std.expr',
-    expr('Request Details', '{ claimId: claimId, dueOn: dueOn, request: note, why: reasons }')
-  );
+  g.add('details', 'std.object.make', {
+    label: 'Request Details',
+    config: {
+      fields: [
+        { name: 'claimId', type: { id: 'claim' } },
+        { name: 'dueOn', type: 'string' },
+        { name: 'request', type: 'string' },
+        { name: 'why', type: { list: 'string' } }
+      ]
+    }
+  });
+  orElse(g, 'payerName', 'Payer, Else The Payer', 'The payer');
   g.add('gather', 'std.human.task', {
     label: 'Send Records',
     config: {
@@ -1275,16 +1383,15 @@ const logRecordsRequest = (): GraphDef => {
       }
     }
   });
-  summarize(
+  summary(
     g,
     'log',
-    "'Log the request for records a payer sent about claim ' + reference + ', with its due date'",
+    'Log the request for records a payer sent about claim {reference}, with its due date',
     { reference: 'ledger.reference' }
   );
   g.ret('done');
   g.wire('entry.exec', 'follow.exec');
   g.wire('entry.assignee', 'log.assignee');
-  g.wire('subject.result', 'log.subject');
   g.wire('log.cancel', 'done.exec');
   g.wire(
     'entry.claimId',
@@ -1295,31 +1402,31 @@ const logRecordsRequest = (): GraphDef => {
     'details.claimId',
     'sent.claimId'
   );
-  g.wire('entry.coverageId', 'payer.coverageId');
+  g.wire('entry.coverageId', 'payer.option1');
   g.wire('log.dueOn', 'due.requestedDue');
-  g.wire('log.note', 'requestNote.note', 'details.note');
+  g.wire('log.note', 'requestNote.note', 'details.request');
   g.wire('follow.then', 'ledger.exec');
   g.wire('ledger.ledger', 'facts.ledger');
-  g.wire('ledger.reference', 'subject.reference');
-  g.wire('facts.unreconciledCoverageId', 'payer.unreconciledCoverageId');
-  g.wire('facts.coverageId', 'payer.current');
+  g.wire('ledger.reference', 'log.subject', 'gather.subject');
+  g.wire('facts.unreconciledCoverageId', 'payer.option2');
+  g.wire('facts.coverageId', 'payer.option3');
   g.wire('asking.payerKind', 'due.payerKind');
-  g.wire('asking.payer', 'requestNote.payer');
+  g.wire('asking.payer', 'requestNote.payer', 'payerName.option1');
   g.wire('due.dueOn', 'requestNote.dueOn', 'details.dueOn', 'gather.due');
-  g.wire('due.reasons', 'details.reasons');
-  g.wire('payer.result', 'asking.coverageId', 'requested.coverageId', 'sent.coverageId');
-  g.wire('requestNote.result', 'requested.note');
+  g.wire('due.reasons', 'details.why');
+  g.wire('payer.value', 'asking.coverageId', 'requested.coverageId', 'sent.coverageId');
+  g.wire('requestNote.text', 'requested.note');
   g.wire('ledger.then', 'log.exec');
   g.wire('log.log', 'asking.exec');
   g.wire('asking.then', 'requested.exec');
   g.wire('requested.then', 'gather.exec');
-  g.wire('subject.result', 'gather.subject');
-  g.wire('details.result', 'gather.context');
-  summarize(g, 'gather', RECORDS_SUMMARY, {
-    payer: 'asking.payer',
-    dueOn: 'due.dueOn',
-    note: 'log.note'
-  });
+  g.wire('details.object', 'gather.context');
+  summary(
+    g,
+    'gather',
+    '{payer} asked for records on this claim[, due {dueOn}][ ({note})]; send them and mark it sent',
+    { payer: 'payerName.value', dueOn: 'due.dueOn', note: 'log.note' }
+  );
   g.wire('gather.sent', 'sent.exec');
   g.wire('gather.note', 'sent.note');
   g.wire('sent.then', 'done.exec');
@@ -1348,11 +1455,18 @@ const refundOverpayment = (): GraphDef => {
   g.add('follow', 'billing.follow-claim', { label: 'Show on the Claim' });
   g.add('read', 'billing.read-refund', { label: 'Read Credit Balance' });
   g.add('due', 'billing.refund-due', { label: 'Refund Due' });
-  g.add(
-    'details',
-    'std.expr',
-    expr('Refund Details', 'merge(context ?? {}, { refund: refund, dueOn: dueOn, why: reasons })')
-  );
+  taskDetails(g, 'Refund Details', 'Refund and Due Date', [
+    { name: 'refund', type: T.refund },
+    { name: 'dueOn', type: 'string' },
+    { name: 'why', type: { list: 'string' } }
+  ]);
+  g.add('facts', 'billing.refund-facts.break');
+  orElse(g, 'payerName', 'Payer, Else The Patient', 'The patient');
+  g.add('overpaid', 'std.text.money', { label: 'Overpaid' });
+  template(g, 'paidMore', 'Paid More', '[paid {overpaid} more than this claim charges]', {
+    overpaid: 'overpaid.text'
+  });
+  orElse(g, 'paid', 'What Was Paid', 'overpaid this claim');
   g.add('approve', 'std.human.task', {
     label: 'Approve Refund',
     config: {
@@ -1370,44 +1484,46 @@ const refundOverpayment = (): GraphDef => {
       }
     }
   });
-  g.add(
-    'refundNote',
-    'std.expr',
-    expr('Refund Note', '"Refund approved" + (note != null && note != "" ? ": " + note : "")')
-  );
+  template(g, 'refundNote', 'Refund Note', 'Refund approved[: {note}]');
   g.add('reread', 'billing.read-refund', { label: 'Read Credit Balance Again' });
-  g.add(
-    'amount',
-    'std.expr',
-    expr('Refund Amount', 'max(0, min(refund.overpaidCents, refund.paidCents))')
-  );
-  g.add('anything', 'std.expr', expr('Anything to Refund', 'amount > 0'));
+  g.add('credit', 'billing.refund-facts.break', { label: 'Credit Now' });
+  g.add('smaller', 'std.math.min', { label: 'Credit or What Was Paid' });
+  g.add('amount', 'std.math.max', { label: 'Refund Amount', values: { b: 0 } });
+  above(g, 'anything', 'Anything to Refund', 'amount', 0);
   g.add('owed', 'std.flow.branch', { label: 'Still Owed?' });
   g.add('record', 'billing.record-refund', { label: 'Record Refund' });
-  g.add('payer', 'std.object.get', { label: 'Who Paid', values: { path: 'coverageId' } });
   g.ret('refundedReturn', 'refunded');
   g.ret('keptReturn', 'keptCredit');
   g.wire('entry.exec', 'follow.exec');
   g.wire('entry.claimId', 'follow.claimId', 'read.claimId', 'reread.claimId', 'record.claimId');
   g.wire('entry.subject', 'approve.subject');
-  g.wire('entry.context', 'details.context');
   g.wire('follow.then', 'read.exec');
-  g.wire('read.refund', 'due.refund', 'details.refund');
-  g.wire('due.dueOn', 'details.dueOn', 'approve.due');
-  g.wire('due.reasons', 'details.reasons');
-  g.wire('details.result', 'approve.context');
-  summarize(g, 'approve', REFUND_SUMMARY, { refund: 'read.refund', dueOn: 'due.dueOn' });
+  g.wire('read.refund', 'due.refund', 'added.refund', 'facts.refund');
+  g.wire('due.dueOn', 'added.dueOn', 'approve.due');
+  g.wire('due.reasons', 'added.why');
+  g.wire('details.object', 'approve.context');
+  g.wire('facts.payer', 'payerName.option1');
+  g.wire('facts.overpaidCents', 'overpaid.cents');
+  g.wire('paidMore.text', 'paid.option1');
+  summary(g, 'approve', '{payer} {paid}; refund it[ by {dueOn}] or keep the credit', {
+    payer: 'payerName.value',
+    paid: 'paid.value',
+    dueOn: 'due.dueOn'
+  });
   g.wire('read.then', 'approve.exec');
   g.wire('approve.refund', 'reread.exec');
-  g.wire('reread.refund', 'amount.refund', 'payer.object');
+  g.wire('reread.refund', 'credit.refund');
+  g.wire('credit.overpaidCents', 'smaller.a');
+  g.wire('credit.paidCents', 'smaller.b');
+  g.wire('smaller.result', 'amount.a');
   g.wire('amount.result', 'anything.amount', 'record.amountCents');
   g.wire('reread.then', 'owed.exec');
   g.wire('anything.result', 'owed.condition');
   g.wire('owed.true', 'record.exec');
   g.wire('owed.false', 'refundedReturn.exec');
   g.wire('approve.note', 'refundNote.note');
-  g.wire('refundNote.result', 'record.note');
-  g.wire('payer.value', 'record.coverageId');
+  g.wire('refundNote.text', 'record.note');
+  g.wire('credit.coverageId', 'record.coverageId');
   g.wire('record.then', 'refundedReturn.exec');
   g.wire('approve.keepCredit', 'keptReturn.exec');
   return g.def;
@@ -1467,16 +1583,15 @@ const approveClosing = (): GraphDef => {
     'A biller chose to send this balance to collections, which needs approval under the Claim Policy. Approve the placement to close the claim as sent to collections, or reject it to send it back.',
     'Logs the approval and closes the claim as sent to collections.'
   );
-  g.add(
-    'note',
-    'std.expr',
-    expr(
-      'Approval Note',
-      'closing == "collections" ? "Collections placement approved" : "Write-off approved"'
-    )
-  );
-  recordEvent(g, 'approvedWriteOff', 'closing_approved', 'Log the Approval');
-  recordEvent(g, 'approvedCollections', 'closing_approved', 'Log the Approval');
+  recordEvent(g, 'approvedWriteOff', 'closing_approved', 'Log the Approval', {
+    note: 'Write-off approved'
+  });
+  recordEvent(g, 'approvedCollections', 'closing_approved', 'Log the Approval', {
+    note: 'Collections placement approved'
+  });
+  g.add('balance', 'std.text.money', { label: 'Balance' });
+  orElse(g, 'balanceText', 'Balance, Else This Balance', 'this balance');
+  g.add('threshold', 'std.text.money', { label: 'Approval Threshold' });
   g.ret('approvedReturn', 'approved');
   g.ret('rejectedReturn', 'rejected');
   g.wire('entry.exec', 'needed.exec');
@@ -1485,18 +1600,27 @@ const approveClosing = (): GraphDef => {
   g.wire('rule.needsApproval', 'needed.condition');
   g.wire('needed.false', 'approvedReturn.exec');
   g.wire('needed.true', 'which.exec');
-  g.wire('entry.closing', 'which.value', 'note.closing');
+  g.wire('entry.closing', 'which.value');
   g.wire('which.collections', 'collections.exec');
   g.wire('which.default', 'writeOff.exec');
   g.wire('entry.subject', 'writeOff.subject', 'collections.subject');
   g.wire('entry.context', 'writeOff.context', 'collections.context');
-  summarize(g, 'writeOff', WRITE_OFF_SUMMARY, {
-    balanceCents: 'entry.balanceCents',
-    thresholdCents: 'entry.thresholdCents'
-  });
-  summarize(g, 'collections', COLLECTIONS_SUMMARY, { balanceCents: 'entry.balanceCents' });
+  g.wire('entry.balanceCents', 'balance.cents');
+  g.wire('balance.text', 'balanceText.option1');
+  g.wire('entry.thresholdCents', 'threshold.cents');
+  summary(
+    g,
+    'writeOff',
+    'Approve writing off {balance}[, above the {threshold} limit], or reject it to send it back',
+    { balance: 'balanceText.value', threshold: 'threshold.text' }
+  );
+  summary(
+    g,
+    'collections',
+    'Approve sending {balance} to collections, or reject it to send it back',
+    { balance: 'balanceText.value' }
+  );
   g.wire('entry.claimId', 'approvedWriteOff.claimId', 'approvedCollections.claimId');
-  g.wire('note.result', 'approvedWriteOff.note', 'approvedCollections.note');
   g.wire('writeOff.approve', 'approvedWriteOff.exec');
   g.wire('collections.approve', 'approvedCollections.exec');
   g.wire('approvedWriteOff.then', 'approvedReturn.exec');
@@ -1507,6 +1631,12 @@ const approveClosing = (): GraphDef => {
 };
 
 export const recoveryGraphs: SeedGraph[] = [
+  asRule(
+    'billing.due-after-days',
+    'Due After Days',
+    'Works out the last day to act: the days allowed counted from a day, or from today when there is none.',
+    dueAfterDays()
+  ),
   asRule(
     'billing.denial-category',
     'Denial Category',
