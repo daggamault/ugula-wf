@@ -1,10 +1,18 @@
 import { type Db, rolePermissionsSql } from '@ugula/db';
 import { sql } from 'kysely';
+import { facetCounts, whereFacets } from '../../shared/facets.ts';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { containsPattern } from '../../shared/search.ts';
 import type { InvitationSort, UserSort } from './schemas.ts';
 
-export type UserFilters = PageRequest<UserSort> & { q?: string | undefined };
+export type UserFilters = PageRequest<UserSort> & {
+  q?: string | undefined;
+  role: readonly string[];
+};
+
+const ROLE_FACETS = { role: { value: sql.ref('r.id'), label: sql.ref('r.name') } };
+
+type RoleFacet = keyof typeof ROLE_FACETS;
 
 export type MemberRow = {
   id: string;
@@ -42,7 +50,7 @@ const USER_ORDER = {
   role: sql`lower(r.name)`
 };
 
-export const searchMembers = (db: Db, agencyId: string, f: UserFilters) => {
+const filteredMembers = (db: Db, agencyId: string, f: UserFilters, except?: RoleFacet) => {
   let q = memberRows(db, agencyId);
   if (f.q) {
     const like = containsPattern(f.q);
@@ -53,7 +61,15 @@ export const searchMembers = (db: Db, agencyId: string, f: UserFilters) => {
       ])
     );
   }
-  return paged(q, f, USER_ORDER, sql.ref('u.id'));
+  return whereFacets(q, ROLE_FACETS, f, except);
+};
+
+export const searchMembers = async (db: Db, agencyId: string, f: UserFilters) => {
+  const [page, facets] = await Promise.all([
+    paged(filteredMembers(db, agencyId, f), f, USER_ORDER, sql.ref('u.id')),
+    facetCounts((except) => filteredMembers(db, agencyId, f, except), ROLE_FACETS)
+  ]);
+  return { ...page, facets };
 };
 
 export const findMember = (db: Db, agencyId: string, userId: string) =>
@@ -143,7 +159,10 @@ export const replacePasswordToken = async (
     .execute();
 };
 
-export type InvitationFilters = PageRequest<InvitationSort> & { q?: string | undefined };
+export type InvitationFilters = PageRequest<InvitationSort> & {
+  q?: string | undefined;
+  role: readonly string[];
+};
 
 const INVITATION_ORDER = {
   name: sql`(lower(i.last_name), lower(i.first_name))`,
@@ -152,7 +171,12 @@ const INVITATION_ORDER = {
   expires: sql.ref('i.expires_at')
 };
 
-export const searchInvitations = (db: Db, agencyId: string, f: InvitationFilters) => {
+const filteredInvitations = (
+  db: Db,
+  agencyId: string,
+  f: InvitationFilters,
+  except?: RoleFacet
+) => {
   let q = db
     .selectFrom('invitations as i')
     .innerJoin('roles as r', 'r.id', 'i.role_id')
@@ -177,7 +201,15 @@ export const searchInvitations = (db: Db, agencyId: string, f: InvitationFilters
       ])
     );
   }
-  return paged(q, f, INVITATION_ORDER, sql.ref('i.id'));
+  return whereFacets(q, ROLE_FACETS, f, except);
+};
+
+export const searchInvitations = async (db: Db, agencyId: string, f: InvitationFilters) => {
+  const [page, facets] = await Promise.all([
+    paged(filteredInvitations(db, agencyId, f), f, INVITATION_ORDER, sql.ref('i.id')),
+    facetCounts((except) => filteredInvitations(db, agencyId, f, except), ROLE_FACETS)
+  ]);
+  return { ...page, facets };
 };
 
 export const findInvitation = (db: Db, agencyId: string, id: string) =>

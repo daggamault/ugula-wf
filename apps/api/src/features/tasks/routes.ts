@@ -11,15 +11,10 @@ import type { TaskService } from './service.ts';
 export const createTaskRoutes = (service: TaskService) =>
   new Hono<AgencyEnv>()
     .get('/', sValidator('query', searchTasksQuery, invalidRequest), async (c) => {
-      const { agencyId, userId } = c.get('access');
-      const { q, queue, ...filters } = c.req.valid('query');
+      const { q, ...filters } = c.req.valid('query');
       return respond(
         c,
-        await service.search(agencyId, userId, {
-          ...filters,
-          ...(q ? { q } : {}),
-          ...(queue ? { queue } : {})
-        })
+        await service.search(c.get('access').agencyId, { ...filters, ...(q ? { q } : {}) })
       );
     })
     .get('/queues', async (c) => {

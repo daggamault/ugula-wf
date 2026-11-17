@@ -46,7 +46,7 @@ export const createTableService = ({ db }: { db: Db }) => {
   const editable = async (tx: Db, access: AgencyAccess, tableId: string) => {
     const table = await findTable(tx, scopeIds(access), tableId);
     if (!table) return notFound;
-    if (table.scope === 'system') return fail('forbidden', 'Built-in tables are read-only');
+    if (table.scope === 'system') return fail('forbidden', 'Standard tables are read-only');
     if (!canEditScope(access, table.scope, 'table')) return forbidden();
     await lockOwner(tx, 'data_tables', tableId);
     return ok(table);
@@ -185,7 +185,7 @@ export const createTableService = ({ db }: { db: Db }) => {
         if (original && original.contract !== tableContract(draft.definition as Json)) {
           return fail(
             'invalid',
-            'An override must keep the inputs and outputs of the built-in table it replaces'
+            'An override must keep the inputs and outputs of the standard table it replaces'
           );
         }
         await publishTableVersion(tx, draft.id);

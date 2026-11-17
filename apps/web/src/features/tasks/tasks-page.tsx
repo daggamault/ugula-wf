@@ -1,21 +1,16 @@
 import { formatAgo, formatDay, patientName } from '../../shared/format.ts';
 import { isOnPage, LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
 import { assigneeOf, queueInfo } from '../../shared/task-queues.ts';
+import type { ColumnFilter } from '../../shared/ui/column-filters.tsx';
 import { emptyValue } from '../../shared/ui/empty-state.tsx';
-import { FilterSelect } from '../../shared/ui/filter-select.tsx';
 import { Highlight, NumberHighlight } from '../../shared/ui/highlight.tsx';
 import { OpenLink, RowActions } from '../../shared/ui/icon-button.tsx';
 import { Page } from '../../shared/ui/page.tsx';
 import { Search } from '../../shared/ui/search.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
-import {
-  type SearchView,
-  useFilterHref,
-  useSearchState,
-  withBack
-} from '../../shared/url-state.ts';
+import { type SearchView, useSearchState, withBack } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
-import type { QueueSummary, TaskFilter, TaskRow, TasksClient } from './client.ts';
+import type { TaskRow, TasksClient } from './client.ts';
 
 export const TASKS_PATH = '/tasks';
 
@@ -29,38 +24,25 @@ const TASK_TABLE = {
     claim: 'desc',
     assignee: 'asc'
   },
-  sort: 'waiting'
+  sort: 'waiting',
+  filters: ['queue', 'assignee']
 } as const;
 
 type TasksPageProps = {
   client: TasksClient;
   live: Live;
   me: string;
-  filter: TaskFilter;
 };
 
-type FilterHref = (name: string, value: string | null) => string;
+const UNASSIGNED = 'none';
 
-export const queueOptions = (
-  queues: readonly QueueSummary[],
-  current: string | null,
-  href: FilterHref
-) => [
-  { value: '', label: 'All Queues', href: href('queue', null) },
-  ...queues.map((q) => ({
-    value: q.queue,
-    label: `${queueInfo(q.queue).label} (${q.open})`,
-    href: href('queue', q.queue)
-  })),
-  ...(current && !queues.some((q) => q.queue === current)
-    ? [{ value: current, label: `${queueInfo(current).label} (0)`, href: href('queue', current) }]
-    : [])
-];
-
-export const assigneeOptions = (href: FilterHref) => [
-  { value: 'all', label: 'Anyone', href: href('assignee', null) },
-  { value: 'mine', label: 'Assigned to Me', href: href('assignee', 'mine') },
-  { value: 'unassigned', label: 'Unassigned', href: href('assignee', 'unassigned') }
+const taskFilters = (me: string): readonly ColumnFilter[] => [
+  { key: 'queue', label: 'Queue', labelOf: (o) => queueInfo(o.value).label },
+  {
+    key: 'assignee',
+    label: 'Assignee',
+    labelOf: (o) => assigneeOf(o.value === UNASSIGNED ? null : (o.label ?? o.value), me)
+  }
 ];
 
 const isOverdue = (due: string | null, now = Date.now()) =>
@@ -145,23 +127,18 @@ export const TasksTable = ({
   );
 };
 
-export const TasksPage = ({ client, live, me, filter }: TasksPageProps) => {
+export const TasksPage = ({ client, live, me }: TasksPageProps) => {
   const search = useSearchState(TASKS_PATH, TASK_TABLE);
-  const filterHref = useFilterHref(TASKS_PATH);
-  const queues = useResource('task-queues', client.queues, 60_000);
   const tasks = useResource(
-    `tasks:${filter.queue ?? ''}:${filter.assignee}:${search.apiQuery}`,
-    (signal) => client.list(filter, search.apiQuery, signal),
+    `tasks:${search.apiQuery}`,
+    (signal) => client.list(search.apiQuery, signal),
     30_000
   );
   const ids = tasks.data?.items.map((t) => t.id) ?? [];
   useLive(
     live,
     (e) => e.kind === 'task' && (e.id === null || isOnPage(e.id, search.page, ids)),
-    () => {
-      tasks.reload();
-      queues.reload();
-    },
+    tasks.reload,
     LIST_RELOAD_MS
   );
   return (
@@ -171,23 +148,7 @@ export const TasksPage = ({ client, live, me, filter }: TasksPageProps) => {
         path={TASKS_PATH}
         search={search}
         results={tasks}
-        filters={
-          <div className="flex flex-wrap gap-2">
-            <FilterSelect
-              id="tasks-queue"
-              label="Queue"
-              value={filter.queue ?? ''}
-              options={queueOptions(queues.data ?? [], filter.queue, filterHref)}
-            />
-            <FilterSelect
-              id="tasks-assignee"
-              label="Assignee"
-              value={filter.assignee}
-              options={assigneeOptions(filterHref)}
-            />
-          </div>
-        }
-        isFiltered={filter.queue !== null || filter.assignee !== 'all'}
+        filters={taskFilters(me)}
         empty={{ title: 'All Caught Up', children: 'New tasks show up here as claims need work.' }}
       >
         {(items) => <TasksTable tasks={items} search={search} me={me} />}

@@ -193,10 +193,20 @@ describe('payer file service', () => {
   it('lists, finds and downloads files of the agency only', async () => {
     const { service, queries } = setup();
     assert.deepEqual(
-      await service.search('t1', { page: 1, pageSize: 25, sort: 'received', dir: 'desc' }),
-      { ok: true, value: { items: [], total: 0, page: 1, pageSize: 25 } }
+      await service.search('t1', {
+        page: 1,
+        pageSize: 25,
+        sort: 'received',
+        dir: 'desc',
+        kind: [],
+        outcome: []
+      }),
+      {
+        ok: true,
+        value: { items: [], total: 0, page: 1, pageSize: 25, facets: { kind: [], outcome: [] } }
+      }
     );
-    assert.ok(queries[0]?.sql.includes('"f"."agency_id" = $1'));
+    assert.ok(queries.every((q) => q.sql.includes('"f"."agency_id" = $1')));
     const notFound = { ok: false, failure: { code: 'not_found', message: 'Payer file not found' } };
     assert.deepEqual(await service.find('t1', 'f9'), notFound);
     assert.deepEqual(await service.download('t1', 'f9'), notFound);

@@ -9,10 +9,13 @@ import {
 import type { RunQueueClient } from '@ugula/run-queue';
 import type { BlobRef, BlobStore } from '@ugula/storage';
 import { safeName, type UploadedFile, uploadKey } from '../../shared/files.ts';
-import type { PageRequest } from '../../shared/paging.ts';
 import { fail, ok } from '../../shared/result.ts';
-import { findPayerFile, listFileItems, searchPayerFiles } from './queries.ts';
-import type { PayerFileSort } from './schemas.ts';
+import {
+  findPayerFile,
+  listFileItems,
+  type PayerFileFilters,
+  searchPayerFiles
+} from './queries.ts';
 
 type PayerFileServiceDeps = {
   db: Db;
@@ -23,8 +26,8 @@ type PayerFileServiceDeps = {
 
 export const createPayerFileService = ({ db, boss, blobs, maxBytes }: PayerFileServiceDeps) => ({
   maxBytes,
-  search: async (agencyId: string, page: PageRequest<PayerFileSort>) =>
-    ok(await searchPayerFiles(db, agencyId, page)),
+  search: async (agencyId: string, filters: PayerFileFilters) =>
+    ok(await searchPayerFiles(db, agencyId, filters)),
 
   find: async (agencyId: string, id: string) => {
     const file = await findPayerFile(db, agencyId, id);

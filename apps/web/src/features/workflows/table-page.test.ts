@@ -102,15 +102,15 @@ const field = (label: string) => screen.getByLabelText(label) as HTMLInputElemen
 const here = () => `${window.location.pathname}${window.location.search}`;
 
 describe('TableView', () => {
-  it('offers built-in tables for overriding and opens the copy in effect', () => {
+  it('offers standard tables for overriding and opens the copy in effect', () => {
     const html = staticView(detail('system', true));
     assert.ok(html.includes('>Customize<'));
-    assert.ok(html.includes('>Built-in<') && html.includes('Built-in tables are read-only'));
+    assert.ok(html.includes('>Standard<') && html.includes('Standard tables are read-only'));
     assert.ok(html.includes('value="A0427"') && html.includes('disabled'));
     assert.ok(!html.includes('>Save<') && !html.includes('>Publish<'));
     const copied = staticView(detail('system', true, 'agency'));
-    assert.ok(copied.includes('href="/tables/t9"') && copied.includes('Open Agency Copy'));
-    assert.ok(copied.includes('Has Agency Copy') && !copied.includes('>Customize<'));
+    assert.ok(copied.includes('href="/tables/t9"') && copied.includes('Open Custom Copy'));
+    assert.ok(copied.includes('Has Custom Copy') && !copied.includes('>Customize<'));
   });
 
   it('marks a draft copy that differs from its base and warns when the base moved', () => {
@@ -213,7 +213,7 @@ describe('TableView', () => {
     assert.equal(saved(), 1);
   });
 
-  it('copies a built-in table for the agency and opens the copy', async () => {
+  it('copies a standard table for the agency and opens the copy', async () => {
     const calls: string[] = [];
     const { notes, user } = view(detail('system', true), {
       override: async (id) => {
@@ -230,7 +230,7 @@ describe('TableView', () => {
     );
   });
 
-  it('removes an override only after confirming, then opens the built-in table', async () => {
+  it('removes an override only after confirming, then opens the standard table', async () => {
     const calls: string[] = [];
     const { user } = view(detail('agency', true), {
       remove: async (id) => {

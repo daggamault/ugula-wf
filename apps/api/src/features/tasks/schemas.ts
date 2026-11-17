@@ -1,5 +1,6 @@
 import { valuesSchema } from '@ugula/graph';
 import * as v from 'valibot';
+import { facetValues } from '../../shared/facets.ts';
 import { uuid } from '../../shared/http.ts';
 import { pageEntries } from '../../shared/paging.ts';
 import { searchText } from '../../shared/search.ts';
@@ -20,8 +21,8 @@ export type TaskSort = (typeof TASK_SORTS)[number];
 
 export const searchTasksQuery = v.object({
   q: searchText,
-  queue: v.optional(v.pipe(v.string(), v.nonEmpty(), v.maxLength(60))),
-  assignee: v.optional(v.picklist(['mine', 'unassigned', 'all']), 'all'),
+  queue: facetValues(v.pipe(v.string(), v.maxLength(60))),
+  assignee: facetValues(v.union([uuid, v.literal('none')])),
   runId: v.optional(uuid),
   ...pageEntries(TASK_SORTS, 'waiting', 'asc')
 });

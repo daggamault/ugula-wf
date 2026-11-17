@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
-import { render, screen, userEvent, waitFor } from '../../shared/testing-dom.ts';
+import { render, screen, userEvent, waitFor, within } from '../../shared/testing-dom.ts';
 import { type ToastInput, ToastProvider } from '../../shared/ui/toast.tsx';
 import type { PayerFileSummary, PayerFilesClient } from './client.ts';
 import { PayerFilesPage, PayerFilesTable } from './payer-files-page.tsx';
@@ -60,6 +60,44 @@ describe('PayerFilesPage', () => {
     assert.ok(input instanceof HTMLInputElement);
     return input;
   };
+
+  it('filters by outcome from the counts in the database', async () => {
+    window.history.replaceState(null, '', '/payer-files');
+    const { client, queries } = fakeClient({
+      list: async (query: string) => {
+        queries.push(query);
+        return {
+          items: [file],
+          total: 1,
+          page: 1,
+          pageSize: 25,
+          facets: {
+            kind: [{ value: '835', count: 6 }],
+            outcome: [
+              { value: 'applied', count: 5 },
+              { value: 'review', count: 1 }
+            ]
+          }
+        };
+      }
+    });
+    show(client);
+    await screen.findByRole('table', { name: 'Payer files' });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Outcome' }));
+    const panel = screen.getByRole('dialog', { name: 'Filter by Outcome' });
+    assert.deepEqual(
+      within(panel)
+        .getAllByRole('checkbox')
+        .map((c) => c.closest('label')?.textContent),
+      ['All Applied5', 'Needs You1']
+    );
+    await user.click(within(panel).getByRole('checkbox', { name: /Needs You/ }));
+    assert.equal(window.location.search, '?outcome=review');
+    await waitFor(() =>
+      assert.equal(queries.at(-1), 'page=1&pageSize=25&sort=received&dir=desc&outcome=review')
+    );
+  });
 
   it('uploads every chosen file, links each to its run and refreshes the list', async () => {
     const toasts: ToastInput[] = [];

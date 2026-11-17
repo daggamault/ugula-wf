@@ -11,13 +11,14 @@ import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
 import { type SearchView, useSearchState, withBack } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import type { PayerFileSummary, PayerFilesClient } from './client.ts';
-import { fileStatus, kindOf, useUploadPayerFiles } from './payer-files.ts';
+import { fileStatus, kindOf, PAYER_FILE_FILTERS, useUploadPayerFiles } from './payer-files.ts';
 
 const PATH = '/payer-files';
 
 const PAYER_FILE_TABLE = {
   sorts: { received: 'desc', name: 'asc', kind: 'asc', problems: 'desc' },
-  sort: 'received'
+  sort: 'received',
+  filters: ['kind', 'outcome']
 } as const;
 
 export const PayerFilesTable = ({
@@ -105,6 +106,7 @@ export const PayerFilesPage = ({ client, live }: { client: PayerFilesClient; liv
         path={PATH}
         search={search}
         results={files}
+        filters={PAYER_FILE_FILTERS}
         empty={{
           title: 'No Payer Files Yet',
           children:

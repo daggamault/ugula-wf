@@ -5,7 +5,7 @@ import type { CompiledQuery } from 'kysely';
 import { recordAnnouncements } from '../../shared/testing.ts';
 import { createPayerService } from './service.ts';
 
-const PAGE = { page: 1, pageSize: 25, sort: 'name', dir: 'asc' } as const;
+const PAGE = { page: 1, pageSize: 25, sort: 'name', dir: 'asc', filing: [] } as const;
 
 const ALL = { create: true, update: true };
 
@@ -44,21 +44,23 @@ const notFound = (message: string) => ({ ok: false, failure: { code: 'not_found'
 
 describe('payer service reads', () => {
   it('searches, finds and names payers within the agency', async () => {
-    const { service, queries } = setup(() => [{ ...ROW, total: '1' }]);
+    const { service, queries } = setup((q) =>
+      q.sql.includes('group by 1') ? [] : [{ ...ROW, total: '1' }]
+    );
     assert.deepEqual(await service.search('t-1', PAGE), {
       ok: true,
-      value: { items: [ROW], total: 1, page: 1, pageSize: 25 }
+      value: { items: [ROW], total: 1, page: 1, pageSize: 25, facets: { filing: [] } }
     });
     assert.deepEqual(await service.find('t-1', 'p1'), {
       ok: true,
       value: { payer: { ...ROW, total: '1' } }
     });
-    assert.deepEqual(queries[1]?.parameters, ['t-1', 'p1']);
+    assert.deepEqual(queries[2]?.parameters, ['t-1', 'p1']);
     assert.deepEqual(await service.names('t-1', 'med'), {
       ok: true,
       value: { payers: [{ ...ROW, total: '1' }] }
     });
-    assert.deepEqual(queries[2]?.parameters, ['t-1', '%med%', 50]);
+    assert.deepEqual(queries[3]?.parameters, ['t-1', '%med%', 50]);
   });
 
   it('reports a payer or payer name outside the agency as not found', async () => {

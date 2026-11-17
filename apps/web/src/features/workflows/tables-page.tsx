@@ -1,36 +1,33 @@
 import { type Live, useReconnect } from '../../shared/live.ts';
 import { Badge } from '../../shared/ui/badge.tsx';
+import type { ColumnFilter } from '../../shared/ui/column-filters.tsx';
 import { emptyValue } from '../../shared/ui/empty-state.tsx';
-import { FilterSelect } from '../../shared/ui/filter-select.tsx';
 import { Highlight } from '../../shared/ui/highlight.tsx';
 import { EditLink, RowActions } from '../../shared/ui/icon-button.tsx';
 import { Page } from '../../shared/ui/page.tsx';
 import { Search } from '../../shared/ui/search.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
-import { type SearchView, useFilterHref, useSearchState } from '../../shared/url-state.ts';
+import { type SearchView, useSearchState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import type { TableKind, TableSummary, WorkflowsClient } from './client.ts';
-import { ScopeBadge, StaleBadge } from './scope-badges.tsx';
+import { SCOPE_FILTER, ScopeBadge, StaleBadge } from './scope-badges.tsx';
 
 export const TABLES_PATH = '/tables';
-
-type TableFilter = 'all' | 'customized';
-
-const TABLE_FILTERS: readonly { value: TableFilter; label: string }[] = [
-  { value: 'all', label: 'All' },
-  { value: 'customized', label: 'Customized' }
-];
-
-export const tableFilterOf = (query: URLSearchParams): TableFilter =>
-  TABLE_FILTERS.find((f) => f.value === query.get('show'))?.value ?? 'all';
 
 export const tableKindLabel = (kind: TableKind) =>
   kind === 'decide' ? 'Decision Table' : 'Lookup Table';
 
 export const TABLES_TABLE = {
   sorts: { name: 'asc', key: 'asc', updated: 'desc' },
-  sort: 'name'
+  sort: 'name',
+  filters: ['kind', 'scope']
 } as const;
+
+const TABLE_KIND_FILTER: ColumnFilter = {
+  key: 'kind',
+  label: 'Kind',
+  labelOf: (o) => tableKindLabel(o.value === 'decide' ? 'decide' : 'lookup')
+};
 
 export const TablesTable = ({
   tables,
@@ -70,7 +67,7 @@ export const TablesTable = ({
         <TableCell>
           <span className="flex flex-wrap items-center gap-2">
             <ScopeBadge scope={t.scope} />
-            {t.overriddenBy ? <Badge intent="custom">Has Your Copy</Badge> : null}
+            {t.overriddenBy ? <Badge intent="custom">Has Custom Copy</Badge> : null}
             <StaleBadge stale={t.isStale} />
           </span>
         </TableCell>
@@ -86,20 +83,12 @@ export const TablesTable = ({
   </Table>
 );
 
-export const TablesPage = ({
-  client,
-  live,
-  show
-}: {
-  client: WorkflowsClient;
-  live: Live;
-  show: TableFilter;
-}) => {
+export const TablesPage = ({ client, live }: { client: WorkflowsClient; live: Live }) => {
   const search = useSearchState(TABLES_PATH, TABLES_TABLE);
-  const query = `${search.apiQuery}&show=${show}`;
-  const tables = useResource(`tables:${query}`, (signal) => client.tables.search(query, signal));
+  const tables = useResource(`tables:${search.apiQuery}`, (signal) =>
+    client.tables.search(search.apiQuery, signal)
+  );
   useReconnect(live, tables.reload);
-  const filterHref = useFilterHref(TABLES_PATH);
   return (
     <Page title="Tables" description="Your agency can change them without copying a workflow.">
       <Search
@@ -107,26 +96,8 @@ export const TablesPage = ({
         path={TABLES_PATH}
         search={search}
         results={tables}
-        filters={
-          <FilterSelect
-            id="tables-show"
-            label="Show"
-            value={show}
-            options={TABLE_FILTERS.map((f) => ({
-              value: f.value,
-              label: f.label,
-              href: filterHref('show', f.value === 'all' ? null : f.value)
-            }))}
-          />
-        }
-        empty={
-          show === 'customized'
-            ? {
-                title: 'Nothing Customized Yet',
-                children: 'Every table is as built. Override one to change its rules.'
-              }
-            : { title: 'No Tables Yet' }
-        }
+        filters={[TABLE_KIND_FILTER, SCOPE_FILTER]}
+        empty={{ title: 'No Tables Yet' }}
       >
         {(items) => <TablesTable tables={items} search={search} />}
       </Search>

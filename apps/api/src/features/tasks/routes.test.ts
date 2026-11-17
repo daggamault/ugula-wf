@@ -53,38 +53,36 @@ describe('task routes', () => {
     assert.deepEqual(await res.json(), { items: [], total: 0, page: 1, pageSize: 25 });
     assert.deepEqual(calls.at(-1), [
       't-1',
-      'u-1',
-      { assignee: 'all', page: 1, pageSize: 25, sort: 'waiting', dir: 'asc' }
+      { queue: [], assignee: [], page: 1, pageSize: 25, sort: 'waiting', dir: 'asc' }
     ]);
   });
 
   it('pass queue, assignee, search and paging filters through', async () => {
-    await request('/?q=%20Doe%20&queue=billing&assignee=mine&page=2&pageSize=50&sort=due&dir=desc');
+    await request(
+      `/?q=%20Doe%20&queue=billing,coding&assignee=${ID},none&page=2&pageSize=50&sort=due&dir=desc`
+    );
     assert.deepEqual(calls.at(-1), [
       't-1',
-      'u-1',
       {
-        assignee: 'mine',
+        queue: ['billing', 'coding'],
+        assignee: [ID, 'none'],
         page: 2,
         pageSize: 50,
         sort: 'due',
         dir: 'desc',
-        q: 'Doe',
-        queue: 'billing'
+        q: 'Doe'
       }
     ]);
     await request(`/?runId=${ID}`);
     assert.deepEqual(calls.at(-1), [
       't-1',
-      'u-1',
-      { assignee: 'all', runId: ID, page: 1, pageSize: 25, sort: 'waiting', dir: 'asc' }
+      { queue: [], assignee: [], runId: ID, page: 1, pageSize: 25, sort: 'waiting', dir: 'asc' }
     ]);
     assert.equal((await request('/?runId=nope')).status, 400);
-    await request('/?q=%20%20&assignee=unassigned');
+    await request('/?q=%20%20&assignee=none');
     assert.deepEqual(calls.at(-1), [
       't-1',
-      'u-1',
-      { assignee: 'unassigned', page: 1, pageSize: 25, sort: 'waiting', dir: 'asc' }
+      { queue: [], assignee: ['none'], page: 1, pageSize: 25, sort: 'waiting', dir: 'asc' }
     ]);
   });
 
@@ -135,8 +133,8 @@ describe('task route validation', () => {
       await request(`/${ID}/complete`, { method: 'POST', body: '{"outcome":""}' }),
       await request(`/${ID}/complete`, { method: 'POST', body: '{}' }),
       await request('/nope/complete', { method: 'POST', body: '{"outcome":"ok"}' }),
-      await request('/?assignee=everyone'),
-      await request('/?queue='),
+      await request('/?assignee=mine'),
+      await request(`/?queue=${'q'.repeat(61)}`),
       await request('/?sort=nope'),
       await request('/?pageSize=7'),
       await request(`/?q=${'x'.repeat(81)}`)

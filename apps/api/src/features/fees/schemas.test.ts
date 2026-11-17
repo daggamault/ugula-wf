@@ -55,11 +55,27 @@ describe('searchFeesQuery', () => {
   it('trims the search and sorts by payer ascending by default', () => {
     assert.deepEqual(v.parse(searchFeesQuery, { q: ' a04 ' }), {
       q: 'a04',
+      payer: [],
+      code: [],
       page: 1,
       pageSize: 25,
       sort: 'payer',
       dir: 'asc'
     });
+  });
+
+  it('filters by payer ids, the default schedule and HCPCS codes', () => {
+    assert.deepEqual(v.parse(searchFeesQuery, { payer: `${PAYER},default`, code: 'A0427,A0425' }), {
+      payer: [PAYER, 'default'],
+      code: ['A0427', 'A0425'],
+      page: 1,
+      pageSize: 25,
+      sort: 'payer',
+      dir: 'asc'
+    });
+    for (const bad of [{ payer: 'Medicare' }, { code: 'a0427' }, { code: 'X1' }]) {
+      assert.equal(v.safeParse(searchFeesQuery, bad).success, false, JSON.stringify(bad));
+    }
   });
 
   it('takes every fee sort in either direction', () => {

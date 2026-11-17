@@ -1,7 +1,9 @@
+import type { ClaimFilingCode } from '@ugula/billing';
 import type { Db } from '@ugula/db';
 import { sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import type { Writes } from '../../shared/access.ts';
+import { facetCounts, whereFacets } from '../../shared/facets.ts';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { containsPattern } from '../../shared/search.ts';
 import type { PayerInput, PayerSort } from './schemas.ts';
@@ -19,7 +21,10 @@ const columns = [
   'updated_at'
 ] as const;
 
-export type PayerFilters = PageRequest<PayerSort> & { q?: string | undefined };
+export type PayerFilters = PageRequest<PayerSort> & {
+  q?: string | undefined;
+  filing: readonly ClaimFilingCode[];
+};
 
 const payerRows = (db: Db, agencyId: string) =>
   db
@@ -42,7 +47,11 @@ const PAYER_ORDER = {
   filing: sql.ref('p.claim_filing')
 };
 
-export const searchPayers = (db: Db, agencyId: string, f: PayerFilters) => {
+const PAYER_FACETS = { filing: { value: sql.ref('p.claim_filing') } };
+
+type PayerFacet = keyof typeof PAYER_FACETS;
+
+const filteredPayers = (db: Db, agencyId: string, f: PayerFilters, except?: PayerFacet) => {
   let q = payerRows(db, agencyId);
   if (f.q) {
     const like = containsPattern(f.q);
@@ -60,7 +69,15 @@ export const searchPayers = (db: Db, agencyId: string, f: PayerFilters) => {
       ])
     );
   }
-  return paged(q, f, PAYER_ORDER, sql.ref('p.id'));
+  return whereFacets(q, PAYER_FACETS, f, except);
+};
+
+export const searchPayers = async (db: Db, agencyId: string, f: PayerFilters) => {
+  const [page, facets] = await Promise.all([
+    paged(filteredPayers(db, agencyId, f), f, PAYER_ORDER, sql.ref('p.id')),
+    facetCounts((except) => filteredPayers(db, agencyId, f, except), PAYER_FACETS)
+  ]);
+  return { ...page, facets };
 };
 
 export const findPayer = (db: Db, agencyId: string, id: string) =>

@@ -1,16 +1,14 @@
 import { AGENCY_TABLE_PREFIX, TABLE_KINDS } from '@ugula/db';
 import * as v from 'valibot';
+import { facetValues } from '../../shared/facets.ts';
 import { uuid } from '../../shared/http.ts';
 import { pageEntries } from '../../shared/paging.ts';
+import { SCOPES } from '../../shared/scopes.ts';
 import { searchText } from '../../shared/search.ts';
 
 const TABLE_SORTS = ['name', 'key', 'updated'] as const;
 
 export type TableSort = (typeof TABLE_SORTS)[number];
-
-const TABLE_SHOWS = ['all', 'customized'] as const;
-
-export type TableShow = (typeof TABLE_SHOWS)[number];
 
 const DEFINITION_MAX_CHARS = 500_000;
 
@@ -25,7 +23,8 @@ export const agencyTableKey = (name: string) => `${AGENCY_TABLE_PREFIX}${slugOf(
 
 export const searchTablesQuery = v.object({
   q: searchText,
-  show: v.optional(v.picklist(TABLE_SHOWS), 'all'),
+  kind: facetValues(v.picklist(TABLE_KINDS)),
+  scope: facetValues(v.picklist(SCOPES)),
   ...pageEntries(TABLE_SORTS, 'name', 'asc')
 });
 

@@ -5,6 +5,7 @@ import { formatCents, formatDateTime } from '../../shared/format.ts';
 import { type Live, useReconnect } from '../../shared/live.ts';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { ButtonLink } from '../../shared/ui/button.tsx';
+import type { ColumnFilter } from '../../shared/ui/column-filters.tsx';
 import { DeleteDialog } from '../../shared/ui/dialog.tsx';
 import { Highlight } from '../../shared/ui/highlight.tsx';
 import { DeleteButton, EditLink, RowActions } from '../../shared/ui/icon-button.tsx';
@@ -20,8 +21,14 @@ export const FEES_PATH = '/fees';
 
 export const FEE_TABLE = {
   sorts: { payer: 'asc', code: 'asc', amount: 'desc', updated: 'desc' },
-  sort: 'payer'
+  sort: 'payer',
+  filters: ['payer', 'code']
 } as const;
+
+const FEE_FILTERS: readonly ColumnFilter[] = [
+  { key: 'payer', label: 'Payer' },
+  { key: 'code', label: 'HCPCS' }
+];
 
 export const feeName = (f: Pick<Fee, 'payer' | 'code'>) => `${f.payer ?? 'Default'} ${f.code}`;
 
@@ -116,6 +123,7 @@ export const FeesPage = ({ client, live }: { client: FeesClient; live: Live }) =
         path={FEES_PATH}
         search={search}
         results={fees}
+        filters={FEE_FILTERS}
         empty={{
           title: 'No Fees Yet',
           children: 'Claims cannot be priced until each code has a fee.',

@@ -32,7 +32,7 @@ const request = withSession(createFeeRoutes(service));
 
 describe('fee routes', () => {
   it('searches, finds, saves and deletes fees for the session agency', async () => {
-    assert.equal((await request('/?q=a04&sort=amount')).status, 200);
+    assert.equal((await request('/?q=a04&sort=amount&payer=default&code=A0427')).status, 200);
     assert.equal((await request(`/${ID}`)).status, 200);
     const saved = await request('/', {
       method: 'PUT',
@@ -41,7 +41,19 @@ describe('fee routes', () => {
     assert.equal(saved.status, 200);
     assert.equal((await request(`/${ID}`, { method: 'DELETE' })).status, 200);
     assert.deepEqual(calls, [
-      ['search', 't-1', { q: 'a04', page: 1, pageSize: 25, sort: 'amount', dir: 'asc' }],
+      [
+        'search',
+        't-1',
+        {
+          q: 'a04',
+          payer: ['default'],
+          code: ['A0427'],
+          page: 1,
+          pageSize: 25,
+          sort: 'amount',
+          dir: 'asc'
+        }
+      ],
       ['find', 't-1', ID],
       [
         'save',
@@ -60,6 +72,7 @@ describe('fee routes', () => {
     });
     assert.equal(bad.status, 400);
     assert.equal((await request('/not-a-uuid', { method: 'DELETE' })).status, 400);
+    assert.equal((await request('/?payer=Medicare')).status, 400);
   });
 });
 

@@ -118,6 +118,47 @@ describe('FeesPage', () => {
     );
   });
 
+  it('filters by payer and code from the counts in the database', async () => {
+    window.history.replaceState(null, '', '/fees');
+    const { client, queries } = fakeClient({
+      search: async (query: string) => {
+        queries.push(query);
+        return {
+          ...pageOf(listed),
+          facets: {
+            payer: [
+              { value: 'p-m', label: 'Medicare', count: 1 },
+              { value: 'default', label: 'Default', count: 1 }
+            ],
+            code: [{ value: 'A0427', label: 'ALS1, emergency transport (A0427)', count: 2 }]
+          }
+        };
+      }
+    });
+    show(client);
+    await table();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'HCPCS' }));
+    assert.deepEqual(
+      within(screen.getByRole('dialog', { name: 'Filter by HCPCS' }))
+        .getAllByRole('checkbox')
+        .map((c) => c.closest('label')?.textContent),
+      ['ALS1, emergency transport (A0427)2']
+    );
+    await user.click(screen.getByRole('button', { name: 'Payer' }));
+    const panel = screen.getByRole('dialog', { name: 'Filter by Payer' });
+    assert.deepEqual(
+      within(panel)
+        .getAllByRole('checkbox')
+        .map((c) => c.closest('label')?.textContent),
+      ['Default1', 'Medicare1']
+    );
+    await user.click(within(panel).getByRole('checkbox', { name: /Default/ }));
+    assert.equal(window.location.search, '?payer=default');
+    await waitFor(() => assert.equal(queries.length, 2));
+    assert.equal(queries[1], 'page=1&pageSize=25&sort=payer&dir=asc&payer=default');
+  });
+
   it('offers to add a fee that returns to the searched list', async () => {
     window.history.replaceState(null, '', '/fees?q=a04');
     const { client } = fakeClient();

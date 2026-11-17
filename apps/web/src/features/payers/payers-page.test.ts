@@ -158,6 +158,40 @@ describe('PayersPage', () => {
     );
   });
 
+  it('filters by claim filing from the counts in the database', async () => {
+    window.history.replaceState(null, '', '/payers');
+    const { client, queries } = fakeClient({
+      search: async (query: string) => {
+        queries.push(query);
+        return {
+          ...pageOf([medicare, acme]),
+          facets: {
+            filing: [
+              { value: 'ZZ', count: 2 },
+              { value: 'MB', count: 7 }
+            ]
+          }
+        };
+      }
+    });
+    show(client);
+    await screen.findByRole('table');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Claim Filing' }));
+    const panel = screen.getByRole('dialog', { name: 'Filter by Claim Filing' });
+    assert.deepEqual(
+      within(panel)
+        .getAllByRole('checkbox')
+        .map((c) => c.closest('label')?.textContent),
+      [`${filingLabel('MB')}7`, `${filingLabel('ZZ')}2`]
+    );
+    await user.click(within(panel).getByRole('checkbox', { name: /Medicare Part B/ }));
+    assert.equal(window.location.search, '?filing=MB');
+    await waitFor(() =>
+      assert.equal(queries.at(-1), 'page=1&pageSize=25&sort=name&dir=asc&filing=MB')
+    );
+  });
+
   it('suggests adding a payer when there are none', async () => {
     const { client } = fakeClient({ search: async () => pageOf([]) });
     show(client);

@@ -5,6 +5,7 @@ import { messageOf } from '../../shared/api.ts';
 import { type Live, useReconnect } from '../../shared/live.ts';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { ButtonLink } from '../../shared/ui/button.tsx';
+import type { ColumnFilter } from '../../shared/ui/column-filters.tsx';
 import { DeleteDialog } from '../../shared/ui/dialog.tsx';
 import { Highlight } from '../../shared/ui/highlight.tsx';
 import { DeleteButton, EditLink, RowActions } from '../../shared/ui/icon-button.tsx';
@@ -25,11 +26,16 @@ export const PAYERS_PATH = '/payers';
 
 export const PAYER_TABLE = {
   sorts: { name: 'asc', payerCode: 'asc', filing: 'asc' },
-  sort: 'name'
+  sort: 'name',
+  filters: ['filing']
 } as const;
 
 export const filingLabel = (code: string) =>
   FILING_OPTIONS.find((o) => o.value === code)?.label ?? code;
+
+const PAYER_FILTERS: readonly ColumnFilter[] = [
+  { key: 'filing', label: 'Claim Filing', labelOf: (o) => filingLabel(o.value) }
+];
 
 export const payerDeleteNote = (name: string) =>
   `Its prices are removed, and claims billed to ${name} cannot go in an 837P file until it is added again.`;
@@ -131,6 +137,7 @@ export const PayersPage = ({ client, live }: { client: PayersClient; live: Live 
         path={PAYERS_PATH}
         search={search}
         results={payers}
+        filters={PAYER_FILTERS}
         empty={{
           title: 'No Payers Yet',
           children: 'Claims cannot go in an 837P file until their payers are listed here.',

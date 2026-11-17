@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Api } from '../../shared/api.ts';
-import { createTasksClient, taskFilterOf } from './client.ts';
+import { createTasksClient } from './client.ts';
 
 type Call = [method: string, path: string, body?: unknown];
 
@@ -29,22 +29,13 @@ const fakeApi = (respond: (path: string) => unknown = () => ({})) => {
 const page = { items: [], total: 0, page: 1, pageSize: 25 };
 
 describe('tasks client list', () => {
-  it('lists tasks with the page query alone when nothing narrows it', async () => {
+  it('lists tasks with the page, search and filter query', async () => {
     const { api, calls } = fakeApi(() => page);
     const signal = new AbortController().signal;
     const client = createTasksClient(api);
-    assert.deepEqual(await client.list({ queue: null, assignee: 'all' }, 'page=1', signal), page);
-    assert.deepEqual(calls, [['GET', '/api/tasks?page=1', signal]]);
-  });
-
-  it('adds the queue and assignee that narrow the list', async () => {
-    const { api, calls } = fakeApi(() => page);
-    const client = createTasksClient(api);
-    await client.list({ queue: 'billing review', assignee: 'mine' }, 'q=doe&sort=due&dir=asc');
-    await client.list({ queue: null, assignee: 'unassigned' }, '');
+    assert.deepEqual(await client.list('q=doe&queue=billing-review&assignee=none', signal), page);
     assert.deepEqual(calls, [
-      ['GET', '/api/tasks?q=doe&sort=due&dir=asc&queue=billing+review&assignee=mine'],
-      ['GET', '/api/tasks?assignee=unassigned']
+      ['GET', '/api/tasks?q=doe&queue=billing-review&assignee=none', signal]
     ]);
   });
 });
@@ -159,29 +150,5 @@ describe('tasks client', () => {
     const { api, calls } = fakeApi(() => ({ xml: '<x/>' }));
     assert.deepEqual(await createTasksClient(api).report('rep/1'), { xml: '<x/>' });
     assert.deepEqual(calls, [['GET', '/api/imports/reports/rep%2F1']]);
-  });
-});
-
-describe('taskFilterOf', () => {
-  it('lists every queue and assignee by default', () => {
-    assert.deepEqual(taskFilterOf(new URLSearchParams()), { queue: null, assignee: 'all' });
-  });
-
-  it('reads the queue and a known assignee', () => {
-    assert.deepEqual(
-      taskFilterOf(new URLSearchParams('queue=billing-review&assignee=unassigned')),
-      { queue: 'billing-review', assignee: 'unassigned' }
-    );
-    assert.deepEqual(taskFilterOf(new URLSearchParams('assignee=mine')), {
-      queue: null,
-      assignee: 'mine'
-    });
-  });
-
-  it('ignores a blank queue and unknown assignees', () => {
-    assert.deepEqual(taskFilterOf(new URLSearchParams('queue=&assignee=everyone')), {
-      queue: null,
-      assignee: 'all'
-    });
   });
 });

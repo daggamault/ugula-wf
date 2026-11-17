@@ -53,7 +53,7 @@ describe('run service', () => {
     assert.deepEqual(jobs, [{ data: { runId: 'r1', command: { type: 'advance' } }, priority: 2 }]);
   });
 
-  it('runs the effective override of a built-in workflow', async () => {
+  it('runs the effective override of a standard workflow', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.includes('as req (key, version)')
         ? [{ id: 'override-v2', key: 'k', version: 4 }]
@@ -90,7 +90,7 @@ describe('run service', () => {
     assert.ok(!queries.some((q) => q.sql.startsWith('insert')));
   });
 
-  it('fails to start a built-in workflow when no version of it is in effect for the agency', async () => {
+  it('fails to start a standard workflow when no version of it is in effect for the agency', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.includes('as req (key, version)')
         ? []
@@ -185,12 +185,23 @@ describe('run service', () => {
     assert.deepEqual(
       await hidden.search('t', {
         rootOnly: true,
+        status: [],
+        workflow: [],
         page: 1,
         pageSize: 25,
         sort: 'started' as const,
         dir: 'desc' as const
       }),
-      { ok: true, value: { items: [], total: 0, page: 1, pageSize: 25 } }
+      {
+        ok: true,
+        value: {
+          items: [],
+          total: 0,
+          page: 1,
+          pageSize: 25,
+          facets: { status: [], workflow: [] }
+        }
+      }
     );
   });
 });

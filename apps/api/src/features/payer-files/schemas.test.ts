@@ -9,6 +9,8 @@ const issues = (schema: v.GenericSchema, input: unknown) =>
 describe('searchPayerFilesQuery', () => {
   it('pages newest files first by default', () => {
     assert.deepEqual(v.parse(searchPayerFilesQuery, {}), {
+      kind: [],
+      outcome: [],
       page: 1,
       pageSize: 25,
       sort: 'received',
@@ -16,16 +18,27 @@ describe('searchPayerFilesQuery', () => {
     });
   });
 
-  it('reads a page, sort and direction', () => {
-    assert.deepEqual(v.parse(searchPayerFilesQuery, { sort: 'name', dir: 'asc', page: '3' }), {
-      page: 3,
-      pageSize: 25,
-      sort: 'name',
-      dir: 'asc'
-    });
+  it('reads kinds, outcomes, a page, sort and direction', () => {
+    assert.deepEqual(
+      v.parse(searchPayerFilesQuery, {
+        kind: '835,277S',
+        outcome: 'review,empty',
+        sort: 'name',
+        dir: 'asc',
+        page: '3'
+      }),
+      {
+        kind: ['835', '277S'],
+        outcome: ['review', 'empty'],
+        page: 3,
+        pageSize: 25,
+        sort: 'name',
+        dir: 'asc'
+      }
+    );
   });
 
-  it('refuses unknown sorts, directions and page sizes and page zero', () => {
+  it('refuses unknown sorts, directions, outcomes and page sizes and page zero', () => {
     const cases: [Record<string, unknown>, string][] = [
       [
         { sort: 'uploaded_by' },
@@ -33,7 +46,11 @@ describe('searchPayerFilesQuery', () => {
       ],
       [{ dir: 'up' }, 'Invalid type: Expected ("asc" | "desc") but received "up"'],
       [{ pageSize: '7' }, 'Invalid type: Expected (10 | 25 | 50 | 100) but received 7'],
-      [{ page: '0' }, 'Invalid value: Expected >=1 but received 0']
+      [{ page: '0' }, 'Invalid value: Expected >=1 but received 0'],
+      [
+        { outcome: 'lost' },
+        'Invalid type: Expected ("review" | "applied" | "empty") but received "lost"'
+      ]
     ];
     for (const [input, message] of cases) {
       assert.deepEqual(issues(searchPayerFilesQuery, input), [message], message);

@@ -70,6 +70,7 @@ describe('updateUserSchema', () => {
 describe('searchMembersQuery', () => {
   it('pages users by name ascending by default', () => {
     assert.deepEqual(v.parse(searchMembersQuery, {}), {
+      role: [],
       page: 1,
       pageSize: 25,
       sort: 'name',
@@ -80,12 +81,18 @@ describe('searchMembersQuery', () => {
   it('sorts by email or role with trimmed search text', () => {
     assert.deepEqual(v.parse(searchMembersQuery, { q: ' ada ', sort: 'role', dir: 'desc' }), {
       q: 'ada',
+      role: [],
       page: 1,
       pageSize: 25,
       sort: 'role',
       dir: 'desc'
     });
     assert.equal(v.parse(searchMembersQuery, { sort: 'email' }).sort, 'email');
+  });
+
+  it('filters by role ids', () => {
+    assert.deepEqual(v.parse(searchMembersQuery, { role: `${ROLE},${ROLE}` }).role, [ROLE]);
+    assert.equal(v.safeParse(searchMembersQuery, { role: 'Biller' }).success, false);
   });
 
   it('rejects unknown sorts', () => {
@@ -97,6 +104,7 @@ describe('searchInvitationsQuery', () => {
   it('pages invitations by soonest expiry by default', () => {
     assert.deepEqual(v.parse(searchInvitationsQuery, { q: ' Ada ' }), {
       q: 'Ada',
+      role: [],
       page: 1,
       pageSize: 25,
       sort: 'expires',
@@ -109,5 +117,10 @@ describe('searchInvitationsQuery', () => {
       assert.equal(v.parse(searchInvitationsQuery, { sort }).sort, sort);
     }
     assert.equal(v.safeParse(searchInvitationsQuery, { sort: 'created' }).success, false);
+  });
+
+  it('filters by role ids', () => {
+    assert.deepEqual(v.parse(searchInvitationsQuery, { role: ROLE }).role, [ROLE]);
+    assert.equal(v.safeParse(searchInvitationsQuery, { role: 'Biller' }).success, false);
   });
 });

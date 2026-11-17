@@ -17,29 +17,35 @@ const S = { agencyId: 'a-1' };
 
 const flat = (text = '') => text.replace(/\s+/g, ' ');
 
-const BASE = { page: 1, pageSize: 25, sort: 'name', dir: 'asc', show: 'all' } as const;
+const BASE = { page: 1, pageSize: 25, sort: 'name', dir: 'asc', kind: [], scope: [] } as const;
+
+const isFacet = (text: string) => text.includes('group by 1');
 
 const LOOKUP = { type: 'string', rows: [{ key: 'a', value: 'A' }] };
 
 describe('table queries', () => {
   it('pages visible tables with versions, override links and staleness', async () => {
-    const { db, queries } = createRecordingDb(() => [
-      {
-        id: 't1',
-        key: 'billing.base-rate',
-        name: 'Base Rate',
-        kind: 'decide',
-        description: '',
-        scope: 'agency',
-        updated_at: new Date(0),
-        published: 1,
-        draft: 2,
-        overrides: 't-sys',
-        overridden_by: null,
-        is_stale: false,
-        total: '1'
-      }
-    ]);
+    const { db, queries } = createRecordingDb((q) =>
+      isFacet(q.sql)
+        ? [{ value: 'decide', label: null, count: '1' }]
+        : [
+            {
+              id: 't1',
+              key: 'billing.base-rate',
+              name: 'Base Rate',
+              kind: 'decide',
+              description: '',
+              scope: 'agency',
+              updated_at: new Date(0),
+              published: 1,
+              draft: 2,
+              overrides: 't-sys',
+              overridden_by: null,
+              is_stale: false,
+              total: '1'
+            }
+          ]
+    );
     const page = await searchTables(db, S, { ...BASE, q: 'Rate' });
     assert.deepEqual(page.items[0], {
       id: 't1',
@@ -55,13 +61,26 @@ describe('table queries', () => {
       draftVersion: 2,
       updatedAt: new Date(0)
     });
-    const sql = flat(queries[0]?.sql);
+    assert.deepEqual(page.facets, {
+      kind: [{ value: 'decide', count: 1 }],
+      scope: [{ value: 'decide', count: 1 }]
+    });
+    const sql = flat(queries.find((q) => !isFacet(q.sql))?.sql);
     assert.ok(sql.includes('from "data_tables" as "t"'));
     assert.ok(sql.includes('from "data_table_versions" sv'));
     assert.ok(sql.includes('lower(t.name) like $'));
     assert.ok(sql.includes('order by lower(t.name) asc nulls last'));
-    await searchTables(db, S, { ...BASE, show: 'customized' });
-    assert.ok(flat(queries[1]?.sql).includes('is not null or ( select o.id from "data_tables" o'));
+    queries.length = 0;
+    await searchTables(db, S, { ...BASE, kind: ['lookup'], scope: ['agency'] });
+    const [filtered, kinds] = queries.map((q) => flat(q.sql));
+    assert.match(
+      filtered ?? '',
+      /and "t"\."kind" in \(\$\d+\) and case when "t"\."agency_id" is not null then 'agency' else 'system' end in \(\$\d+\) order by/
+    );
+    assert.match(
+      kinds ?? '',
+      /^select "t"\."kind"::text as "value", .* end in \(\$2\) and "t"\."kind" is not null group by 1/
+    );
     await db.destroy();
   });
 

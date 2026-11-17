@@ -11,17 +11,27 @@ const ROW = { id: 'f1', payer_id: null, payer: null, code: 'A0427', amount_cents
 
 describe('fee service', () => {
   it('searches and finds fees within the agency', async () => {
-    const { db, queries } = createRecordingDb(() => [{ ...ROW, total: '1' }]);
-    const service = createFeeService({ db });
-    assert.deepEqual(
-      await service.search('t-1', { page: 1, pageSize: 25, sort: 'payer', dir: 'asc' }),
-      { ok: true, value: { items: [ROW], total: 1, page: 1, pageSize: 25 } }
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.includes('group by 1') ? [] : [{ ...ROW, total: '1' }]
     );
+    const service = createFeeService({ db });
+    const filters = {
+      payer: [],
+      code: [],
+      page: 1,
+      pageSize: 25,
+      sort: 'payer',
+      dir: 'asc'
+    } as const;
+    assert.deepEqual(await service.search('t-1', filters), {
+      ok: true,
+      value: { items: [ROW], total: 1, page: 1, pageSize: 25, facets: { payer: [], code: [] } }
+    });
     assert.deepEqual(await service.find('t-1', 'f1'), {
       ok: true,
       value: { fee: { ...ROW, total: '1' } }
     });
-    assert.deepEqual(queries[1]?.parameters, ['t-1', 'f1']);
+    assert.deepEqual(queries[3]?.parameters, ['t-1', 'f1']);
   });
 
   it('reports unknown fees as not found', async () => {

@@ -356,17 +356,21 @@ describe('task service', () => {
   it('lists a page of open tasks', async () => {
     const { service, queries } = setup(undefined);
     assert.deepEqual(
-      await service.search('t', 'u1', {
-        assignee: 'mine',
+      await service.search('t', {
+        queue: [],
+        assignee: ['none'],
         page: 1,
         pageSize: 25,
         sort: 'waiting',
         dir: 'asc'
       }),
-      { ok: true, value: { items: [], total: 0, page: 1, pageSize: 25 } }
+      {
+        ok: true,
+        value: { items: [], total: 0, page: 1, pageSize: 25, facets: { queue: [], assignee: [] } }
+      }
     );
     assert.ok(queries[0]?.sql.includes('from "tasks" as "t"'));
-    assert.ok(queries[0]?.parameters.includes('u1'));
+    assert.ok(queries[0]?.parameters.includes('none'));
   });
 });
 

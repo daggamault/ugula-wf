@@ -22,7 +22,13 @@ import {
 
 const EXPIRES = new Date('2026-01-08T00:00:00Z');
 
-const PAGE = { page: 1, pageSize: 25, sort: 'name', dir: 'asc' } as const;
+const PAGE = { page: 1, pageSize: 25, sort: 'name', dir: 'asc', role: [] } as const;
+
+const ROLE = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
+
+const isFacet = (text: string) => text.includes('group by 1');
+
+const ROLES = [{ value: ROLE, label: 'Biller', count: '2' }];
 
 const ROLE_PERMISSIONS = (role: string) =>
   `coalesce((\n  select array_agg(rp.permission order by rp.permission)\n  from role_permissions rp where rp.role_id = ${role}\n), '{}')`;
@@ -41,12 +47,15 @@ const MEMBER = {
 
 describe('member search', () => {
   it('pages the agency’s members with their role permissions by last then first name', async () => {
-    const { db, queries } = createRecordingDb(() => [{ ...MEMBER, total: '1' }]);
+    const { db, queries } = createRecordingDb((q) =>
+      isFacet(q.sql) ? ROLES : [{ ...MEMBER, total: '1' }]
+    );
     assert.deepEqual(await searchMembers(db, 't-1', PAGE), {
       items: [MEMBER],
       total: 1,
       page: 1,
-      pageSize: 25
+      pageSize: 25,
+      facets: { role: [{ value: ROLE, label: 'Biller', count: 2 }] }
     });
     assert.equal(
       queries[0]?.sql,
@@ -72,6 +81,24 @@ describe('member search', () => {
     assert.ok(
       queries[0]?.sql.endsWith(
         'order by lower(r.name) desc nulls last, "u"."id" desc limit $2 offset $3'
+      )
+    );
+  });
+
+  it('filters by role and counts every role regardless of its own filter', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    await searchMembers(db, 't-1', { ...PAGE, q: 'ada', role: [ROLE] });
+    const [filtered, roles] = queries;
+    assert.ok(filtered?.sql.includes('like $3) and "r"."id" in ($4) order by'));
+    assert.deepEqual(filtered?.parameters, ['t-1', '%ada%', '%ada%', ROLE, 25, 0]);
+    assert.ok(
+      roles?.sql.startsWith(
+        'select "r"."id"::text as "value", min("r"."name"::text) as "label", count(*) as "count" from "memberships" as "m"'
+      )
+    );
+    assert.ok(
+      roles?.sql.endsWith(
+        'like $3) and "r"."id" is not null group by 1 order by count(*) desc, 1 limit $4'
       )
     );
   });
@@ -207,12 +234,15 @@ describe('invitation queries', () => {
   };
 
   it('pages the agency’s invitations with their role permissions by name', async () => {
-    const { db, queries } = createRecordingDb(() => [{ ...INVITATION, total: '1' }]);
+    const { db, queries } = createRecordingDb((q) =>
+      isFacet(q.sql) ? ROLES : [{ ...INVITATION, total: '1' }]
+    );
     assert.deepEqual(await searchInvitations(db, 't-1', PAGE), {
       items: [INVITATION],
       total: 1,
       page: 1,
-      pageSize: 25
+      pageSize: 25,
+      facets: { role: [{ value: ROLE, label: 'Biller', count: 2 }] }
     });
     assert.equal(
       queries[0]?.sql,
@@ -232,19 +262,31 @@ describe('invitation queries', () => {
     assert.deepEqual(queries[0]?.parameters, ['t-1', '%ada%', '%ada%', 25, 0]);
   });
 
+  it('filters invitations by role and counts their roles', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    await searchInvitations(db, 't-1', { ...PAGE, role: [ROLE] });
+    const [filtered, roles] = queries;
+    assert.ok(filtered?.sql.includes('where "i"."agency_id" = $1 and "r"."id" in ($2) order by'));
+    assert.ok(
+      roles?.sql.startsWith(
+        'select "r"."id"::text as "value", min("r"."name"::text) as "label", count(*) as "count" from "invitations" as "i"'
+      )
+    );
+    assert.ok(
+      roles?.sql.includes('where "i"."agency_id" = $1 and "r"."id" is not null group by 1')
+    );
+  });
+
   it('sorts invitations by email or role', async () => {
     const { db, queries } = createRecordingDb(() => []);
     await searchInvitations(db, 't-1', { ...PAGE, sort: 'email' });
     await searchInvitations(db, 't-1', { ...PAGE, sort: 'role' });
+    const [byEmail, byRole] = queries.filter((q) => !isFacet(q.sql));
     assert.ok(
-      queries[0]?.sql.endsWith(
-        'order by "i"."email" asc nulls last, "i"."id" asc limit $2 offset $3'
-      )
+      byEmail?.sql.endsWith('order by "i"."email" asc nulls last, "i"."id" asc limit $2 offset $3')
     );
     assert.ok(
-      queries[1]?.sql.endsWith(
-        'order by lower(r.name) asc nulls last, "i"."id" asc limit $2 offset $3'
-      )
+      byRole?.sql.endsWith('order by lower(r.name) asc nulls last, "i"."id" asc limit $2 offset $3')
     );
   });
 

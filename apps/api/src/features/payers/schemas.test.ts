@@ -126,6 +126,7 @@ describe('searchPayersQuery', () => {
   it('trims the search text and pages by name ascending by default', () => {
     assert.deepEqual(v.parse(searchPayersQuery, { q: ' blue ' }), {
       q: 'blue',
+      filing: [],
       page: 1,
       pageSize: 25,
       sort: 'name',
@@ -133,10 +134,16 @@ describe('searchPayersQuery', () => {
     });
   });
 
-  it('sorts by payer ID or filing code', () => {
+  it('sorts by payer ID or filing code and filters by filing codes', () => {
     assert.deepEqual(
-      v.parse(searchPayersQuery, { sort: 'payerCode', dir: 'desc', pageSize: '50' }),
+      v.parse(searchPayersQuery, {
+        filing: 'MB,CI',
+        sort: 'payerCode',
+        dir: 'desc',
+        pageSize: '50'
+      }),
       {
+        filing: ['MB', 'CI'],
         page: 1,
         pageSize: 50,
         sort: 'payerCode',
@@ -146,8 +153,13 @@ describe('searchPayersQuery', () => {
     assert.equal(v.parse(searchPayersQuery, { sort: 'filing' }).sort, 'filing');
   });
 
-  it('rejects unknown sorts, long searches and page sizes off the list', () => {
-    for (const bad of [{ sort: 'updated' }, { q: 'x'.repeat(81) }, { pageSize: '1000' }]) {
+  it('rejects unknown sorts and filing codes, long searches and page sizes off the list', () => {
+    for (const bad of [
+      { sort: 'updated' },
+      { q: 'x'.repeat(81) },
+      { pageSize: '1000' },
+      { filing: 'MB,XX' }
+    ]) {
       assert.equal(v.safeParse(searchPayersQuery, bad).success, false, JSON.stringify(bad));
     }
   });

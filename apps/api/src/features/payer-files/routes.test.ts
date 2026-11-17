@@ -34,13 +34,24 @@ const request = withSession(createPayerFileRoutes(service));
 
 describe('payer file routes', () => {
   it('lists, finds and downloads payer files for the session agency', async () => {
-    assert.equal((await request('/?sort=problems&dir=asc')).status, 200);
+    assert.equal(
+      (await request('/?kind=835,999&outcome=review&sort=problems&dir=asc')).status,
+      200
+    );
     assert.deepEqual(calls.at(-1), [
       'search',
       't-1',
-      { page: 1, pageSize: 25, sort: 'problems', dir: 'asc' }
+      {
+        kind: ['835', '999'],
+        outcome: ['review'],
+        page: 1,
+        pageSize: 25,
+        sort: 'problems',
+        dir: 'asc'
+      }
     ]);
     assert.equal((await request('/?sort=nope')).status, 400);
+    assert.equal((await request('/?outcome=lost')).status, 400);
     const found = await request(`/${ID}`);
     assert.deepEqual([found.status, await found.json()], [200, { file: { id: ID }, items: [] }]);
     assert.deepEqual(calls.at(-1), ['find', 't-1', ID]);

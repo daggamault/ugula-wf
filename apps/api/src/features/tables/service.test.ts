@@ -43,7 +43,7 @@ type Version = {
 
 const failure = (code: string, message: string) => ({ ok: false, failure: { code, message } });
 
-const READ_ONLY = failure('forbidden', 'Built-in tables are read-only');
+const READ_ONLY = failure('forbidden', 'Standard tables are read-only');
 const FORBIDDEN = failure('forbidden', 'You do not have permission to change this table');
 const NOT_FOUND = failure('not_found', 'Table not found');
 
@@ -179,19 +179,26 @@ describe('isAgencyDefined', () => {
 describe('table service', () => {
   it('searches and lists effective tables in the agency scope', async () => {
     const { service, queries } = createWorld([]);
-    const filters = { show: 'all', page: 1, pageSize: 25, sort: 'name', dir: 'asc' } as const;
+    const filters = {
+      kind: [],
+      scope: [],
+      page: 1,
+      pageSize: 25,
+      sort: 'name',
+      dir: 'asc'
+    } as const;
     assert.deepEqual(await service.search(admin, filters), {
       ok: true,
-      value: { items: [], total: 0, page: 1, pageSize: 25 }
+      value: { items: [], total: 0, page: 1, pageSize: 25, facets: { kind: [], scope: [] } }
     });
     assert.deepEqual(await service.effective(admin), { ok: true, value: { tables: [] } });
     assert.deepEqual(
       queries.map((q) => q.parameters.includes('t-1')),
-      [true, true]
+      [true, true, true, true]
     );
   });
 
-  it('describes a built-in table that an editor may override but not edit', async () => {
+  it('describes a standard table that an editor may override but not edit', async () => {
     const { service } = createWorld([system], { 't-sys': [sysV] });
     assert.deepEqual(await service.find(editor, 't-sys'), {
       ok: true,
@@ -219,7 +226,7 @@ describe('table service', () => {
     assert.equal(asReader.ok && asReader.value.table.canOverride, false);
   });
 
-  it('points a built-in table at the agency override that replaces it', async () => {
+  it('points a standard table at the agency override that replaces it', async () => {
     const { service } = createWorld([system, agency]);
     const res = await service.find(editor, 't-sys');
     assert.ok(res.ok);
@@ -260,7 +267,7 @@ describe('table service', () => {
     assert.deepEqual(await service.version(admin, 't-nope', 1), missing);
   });
 
-  it('compares an override with the version it copied and the newest built-in', async () => {
+  it('compares an override with the version it copied and the newest standard', async () => {
     const { service } = createWorld([system, agency], {
       't-sys': [sysV, { ...sysV, id: 'v-sys-2', version: 2, definition: WIDER }],
       't-agency': [{ id: 'a1', version: 1, definition: RATES, published: true, base: 'v-sys' }]
@@ -276,7 +283,7 @@ describe('table service', () => {
     });
   });
 
-  it('compares nothing for a built-in table and only itself for an agency-defined one', async () => {
+  it('compares nothing for a standard table and only itself for an agency-defined one', async () => {
     const empty = { mine: null, copiedFrom: null, latest: null, baseChanged: false };
     const { service } = createWorld([system, custom], {
       't-custom': [{ id: 'c1', version: 1, definition: RATES }]
@@ -341,7 +348,7 @@ describe('table service', () => {
     await assert.rejects(service.create(editor, newTable(RATES)), boom);
   });
 
-  it('copies the newest built-in version into a draft that records its base', async () => {
+  it('copies the newest standard version into a draft that records its base', async () => {
     const { service, find } = createWorld([system], {
       't-sys': [sysV, { id: 'v-sys-0', version: 0, definition: WIDER, published: true }]
     });
@@ -395,7 +402,7 @@ describe('table service', () => {
     assert.deepEqual(find('update "data_tables" set "updated_at"')[0]?.parameters, ['t-agency']);
   });
 
-  it('opens the next version as a draft based on the newest built-in', async () => {
+  it('opens the next version as a draft based on the newest standard', async () => {
     const { service, find } = createWorld([system, agency], {
       't-sys': [sysV],
       't-agency': [{ id: 'a1', version: 2, definition: RATES, published: true, base: 'v-sys' }]
@@ -425,7 +432,7 @@ describe('table service', () => {
     assert.equal(find('insert into "data_table_versions"')[0]?.parameters[4], null);
   });
 
-  it('refuses drafts that are invalid, built-in, unknown or not permitted', async () => {
+  it('refuses drafts that are invalid, standard, unknown or not permitted', async () => {
     const { service, find } = createWorld([system, agency]);
     assert.deepEqual(
       await service.saveDraft(editor, 't-agency', NO_RULES),
@@ -438,7 +445,7 @@ describe('table service', () => {
     assert.equal(find('update "data_table_versions"').length, 0);
   });
 
-  it('publishes a draft that keeps the built-in inputs and outputs', async () => {
+  it('publishes a draft that keeps the standard inputs and outputs', async () => {
     const { service, find } = createWorld([system, agency], {
       't-sys': [sysV],
       't-agency': [{ id: 'd1', version: 2, definition: RATES, base: 'v-sys' }]
@@ -453,7 +460,7 @@ describe('table service', () => {
     assert.deepEqual(find('update "data_tables" set "updated_at"')[0]?.parameters, ['t-agency']);
   });
 
-  it('publishes an agency-defined table without comparing it to a built-in', async () => {
+  it('publishes an agency-defined table without comparing it to a standard', async () => {
     const { service } = createWorld([custom], {
       't-custom': [{ id: 'c1', version: 1, definition: WIDER }]
     });
@@ -463,7 +470,7 @@ describe('table service', () => {
     });
   });
 
-  it('refuses to publish an override that changes the built-in inputs or outputs', async () => {
+  it('refuses to publish an override that changes the standard inputs or outputs', async () => {
     const { service, find } = createWorld([system, agency], {
       't-sys': [sysV],
       't-agency': [{ id: 'd1', version: 2, definition: WIDER, base: 'v-sys' }]
@@ -472,7 +479,7 @@ describe('table service', () => {
       await service.publish(editor, 't-agency'),
       failure(
         'invalid',
-        'An override must keep the inputs and outputs of the built-in table it replaces'
+        'An override must keep the inputs and outputs of the standard table it replaces'
       )
     );
     assert.equal(find('update "data_table_versions"').length, 0);
@@ -495,7 +502,7 @@ describe('table service', () => {
     );
   });
 
-  it('refuses to publish a built-in, unknown or not permitted table', async () => {
+  it('refuses to publish a standard, unknown or not permitted table', async () => {
     const { service } = createWorld([system, agency]);
     assert.deepEqual(await service.publish(editor, 't-sys'), READ_ONLY);
     assert.deepEqual(await service.publish(editor, 't-other'), NOT_FOUND);
@@ -514,7 +521,7 @@ describe('table service', () => {
     ]);
   });
 
-  it('refuses to turn off a built-in, unknown or not permitted table', async () => {
+  it('refuses to turn off a standard, unknown or not permitted table', async () => {
     const { service, find } = createWorld([system, agency]);
     assert.deepEqual(await service.remove(editor, 't-sys'), READ_ONLY);
     assert.deepEqual(await service.remove(editor, 't-other'), NOT_FOUND);

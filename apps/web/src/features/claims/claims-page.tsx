@@ -1,15 +1,19 @@
-import { nameKey } from '@ugula/billing';
+import { CLAIM_STATUS_LABELS, CLAIM_STATUSES, nameKey } from '@ugula/billing';
+import { XIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { ClaimSummary } from '../../shared/claims/claim-detail.ts';
 import { formatCents, formatDate } from '../../shared/format.ts';
 import { isOnPage, LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
 import { assigneeOf, queueInfo } from '../../shared/task-queues.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
+import { ButtonLink } from '../../shared/ui/button.tsx';
+import { type ColumnFilter, ColumnFilters } from '../../shared/ui/column-filters.tsx';
 import { EmptyState, EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
 import { Highlight, NumberHighlight } from '../../shared/ui/highlight.tsx';
 import { OpenLink, RowActions } from '../../shared/ui/icon-button.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
+import { useLastFacets } from '../../shared/ui/search.tsx';
 import { type SearchField, SearchForm } from '../../shared/ui/search-form.tsx';
 import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
 import { type TableState, useTableState, withBack } from '../../shared/url-state.ts';
@@ -41,6 +45,26 @@ export const CLAIM_TABLE = {
   },
   sort: 'created'
 } as const;
+
+const CLAIMS_PAGE_TABLE = { ...CLAIM_TABLE, filters: ['status', 'waiting'] } as const;
+
+const NOT_WAITING = 'none';
+
+export const CLAIM_FILTERS: readonly ColumnFilter[] = [
+  {
+    key: 'status',
+    label: 'Status',
+    labelOf: (o) => {
+      const status = CLAIM_STATUSES.find((s) => s === o.value);
+      return status ? CLAIM_STATUS_LABELS[status] : o.value;
+    }
+  },
+  {
+    key: 'waiting',
+    label: 'Waiting On',
+    labelOf: (o) => (o.value === NOT_WAITING ? 'Nothing' : queueInfo(o.value).label)
+  }
+];
 
 export const CLAIM_SEARCH_FIELDS: readonly SearchField[] = [
   { name: 'firstName', label: 'First Name' },
@@ -181,6 +205,11 @@ export const ClaimsTable = ({
 const isSearching = (s: ClaimSearch) =>
   Boolean(s.firstName || s.lastName || s.birthDate || s.number);
 
+type ClaimsTableState = TableState<
+  keyof typeof CLAIM_TABLE.sorts,
+  (typeof CLAIMS_PAGE_TABLE.filters)[number]
+>;
+
 const ClaimResults = ({
   client,
   live,
@@ -193,9 +222,9 @@ const ClaimResults = ({
   client: ClaimsClient;
   live: Live;
   query: Parameters<ClaimsClient['list']>[0];
-  table: TableState<keyof typeof CLAIM_TABLE.sorts>;
+  table: ClaimsTableState;
   me: string;
-  search?: ClaimSearch;
+  search: ClaimSearch;
   empty: ReactNode;
 }) => {
   const key = Object.values(query).join('|');
@@ -205,6 +234,7 @@ const ClaimResults = ({
     30_000
   );
   const items = claims.data?.items ?? [];
+  const facets = useLastFacets(claims.data?.facets);
   useLive(
     live,
     (e) =>
@@ -225,21 +255,29 @@ const ClaimResults = ({
   );
   return (
     <>
+      <ColumnFilters filters={CLAIM_FILTERS} facets={facets} search={{ ...table, q: '' }} />
       {claims.error ? <Alert>{claims.error.message}</Alert> : null}
       {items.length && claims.data ? (
         <>
-          <ClaimsTable
-            claims={items}
-            sorting={table}
-            back={table.href}
-            me={me}
-            {...(search ? { search } : {})}
-          />
+          <ClaimsTable claims={items} sorting={table} back={table.href} me={me} search={search} />
           <Pagination label="Claims" total={claims.data.total} state={table} />
         </>
       ) : claims.loading ? (
         <PageLoading />
-      ) : claims.error ? null : (
+      ) : claims.error ? null : table.isFiltered ? (
+        <EmptyState
+          reason="noMatches"
+          title="No Matching Claims"
+          action={
+            <ButtonLink to={table.clearFiltersHref} variant="outline">
+              <XIcon aria-hidden="true" className="size-4" />
+              Clear Filters
+            </ButtonLink>
+          }
+        >
+          Nothing matches these filters.
+        </EmptyState>
+      ) : (
         empty
       )}
     </>
@@ -247,16 +285,16 @@ const ClaimResults = ({
 };
 
 export const ClaimsPage = ({ client, live, me, search }: ClaimsPageProps) => {
-  const table = useTableState(PATH, CLAIM_TABLE);
+  const table = useTableState(PATH, CLAIMS_PAGE_TABLE);
   return (
     <Page title="Claims">
       <SearchForm label="Search claims" path={PATH} fields={CLAIM_SEARCH_FIELDS} />
-      {isSearching(search) ? (
+      {isSearching(search) || table.isFiltered ? (
         <ClaimResults
           client={client}
           live={live}
           me={me}
-          query={{ status: 'all', ...search }}
+          query={search}
           table={table}
           search={search}
           empty={

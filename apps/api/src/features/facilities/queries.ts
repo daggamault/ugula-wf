@@ -1,6 +1,7 @@
-import { CLOSED_CLAIM_STATUSES } from '@ugula/billing';
+import { CLOSED_CLAIM_STATUSES, type FacilityKind } from '@ugula/billing';
 import type { Db } from '@ugula/db';
 import { sql } from 'kysely';
+import { facetCounts, whereFacets } from '../../shared/facets.ts';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { containsPattern, escapeLike } from '../../shared/search.ts';
 import type { FacilityInput, FacilitySort } from './schemas.ts';
@@ -19,9 +20,16 @@ const columns = [
   'f.updated_at'
 ] as const;
 
-export type FacilityFilters = PageRequest<FacilitySort> & { q?: string | undefined };
+export type FacilityFilters = PageRequest<FacilitySort> & {
+  q?: string | undefined;
+  kind: readonly FacilityKind[];
+};
 
 const ORDER = { name: sql`lower(f.name)`, city: sql`lower(f.city)` };
+
+const FACILITY_FACETS = { kind: { value: sql.ref('f.kind') } };
+
+type FacilityFacet = keyof typeof FACILITY_FACETS;
 
 const facilityRows = (db: Db, agencyId: string) =>
   db
@@ -39,11 +47,24 @@ const facilityRows = (db: Db, agencyId: string) =>
     ])
     .where('f.agency_id', '=', agencyId);
 
-export const searchFacilities = (db: Db, agencyId: string, f: FacilityFilters) => {
+const filteredFacilities = (
+  db: Db,
+  agencyId: string,
+  f: FacilityFilters,
+  except?: FacilityFacet
+) => {
   const q = f.q
     ? facilityRows(db, agencyId).where(sql`lower(f.name)`, 'like', containsPattern(f.q))
     : facilityRows(db, agencyId);
-  return paged(q, f, ORDER, sql.ref('f.id'));
+  return whereFacets(q, FACILITY_FACETS, f, except);
+};
+
+export const searchFacilities = async (db: Db, agencyId: string, f: FacilityFilters) => {
+  const [page, facets] = await Promise.all([
+    paged(filteredFacilities(db, agencyId, f), f, ORDER, sql.ref('f.id')),
+    facetCounts((except) => filteredFacilities(db, agencyId, f, except), FACILITY_FACETS)
+  ]);
+  return { ...page, facets };
 };
 
 export const findFacility = (db: Db, agencyId: string, id: string) =>

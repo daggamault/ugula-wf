@@ -43,10 +43,10 @@ describe('WorkflowDetailsDialog', () => {
 
   it('says why saving failed and closes on cancel', async () => {
     const { closed, user } = edit(async () => {
-      throw new Error('Built-in graphs are read-only');
+      throw new Error('Standard graphs are read-only');
     });
     await user.click(screen.getByRole('button', { name: 'Save Details' }));
-    assert.equal((await screen.findByRole('alert')).textContent, 'Built-in graphs are read-only');
+    assert.equal((await screen.findByRole('alert')).textContent, 'Standard graphs are read-only');
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     assert.deepEqual(closed, ['closed']);
   });

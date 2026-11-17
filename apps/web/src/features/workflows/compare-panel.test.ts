@@ -60,7 +60,7 @@ const section = (title: string) =>
 describe('ComparePanel', () => {
   it('lists the base then, what the base changed since and what you changed', () => {
     show();
-    assert.match(section('Base Then'), /built-in subworkflow v1, which this copy started from/);
+    assert.match(section('Base Then'), /standard subworkflow v1, which this copy started from/);
     assert.match(section('Base Then'), /1 nodes/);
     assert.match(section('Base Now'), /v2, what runs use when there is no copy/);
     assert.match(section('Base Now'), /Added rate/);

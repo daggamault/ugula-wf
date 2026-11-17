@@ -38,9 +38,9 @@ const request = withSession(createClaimRoutes(service));
 describe('claim routes', () => {
   it('list and read claims', async () => {
     calls.length = 0;
-    assert.equal((await request('/?status=all&lastName=doe')).status, 200);
+    assert.equal((await request('/?status=denied,paid&waiting=none&lastName=doe')).status, 200);
     assert.equal((await request('/?sort=waiting&dir=asc')).status, 200);
-    assert.equal((await request('/?status=paid')).status, 400);
+    assert.equal((await request('/?status=open')).status, 400);
     const found = await request(`/${ID}`);
     assert.equal(found.status, 200);
     assert.deepEqual(await found.json(), { claim: { id: ID }, files: [] });
@@ -54,9 +54,21 @@ describe('claim routes', () => {
       [
         'search',
         't-1',
-        { status: 'all', lastName: 'doe', page: 1, pageSize: 25, sort: 'created', dir: 'desc' }
+        {
+          status: ['denied', 'paid'],
+          waiting: ['none'],
+          lastName: 'doe',
+          page: 1,
+          pageSize: 25,
+          sort: 'created',
+          dir: 'desc'
+        }
       ],
-      ['search', 't-1', { status: 'open', page: 1, pageSize: 25, sort: 'waiting', dir: 'asc' }],
+      [
+        'search',
+        't-1',
+        { status: [], waiting: [], page: 1, pageSize: 25, sort: 'waiting', dir: 'asc' }
+      ],
       ['find', 't-1', ID]
     ]);
   });

@@ -43,7 +43,7 @@ const compiled = (expr: RawBuilder<unknown>) => {
 };
 
 describe('canEditScope', () => {
-  it('never edits built-ins', () => {
+  it('never edits standards', () => {
     for (const tier of ['rule', 'table', 'stage', 'workflow'] as const) {
       assert.equal(canEditScope(admin, 'system', tier), false, tier);
     }

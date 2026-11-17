@@ -206,8 +206,8 @@ describe('WorkflowPanel', () => {
   });
 
   it('is read-only with the reason when the contract is fixed', () => {
-    show({ editable: false, locked: 'A copy keeps the inputs and outputs of the built-in.' });
-    assert.ok(screen.getByText('A copy keeps the inputs and outputs of the built-in.'));
+    show({ editable: false, locked: 'A copy keeps the inputs and outputs of the standard.' });
+    assert.ok(screen.getByText('A copy keeps the inputs and outputs of the standard.'));
     assert.ok(!screen.queryByText(/^What this/));
     const step = screen.getByRole('checkbox', { name: 'Runs as a Step' });
     assert.equal(step.closest('fieldset')?.disabled, true);

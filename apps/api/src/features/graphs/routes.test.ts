@@ -44,11 +44,25 @@ const post = (path: string, body?: unknown) =>
 
 describe('graph routes', () => {
   it('serve lists, the node catalog, the customization map and validation', async () => {
-    assert.deepEqual(await (await request('/?q=match&show=blocks&sort=kind')).json(), {
-      items: [],
-      args: ['t-1', { q: 'match', show: 'blocks', page: 1, pageSize: 25, sort: 'kind', dir: 'asc' }]
-    });
-    assert.equal((await request('/?show=nope')).status, 400);
+    assert.deepEqual(
+      await (await request('/?q=match&kind=node&scope=agency,system&sort=kind')).json(),
+      {
+        items: [],
+        args: [
+          't-1',
+          {
+            q: 'match',
+            kind: ['node'],
+            scope: ['agency', 'system'],
+            page: 1,
+            pageSize: 25,
+            sort: 'kind',
+            dir: 'asc'
+          }
+        ]
+      }
+    );
+    assert.equal((await request('/?kind=nope')).status, 400);
     assert.deepEqual(await (await request('/nodes')).json(), { nodes: [{ key: 'demo.x' }] });
     const map = await request('/map');
     assert.equal(map.status, 200);

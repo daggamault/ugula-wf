@@ -1,10 +1,11 @@
-import { FACILITY_KINDS } from '@ugula/billing';
+import { FACILITY_KINDS, isFacilityKind } from '@ugula/billing';
 import { PlusIcon } from 'lucide-react';
 import { useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { formatCents } from '../../shared/format.ts';
 import { type Live, useReconnect } from '../../shared/live.ts';
 import { ButtonLink } from '../../shared/ui/button.tsx';
+import type { ColumnFilter } from '../../shared/ui/column-filters.tsx';
 import { DeleteDialog } from '../../shared/ui/dialog.tsx';
 import { Highlight } from '../../shared/ui/highlight.tsx';
 import { DeleteButton, EditLink, RowActions } from '../../shared/ui/icon-button.tsx';
@@ -18,7 +19,19 @@ import type { FacilitiesClient, Facility } from './client.ts';
 
 export const FACILITIES_PATH = '/facilities';
 
-export const FACILITY_TABLE = { sorts: { name: 'asc', city: 'asc' }, sort: 'name' } as const;
+export const FACILITY_TABLE = {
+  sorts: { name: 'asc', city: 'asc' },
+  sort: 'name',
+  filters: ['kind']
+} as const;
+
+const FACILITY_FILTERS: readonly ColumnFilter[] = [
+  {
+    key: 'kind',
+    label: 'Kind',
+    labelOf: (o) => (isFacilityKind(o.value) ? FACILITY_KINDS[o.value] : o.value)
+  }
+];
 
 export const facilityDeleteNote = (name: string) =>
   `Claims ${name} is responsible for go back to their payers and the patient.`;
@@ -106,6 +119,7 @@ export const FacilitiesPage = ({ client, live }: { client: FacilitiesClient; liv
         path={FACILITIES_PATH}
         search={search}
         results={facilities}
+        filters={FACILITY_FILTERS}
         empty={{
           title: 'No Facilities Yet',
           children: 'Add a facility to bill it for the trips it is responsible for.',

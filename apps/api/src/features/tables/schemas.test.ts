@@ -15,14 +15,18 @@ const issues = (schema: v.GenericSchema, input: unknown) =>
 describe('table schemas', () => {
   it('pages tables and shows every table by default', () => {
     assert.deepEqual(v.parse(searchTablesQuery, {}), {
-      show: 'all',
+      kind: [],
+      scope: [],
       page: 1,
       pageSize: 25,
       sort: 'name',
       dir: 'asc'
     });
-    assert.equal(v.safeParse(searchTablesQuery, { show: 'mine' }).success, false);
-    assert.equal(v.parse(searchTablesQuery, { show: 'customized' }).show, 'customized');
+    assert.equal(v.safeParse(searchTablesQuery, { scope: 'mine' }).success, false);
+    assert.deepEqual(v.parse(searchTablesQuery, { kind: 'lookup,decide' }).kind, [
+      'lookup',
+      'decide'
+    ]);
   });
 
   it('limits the size of a table', () => {

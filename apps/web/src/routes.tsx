@@ -45,7 +45,6 @@ import { StartRunPage } from './features/runs/start-run-page.tsx';
 import type { SettingsClient } from './features/settings/client.ts';
 import { SettingsPage } from './features/settings/settings-page.tsx';
 import type { TasksClient } from './features/tasks/client.ts';
-import { taskFilterOf } from './features/tasks/client.ts';
 import { TaskPage, taskTabOf } from './features/tasks/task-page.tsx';
 import { TASKS_PATH, TasksPage } from './features/tasks/tasks-page.tsx';
 import type { UsersClient } from './features/users/client.ts';
@@ -55,19 +54,14 @@ import { INVITATIONS_PATH, USERS_PATH, UsersPage } from './features/users/users-
 import type { WorkflowsClient } from './features/workflows/client.ts';
 import { CustomizationMapPage } from './features/workflows/customization-map-page.tsx';
 import { TablePage } from './features/workflows/table-page.tsx';
-import { TABLES_PATH, TablesPage, tableFilterOf } from './features/workflows/tables-page.tsx';
+import { TABLES_PATH, TablesPage } from './features/workflows/tables-page.tsx';
 import { parseTrail } from './features/workflows/trail.ts';
-import {
-  CUSTOMIZED_PATH,
-  graphFilterOf,
-  WorkflowsPage
-} from './features/workflows/workflows-page.tsx';
+import { CUSTOMIZED_PATH, WorkflowsPage } from './features/workflows/workflows-page.tsx';
 import type { AgenciesClient } from './shared/access.tsx';
 import type { CodesClient } from './shared/codes.ts';
 import type { Live } from './shared/live.ts';
 import type { NotificationsClient } from './shared/notifications.ts';
 import { matchPath } from './shared/router.tsx';
-import { RUN_STATUSES } from './shared/ui/run-status-badge.tsx';
 import { backOf } from './shared/url-state.ts';
 
 export type AppClients = {
@@ -112,9 +106,6 @@ const RunPage = lazy(() =>
   import('./features/runs/run-page.tsx').then((m) => ({ default: m.RunPage }))
 );
 
-const statusParam = (query: URLSearchParams) =>
-  RUN_STATUSES.find((s) => s === query.get('status')) ?? null;
-
 const versionParam = (query: URLSearchParams) => {
   const version = Number(query.get('version'));
   return Number.isInteger(version) && version > 0 ? version : null;
@@ -123,9 +114,7 @@ const versionParam = (query: URLSearchParams) => {
 const routes: readonly Route[] = [
   {
     pattern: '/workflows',
-    render: (_, q, c) => (
-      <WorkflowsPage client={c.workflows} live={c.live} show={graphFilterOf(q)} />
-    )
+    render: (_, __, c) => <WorkflowsPage client={c.workflows} live={c.live} />
   },
   {
     pattern: CUSTOMIZED_PATH,
@@ -135,7 +124,7 @@ const routes: readonly Route[] = [
   },
   {
     pattern: TABLES_PATH,
-    render: (_, q, c) => <TablesPage client={c.workflows} live={c.live} show={tableFilterOf(q)} />
+    render: (_, __, c) => <TablesPage client={c.workflows} live={c.live} />
   },
   {
     pattern: `${TABLES_PATH}/:id`,
@@ -163,7 +152,7 @@ const routes: readonly Route[] = [
   },
   {
     pattern: '/runs',
-    render: (_, q, c) => <RunsPage client={c.runs} live={c.live} status={statusParam(q)} />
+    render: (_, __, c) => <RunsPage client={c.runs} live={c.live} />
   },
   {
     pattern: '/runs/new',
@@ -383,9 +372,7 @@ const routes: readonly Route[] = [
   },
   {
     pattern: TASKS_PATH,
-    render: (_, q, c) => (
-      <TasksPage client={c.tasks} live={c.live} me={c.email} filter={taskFilterOf(q)} />
-    )
+    render: (_, __, c) => <TasksPage client={c.tasks} live={c.live} me={c.email} />
   },
   {
     pattern: '/tasks/:id',

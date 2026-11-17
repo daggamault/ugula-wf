@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import type { InboundKind } from '@ugula/billing';
 import type { ToastInput } from '../../shared/ui/toast.tsx';
 import type { PayerFilesClient } from './client.ts';
-import { fileStatus, kindOf, uploadPayerFiles } from './payer-files.ts';
+import { fileStatus, kindOf, PAYER_FILE_FILTERS, uploadPayerFiles } from './payer-files.ts';
 
 const scope = { agencyId: 'a-1', signal: new AbortController().signal };
 
@@ -69,6 +69,26 @@ describe('fileStatus', () => {
       intent: 'success',
       label: 'Nothing to Apply'
     });
+  });
+});
+
+describe('PAYER_FILE_FILTERS', () => {
+  it('names kinds and outcomes the way the table shows them, keeping unknown values', () => {
+    const labels = (key: string, values: string[]) => {
+      const filter = PAYER_FILE_FILTERS.find((f) => f.key === key);
+      return values.map((value) => filter?.labelOf?.({ value, count: 1 }));
+    };
+    assert.deepEqual(labels('kind', ['835', '277S', 'X']), [
+      'Remittance (835)',
+      'Claim status (277)',
+      'X'
+    ]);
+    assert.deepEqual(labels('outcome', ['review', 'applied', 'empty', 'x']), [
+      'Needs You',
+      'All Applied',
+      'Nothing to Apply',
+      'x'
+    ]);
   });
 });
 

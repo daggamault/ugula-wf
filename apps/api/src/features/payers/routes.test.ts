@@ -29,7 +29,7 @@ const request = withSession(createPayerRoutes(service));
 
 describe('payer routes', () => {
   it('searches, finds, saves and deletes payers for the session agency', async () => {
-    await request('/?q=blue&page=2&sort=payerCode&dir=desc');
+    await request('/?q=blue&filing=MB,CI&page=2&sort=payerCode&dir=desc');
     await request('/names');
     await request('/names?q=med');
     await request(`/${ID}`);
@@ -39,7 +39,11 @@ describe('payer routes', () => {
     await request(`/${ID}/aliases/${ID}`, { method: 'DELETE' });
     assert.equal((await request(`/${ID}/aliases/nope`, { method: 'DELETE' })).status, 400);
     assert.deepEqual(calls, [
-      ['search', 't-1', { q: 'blue', page: 2, pageSize: 25, sort: 'payerCode', dir: 'desc' }],
+      [
+        'search',
+        't-1',
+        { q: 'blue', filing: ['MB', 'CI'], page: 2, pageSize: 25, sort: 'payerCode', dir: 'desc' }
+      ],
       ['names', 't-1', undefined],
       ['names', 't-1', 'med'],
       ['find', 't-1', ID],
@@ -65,6 +69,7 @@ describe('payer routes', () => {
     });
     assert.equal(bad.status, 400);
     assert.equal((await request('/?sort=nope')).status, 400);
+    assert.equal((await request('/?filing=XX')).status, 400);
   });
 });
 

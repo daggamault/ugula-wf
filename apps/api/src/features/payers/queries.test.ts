@@ -12,7 +12,12 @@ import {
   upsertPayer
 } from './queries.ts';
 
-const PAGE = { page: 1, pageSize: 25, sort: 'name', dir: 'asc' } as const;
+const PAGE = { page: 1, pageSize: 25, sort: 'name', dir: 'asc', filing: [] } as const;
+
+const isFacet = (sql: string) => sql.includes('group by 1');
+
+const pageOf = <Q extends { sql: string }>(queries: readonly Q[]) =>
+  queries.find((q) => !isFacet(q.sql));
 
 const MEDICARE = {
   name: 'Medicare',
@@ -35,18 +40,22 @@ const VALUES = ['t-1', 'Medicare', '00952', 'MB', 90, null, null, null, true];
 
 describe('searchPayers', () => {
   it('pages the agency payers with their learned names, sorted by name', async () => {
-    const { db, queries } = createRecordingDb(() => [{ id: 'p1', total: '1' }]);
+    const { db, queries } = createRecordingDb((q) =>
+      isFacet(q.sql) ? [{ value: 'MB', label: null, count: '2' }] : [{ id: 'p1', total: '1' }]
+    );
     assert.deepEqual(await searchPayers(db, 't-1', PAGE), {
       items: [{ id: 'p1' }],
       total: 1,
       page: 1,
-      pageSize: 25
+      pageSize: 25,
+      facets: { filing: [{ value: 'MB', count: 2 }] }
     });
+    const page = queries.find((q) => !isFacet(q.sql));
     assert.equal(
-      queries[0]?.sql,
+      page?.sql,
       `${COLUMNS}, count(*) over () as "total" ${FROM} order by lower(p.name) asc nulls last, "p"."id" asc limit $2 offset $3`
     );
-    assert.deepEqual(queries[0]?.parameters, ['t-1', 25, 0]);
+    assert.deepEqual(page?.parameters, ['t-1', 25, 0]);
     await db.destroy();
   });
 
@@ -54,11 +63,18 @@ describe('searchPayers', () => {
     const { db, queries } = createRecordingDb();
     await searchPayers(db, 't-1', { ...PAGE, sort: 'payerCode', dir: 'desc', q: ' Blue%' });
     assert.ok(
-      queries[0]?.sql.endsWith(
+      pageOf(queries)?.sql.endsWith(
         `${FROM} and (lower(p.name) like $2 or lower(p.payer_code) like $3 or exists (select "m"."id" from "payer_aliases" as "m" where "m"."payer_id" = "p"."id" and lower(m.alias) like $4)) order by lower(p.payer_code) desc nulls last, "p"."id" desc limit $5 offset $6`
       )
     );
-    assert.deepEqual(queries[0]?.parameters, ['t-1', '%blue\\%%', '%blue\\%%', '%blue\\%%', 25, 0]);
+    assert.deepEqual(pageOf(queries)?.parameters, [
+      't-1',
+      '%blue\\%%',
+      '%blue\\%%',
+      '%blue\\%%',
+      25,
+      0
+    ]);
     await db.destroy();
   });
 
@@ -66,9 +82,26 @@ describe('searchPayers', () => {
     const { db, queries } = createRecordingDb();
     await searchPayers(db, 't-1', { ...PAGE, sort: 'filing' });
     assert.ok(
-      queries[0]?.sql.endsWith(
+      pageOf(queries)?.sql.endsWith(
         `${FROM} order by "p"."claim_filing" asc nulls last, "p"."id" asc limit $2 offset $3`
       )
+    );
+    await db.destroy();
+  });
+
+  it('filters by filing code and counts filing codes under the search alone', async () => {
+    const { db, queries } = createRecordingDb();
+    await searchPayers(db, 't-1', { ...PAGE, q: 'blue', filing: ['MB', 'CI'] });
+    const page = pageOf(queries);
+    assert.ok(
+      page?.sql.endsWith(
+        `like $4)) and "p"."claim_filing" in ($5, $6) order by lower(p.name) asc nulls last, "p"."id" asc limit $7 offset $8`
+      )
+    );
+    assert.deepEqual(page?.parameters.slice(4, 6), ['MB', 'CI']);
+    assert.equal(
+      queries.find((q) => isFacet(q.sql))?.sql,
+      `select "p"."claim_filing"::text as "value", null as "label", count(*) as "count" ${FROM} and (lower(p.name) like $2 or lower(p.payer_code) like $3 or exists (select "m"."id" from "payer_aliases" as "m" where "m"."payer_id" = "p"."id" and lower(m.alias) like $4)) and "p"."claim_filing" is not null group by 1 order by count(*) desc, 1 limit $5`
     );
     await db.destroy();
   });

@@ -152,7 +152,7 @@ describe('EditorView', () => {
     it('titles the draft with its key, version and scope', () => {
       show(detail('agency', false));
       assert.ok(screen.getByRole('heading', { level: 1, name: 'Flow' }));
-      for (const text of ['acme.flow', 'Draft v2', 'Agency']) assert.ok(screen.getByText(text));
+      for (const text of ['acme.flow', 'Draft v2', 'Custom']) assert.ok(screen.getByText(text));
       assert.ok(!screen.queryByText('Unsaved'));
       assert.equal(
         screen.getByRole('link', { name: 'Back to Workflows' }).getAttribute('href'),
@@ -385,13 +385,13 @@ describe('EditorView', () => {
     });
   });
 
-  describe('on a built-in', () => {
+  describe('on a standard', () => {
     it('is read-only and offers to customize it', async () => {
       const { calls, toasts, user } = show(detail('system', true), { version: 1 });
-      assert.ok(screen.getByText('Built-in'));
+      assert.ok(screen.getByText('Standard'));
       assert.equal(
         howTo(),
-        'Built-in workflows are read-only. Customize this one to change how your agency runs it.'
+        'Standard workflows are read-only. Customize this one to change how your agency runs it.'
       );
       for (const name of ['Delete Workflow', 'Remove Override', 'Edit as New Draft', 'Save']) {
         assert.equal(screen.queryByRole('button', { name }), null, name);
@@ -422,13 +422,13 @@ describe('EditorView', () => {
 
     it('leads to the agency copy that runs instead', () => {
       show(detail('system', true, { overridden_by: 'g9' }), { version: 1 });
-      assert.ok(screen.getByText('Has Agency Copy'));
+      assert.ok(screen.getByText('Has Custom Copy'));
       assert.equal(
         howTo(),
-        'Your agency has its own copy of this built-in workflow; runs use it once it is published. Select a node to see what it does.'
+        'Your agency has its own copy of this standard workflow; runs use it once it is published. Select a node to see what it does.'
       );
       assert.equal(
-        screen.getByRole('link', { name: 'Open Agency Copy' }).getAttribute('href'),
+        screen.getByRole('link', { name: 'Open Custom Copy' }).getAttribute('href'),
         '/workflows/g9'
       );
       assert.ok(!screen.queryByRole('button', { name: 'Customize' }));
@@ -438,7 +438,7 @@ describe('EditorView', () => {
       show(detail('system', true), { version: 1, url: '/workflows/g1?panel=signature' });
       assert.ok(
         screen.getByText(
-          'Built-in workflows are read-only. This is what it takes in, hands back and keeps while it runs.'
+          'Standard workflows are read-only. This is what it takes in, hands back and keeps while it runs.'
         )
       );
     });
@@ -464,11 +464,11 @@ describe('EditorView', () => {
     });
     const copy = detail('agency', false, { overrides: 'g0' });
 
-    it('keeps the inputs and outputs of the built-in', () => {
+    it('keeps the inputs and outputs of the standard', () => {
       show(copy, { url: '/workflows/g1?panel=signature' });
       assert.ok(
         screen.getByText(
-          'A copy keeps the inputs and outputs of the built-in workflow it overrides, so everything that uses it keeps working.'
+          'A copy keeps the inputs and outputs of the standard workflow it overrides, so everything that uses it keeps working.'
         )
       );
       assert.ok(!screen.queryByRole('button', { name: 'Add Input' }));
@@ -537,7 +537,7 @@ describe('EditorView', () => {
       ]);
     });
 
-    it('removes the override and returns to the built-in', async () => {
+    it('removes the override and returns to the standard', async () => {
       const { calls, toasts, user } = show(copy);
       await user.click(button('Remove Override'));
       const dialog = screen.getByRole('dialog', { name: 'Remove Override?' });
@@ -586,7 +586,7 @@ describe('EditorView', () => {
 });
 
 describe('customizedNodes', () => {
-  it('marks nodes whose subworkflow is overridden or whose table is not built-in', () => {
+  it('marks nodes whose subworkflow is overridden or whose table is not standard', () => {
     const def: GraphDef = {
       ...source,
       nodes: [
@@ -670,14 +670,14 @@ describe('lockedReason', () => {
   it('keeps the contract of a copy, even as a draft', () => {
     assert.equal(
       lockedReason({ scope: 'agency', overrides: 'g0' }, true, 'subworkflow'),
-      'A copy keeps the inputs and outputs of the built-in subworkflow it overrides, so everything that uses it keeps working.'
+      'A copy keeps the inputs and outputs of the standard subworkflow it overrides, so everything that uses it keeps working.'
     );
   });
 
-  it('keeps a built-in read-only', () => {
+  it('keeps a standard read-only', () => {
     assert.equal(
       lockedReason({ scope: 'system', overrides: null }, false, 'workflow'),
-      'Built-in workflows are read-only. This is what it takes in, hands back and keeps while it runs.'
+      'Standard workflows are read-only. This is what it takes in, hands back and keeps while it runs.'
     );
   });
 

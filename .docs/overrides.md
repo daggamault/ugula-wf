@@ -68,7 +68,7 @@ An override must keep the signature of the system graph it replaces: the same ex
 | Rebase     | `POST /graphs/:id/rebase { mode }`   | `keep` keeps your definition and marks it as based on the newest base; `reset` replaces your draft with the newest base                                                   |
 | Remove     | `DELETE /graphs/:id`                 | Turns an override off (runs go back to the built-in); a custom graph that overrides nothing is deleted, unless published graphs still call it                             |
 | Map        | `GET /graphs/map`                    | Every effective graph with the graphs and tables it uses, and the effective table per key                                                                                 |
-| Tables     | `GET, PUT, POST, DELETE /tables/...` | List (`show=customized`), `effective`, open, versions, compare, override, save draft, publish and remove table copies                                                     |
+| Tables     | `GET, PUT, POST, DELETE /tables/...` | List (`kind`, `scope` facets), `effective`, open, versions, compare, override, save draft, publish and remove table copies                                                |
 
 `GET /graphs/nodes` marks each key `overridden` when an agency copy is in effect, so parent graphs can highlight it. Runs that already started keep the versions they pinned; publishing or removing an override never changes them.
 
@@ -79,7 +79,7 @@ An override must keep the signature of the system graph it replaces: the same ex
 - **Canvas:** on a copy, nodes added or changed against the version it was copied from (type, version, settings, inputs, label or note) get a custom outline and a **Custom** chip; new wires are drawn in the custom color; **Show Removed** adds the base's removed nodes as dashed ghosts. In any graph, a subworkflow or table node whose key your agency overrides gets the outline too.
 - **Inspector:** a **Changed From Base** section lists each changed property with a custom dot, `Base: value` and **Reset to Base**; changed input pins carry the dot. Table nodes link to their table and say when it is customized.
 - **Base Updated:** a copy whose base has a newer version, or which is stale, shows a warning and a **Compare** panel: Base Then, Base Now (what the base changed) and Yours (what you changed), in plain words, with **Keep Mine** and **Start From Base** (danger confirm).
-- **Lists:** Workflows and Tables show the scope (Built-in, Agency), **Has Agency Copy** and **Base Updated** badges, and filter **Customized**. The **Customization Map** (`/workflows/customized`) shows each workflow's call tree with customized branches and tables highlighted, linking to each copy.
+- **Lists:** Workflows and Tables show the scope (Standard for built-ins, Custom for the agency's own), **Has Custom Copy** and **Base Updated** badges, and filter by **Kind** and **Scope**. The **Customization Map** (`/workflows/customized`) shows each workflow's call tree with customized branches and tables highlighted, linking to each copy.
 
 ## Scope resolution in SQL
 

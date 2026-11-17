@@ -1,5 +1,6 @@
 import { emailString } from '@ugula/config';
 import * as v from 'valibot';
+import { facetValues } from '../../shared/facets.ts';
 import { uuid } from '../../shared/http.ts';
 import { pageEntries } from '../../shared/paging.ts';
 import { searchText } from '../../shared/search.ts';
@@ -10,6 +11,7 @@ export type UserSort = (typeof USER_SORTS)[number];
 
 export const searchMembersQuery = v.object({
   q: searchText,
+  role: facetValues(uuid),
   ...pageEntries(USER_SORTS, 'name', 'asc')
 });
 
@@ -19,6 +21,7 @@ export type InvitationSort = (typeof INVITATION_SORTS)[number];
 
 export const searchInvitationsQuery = v.object({
   q: searchText,
+  role: facetValues(uuid),
   ...pageEntries(INVITATION_SORTS, 'expires', 'asc')
 });
 

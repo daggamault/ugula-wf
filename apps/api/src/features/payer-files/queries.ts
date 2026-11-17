@@ -1,7 +1,14 @@
+import type { InboundKind } from '@ugula/billing';
 import type { Db } from '@ugula/db';
 import { sql } from 'kysely';
+import { facetCounts, whereFacets } from '../../shared/facets.ts';
 import { type PageRequest, paged } from '../../shared/paging.ts';
-import type { PayerFileSort } from './schemas.ts';
+import type { PayerFileOutcome, PayerFileSort } from './schemas.ts';
+
+export type PayerFileFilters = PageRequest<PayerFileSort> & {
+  kind: readonly InboundKind[];
+  outcome: readonly PayerFileOutcome[];
+};
 
 const FILE_COLUMNS = [
   'f.id',
@@ -20,6 +27,15 @@ const FILE_ORDER = {
   problems: sql.ref('f.problem_count')
 };
 
+const FILE_FACETS = {
+  kind: { value: sql.ref('f.kind') },
+  outcome: {
+    value: sql<PayerFileOutcome>`case when f.problem_count > 0 then 'review' when f.item_count > 0 then 'applied' else 'empty' end`
+  }
+};
+
+type FileFacet = keyof typeof FILE_FACETS;
+
 const fileRows = (db: Db, agencyId: string) =>
   db
     .selectFrom('payer_files as f')
@@ -27,8 +43,16 @@ const fileRows = (db: Db, agencyId: string) =>
     .select([...FILE_COLUMNS, 'u.email as uploaded_by'])
     .where('f.agency_id', '=', agencyId);
 
-export const searchPayerFiles = (db: Db, agencyId: string, page: PageRequest<PayerFileSort>) =>
-  paged(fileRows(db, agencyId), page, FILE_ORDER, sql.ref('f.id'));
+const filteredFiles = (db: Db, agencyId: string, f: PayerFileFilters, except?: FileFacet) =>
+  whereFacets(fileRows(db, agencyId), FILE_FACETS, f, except);
+
+export const searchPayerFiles = async (db: Db, agencyId: string, f: PayerFileFilters) => {
+  const [page, facets] = await Promise.all([
+    paged(filteredFiles(db, agencyId, f), f, FILE_ORDER, sql.ref('f.id')),
+    facetCounts((except) => filteredFiles(db, agencyId, f, except), FILE_FACETS)
+  ]);
+  return { ...page, facets };
+};
 
 export const findPayerFile = (db: Db, agencyId: string, id: string) =>
   fileRows(db, agencyId)

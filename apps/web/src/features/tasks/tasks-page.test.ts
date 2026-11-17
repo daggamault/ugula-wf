@@ -6,9 +6,9 @@ import { formatAgo, formatDay } from '../../shared/format.ts';
 import type { Live } from '../../shared/live.ts';
 import { idleLive } from '../../shared/testing.ts';
 import { render, screen, userEvent, waitFor, within } from '../../shared/testing-dom.ts';
-import type { Page } from '../../shared/url-state.ts';
-import type { QueueSummary, TaskFilter, TaskRow, TasksClient } from './client.ts';
-import { assigneeOptions, queueOptions, TasksPage } from './tasks-page.tsx';
+import type { Facets, Page } from '../../shared/url-state.ts';
+import type { TaskRow, TasksClient } from './client.ts';
+import { TasksPage } from './tasks-page.tsx';
 
 const row = (over: Partial<TaskRow> = {}): TaskRow => ({
   id: 't1',
@@ -41,47 +41,43 @@ const FAULT = row({
   assignee_email: 'sam@example.com'
 });
 
-const href = (name: string, value: string | null) =>
-  value === null ? `/tasks?drop=${name}` : `/tasks?${name}=${value}`;
+const PAGE_QUERY = 'page=1&pageSize=25&sort=waiting&dir=asc';
 
-const queue = (name: string, open: number): QueueSummary => ({
-  queue: name,
-  open,
-  unassigned: 0,
-  mine: 0,
-  oldest: '2026-11-01T00:00:00Z'
-});
-
-const ALL: TaskFilter = { queue: null, assignee: 'all' };
+const FACETS: Facets = {
+  queue: [
+    { value: 'billing-review', count: 3 },
+    { value: 'exceptions', count: 1 }
+  ],
+  assignee: [
+    { value: 'u-me', label: 'me@example.com', count: 2 },
+    { value: 'u-sam', label: 'sam@example.com', count: 1 },
+    { value: 'none', count: 4 }
+  ]
+};
 
 const pageOf = (items: TaskRow[]): Page<TaskRow> => ({
   items,
   total: items.length,
   page: 1,
-  pageSize: 25
+  pageSize: 25,
+  facets: FACETS
 });
 
-const fakeClient = (
-  tasks: TaskRow[] = [row({ assignee_email: 'me@example.com' }), FAULT],
-  queues: QueueSummary[] = [queue('billing-review', 3), queue('exceptions', 1)]
-) => {
-  const lists: [TaskFilter, string][] = [];
-  let queueLoads = 0;
+const fakeClient = (tasks: TaskRow[] = [row({ assignee_email: 'me@example.com' }), FAULT]) => {
+  const lists: string[] = [];
   const client = {
-    list: async (filter: TaskFilter, query: string) => {
-      lists.push([filter, query]);
+    list: async (query: string) => {
+      lists.push(query);
       return pageOf(tasks);
-    },
-    queues: async () => {
-      queueLoads++;
-      return queues;
     }
   } as unknown as TasksClient;
-  return { client, lists, queueLoads: () => queueLoads };
+  return { client, lists };
 };
 
-const show = (client: TasksClient, filter: TaskFilter = ALL, live: Live = idleLive) =>
-  render(createElement(TasksPage, { client, live, me: 'me@example.com', filter }));
+const show = (client: TasksClient, query = '', live: Live = idleLive) => {
+  window.history.replaceState(null, '', `/tasks${query ? `?${query}` : ''}`);
+  return render(createElement(TasksPage, { client, live, me: 'me@example.com' }));
+};
 
 const table = () => screen.findByRole('table', { name: 'Tasks' });
 
@@ -96,49 +92,14 @@ const rows = async () =>
     .slice(1)
     .map(cellsOf);
 
-const choose = async (list: string, option: string) => {
-  const user = userEvent.setup();
-  await user.click(screen.getByRole('button', { name: list }));
-  await user.click(
-    within(screen.getByRole('listbox', { name: list })).getByRole('option', { name: option })
-  );
+const choicesOf = async (filter: string) => {
+  await userEvent.setup().click(screen.getByRole('button', { name: filter }));
+  return within(screen.getByRole('dialog', { name: `Filter by ${filter}` }))
+    .getAllByRole('checkbox')
+    .map((c) => c.closest('label')?.textContent);
 };
 
 const here = () => `${window.location.pathname}${window.location.search}`;
-
-describe('queueOptions', () => {
-  it('offers every queue with its open count after all queues', () => {
-    assert.deepEqual(queueOptions([queue('billing-review', 3)], null, href), [
-      { value: '', label: 'All Queues', href: '/tasks?drop=queue' },
-      { value: 'billing-review', label: 'Billing Review (3)', href: '/tasks?queue=billing-review' }
-    ]);
-  });
-
-  it('keeps a picked queue that has emptied', () => {
-    assert.deepEqual(queueOptions([queue('billing-review', 3)], 'custom-intake', href).at(-1), {
-      value: 'custom-intake',
-      label: 'Custom Intake (0)',
-      href: '/tasks?queue=custom-intake'
-    });
-  });
-
-  it('does not repeat a picked queue that is listed', () => {
-    assert.deepEqual(
-      queueOptions([queue('billing-review', 3)], 'billing-review', href).map((o) => o.value),
-      ['', 'billing-review']
-    );
-  });
-});
-
-describe('assigneeOptions', () => {
-  it('filters by anyone, the signed in user or nobody', () => {
-    assert.deepEqual(assigneeOptions(href), [
-      { value: 'all', label: 'Anyone', href: '/tasks?drop=assignee' },
-      { value: 'mine', label: 'Assigned to Me', href: '/tasks?assignee=mine' },
-      { value: 'unassigned', label: 'Unassigned', href: '/tasks?assignee=unassigned' }
-    ]);
-  });
-});
 
 describe('TasksPage', () => {
   it('lists each task with its queue, claim, patient, assignee and age', async () => {
@@ -157,7 +118,7 @@ describe('TasksPage', () => {
       ],
       ['Fix import', 'Stuck Runs', '—', 'sam@example.com', '—', ago, 'Open']
     ]);
-    assert.deepEqual(lists, [[ALL, 'page=1&pageSize=25&sort=waiting&dir=asc']]);
+    assert.deepEqual(lists, [PAGE_QUERY]);
   });
 
   it('marks faults in red', async () => {
@@ -199,9 +160,8 @@ describe('TasksPage', () => {
   });
 
   it('highlights the search in titles, patients and claim numbers, and returns to it', async () => {
-    window.history.replaceState(null, '', '/tasks?q=doe');
     const { client, lists } = fakeClient();
-    show(client);
+    show(client, 'q=doe');
     await table();
     assert.deepEqual(
       [...document.querySelectorAll('mark')].map((m) => m.textContent),
@@ -211,13 +171,12 @@ describe('TasksPage', () => {
       screen.getByRole('link', { name: 'Open task Review PCR' }).getAttribute('href'),
       '/tasks/t1?back=%2Ftasks%3Fq%3Ddoe'
     );
-    assert.equal(lists[0]?.[1], 'q=doe&page=1&pageSize=25&sort=waiting&dir=asc');
+    assert.equal(lists[0], 'q=doe&page=1&pageSize=25&sort=waiting&dir=asc');
   });
 
   it('highlights a searched claim number however it is typed', async () => {
-    window.history.replaceState(null, '', '/tasks?q=%23202611010012');
     const { client } = fakeClient();
-    show(client);
+    show(client, 'q=%23202611010012');
     await table();
     assert.deepEqual(
       [...document.querySelectorAll('mark')].map((m) => m.textContent),
@@ -233,7 +192,7 @@ describe('TasksPage', () => {
     await user.type(screen.getByRole('searchbox', { name: 'Search' }), 'import');
     await user.click(screen.getByRole('button', { name: 'Search' }));
     await waitFor(() => assert.equal(lists.length, 2));
-    assert.equal(lists[1]?.[1], 'q=import&page=1&pageSize=25&sort=waiting&dir=asc');
+    assert.equal(lists[1], 'q=import&page=1&pageSize=25&sort=waiting&dir=asc');
     assert.equal(here(), '/tasks?q=import');
   });
 
@@ -244,48 +203,51 @@ describe('TasksPage', () => {
     await userEvent.setup().click(screen.getByRole('link', { name: 'Task' }));
     assert.equal(here(), '/tasks?sort=title&dir=asc');
     await waitFor(() => assert.equal(lists.length, 2));
-    assert.equal(lists[1]?.[1], 'page=1&pageSize=25&sort=title&dir=asc');
+    assert.equal(lists[1], 'page=1&pageSize=25&sort=title&dir=asc');
   });
 
-  it('filters by queue with each open count', async () => {
-    const { client } = fakeClient();
+  it('filters by queue from the open counts in the database', async () => {
+    const { client, lists } = fakeClient();
     show(client);
     await table();
-    await waitFor(() =>
-      assert.ok(screen.getByRole('option', { name: 'Billing Review (3)', hidden: true }))
+    assert.deepEqual(await choicesOf('Queue'), ['Billing Review3', 'Stuck Runs1']);
+    await userEvent.setup().click(
+      within(screen.getByRole('dialog', { name: 'Filter by Queue' })).getByRole('checkbox', {
+        name: /Stuck Runs/
+      })
     );
-    await choose('Queue', 'Stuck Runs (1)');
     assert.equal(here(), '/tasks?queue=exceptions');
+    await waitFor(() => assert.equal(lists.at(-1), `${PAGE_QUERY}&queue=exceptions`));
   });
 
-  it('filters by assignee', async () => {
-    window.history.replaceState(null, '', '/tasks?queue=exceptions');
+  it('names assignees by email, the signed-in user as You and nobody as Unassigned', async () => {
     const { client } = fakeClient();
-    show(client, { queue: 'exceptions', assignee: 'all' });
+    show(client, 'queue=exceptions');
     await table();
-    await choose('Assignee', 'Assigned to Me');
-    assert.equal(here(), '/tasks?queue=exceptions&assignee=mine');
+    assert.deepEqual(await choicesOf('Assignee'), ['sam@example.com1', 'Unassigned4', 'You2']);
+    await userEvent.setup().click(
+      within(screen.getByRole('dialog', { name: 'Filter by Assignee' })).getByRole('checkbox', {
+        name: /Unassigned/
+      })
+    );
+    assert.equal(here(), '/tasks?queue=exceptions&assignee=none');
   });
 
-  it('lists the tasks of the chosen queue and assignee', async () => {
-    const filter: TaskFilter = { queue: 'billing-review', assignee: 'mine' };
+  it('lists the tasks of the chosen queues and assignees', async () => {
     const { client, lists } = fakeClient();
-    show(client, filter);
+    show(client, 'queue=billing-review,exceptions&assignee=u-me');
     await table();
-    assert.deepEqual(lists, [[filter, 'page=1&pageSize=25&sort=waiting&dir=asc']]);
+    assert.deepEqual(lists, [`${PAGE_QUERY}&queue=billing-review%2Cexceptions&assignee=u-me`]);
+    assert.equal(screen.getByRole('button', { name: /^Queue/ }).textContent, 'Queue2 selected');
   });
 
-  it('keeps a filtered queue selectable before the queues load', () => {
-    const client = {
-      list: () => new Promise(() => undefined),
-      queues: () => new Promise(() => undefined)
-    } as unknown as TasksClient;
-    show(client, { queue: 'billing-review', assignee: 'mine' });
-    assert.deepEqual(
-      within(screen.getByRole('listbox', { name: 'Queue', hidden: true }))
-        .getAllByRole('option', { hidden: true })
-        .map((o) => o.textContent),
-      ['All Queues', 'Billing Review (0)']
+  it('offers to clear filters that match nothing', async () => {
+    const { client } = fakeClient([]);
+    show(client, 'assignee=none');
+    await screen.findByRole('heading', { name: 'No Matching Tasks' });
+    assert.equal(
+      screen.getByRole('link', { name: 'Clear Filters' }).getAttribute('href'),
+      '/tasks'
     );
   });
 
@@ -296,7 +258,7 @@ describe('TasksPage', () => {
     assert.ok(screen.getByText('New tasks show up here as claims need work.'));
   });
 
-  it('reloads the tasks and queues when a listed task changes', async () => {
+  it('reloads the tasks when a listed task changes', async () => {
     const listeners: ((e: LiveEvent | null) => void)[] = [];
     const live: Live = {
       ...idleLive,
@@ -305,11 +267,10 @@ describe('TasksPage', () => {
         return () => undefined;
       }
     };
-    const { client, lists, queueLoads } = fakeClient();
-    show(client, ALL, live);
+    const { client, lists } = fakeClient();
+    show(client, '', live);
     await table();
     for (const listener of listeners) listener({ kind: 'task', id: 't1', runId: null });
     await waitFor(() => assert.equal(lists.length, 2), { timeout: 3_000 });
-    assert.equal(queueLoads(), 2);
   });
 });

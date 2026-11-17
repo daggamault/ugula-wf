@@ -1,13 +1,14 @@
 import type { Db, RunStatus } from '@ugula/db';
 import { sql } from 'kysely';
+import { facetCounts, whereFacets } from '../../shared/facets.ts';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { type ScopeIds, visible } from '../../shared/scopes.ts';
 import { containsPattern } from '../../shared/search.ts';
 import type { RunSort } from './schemas.ts';
 
 export type RunFilters = PageRequest<RunSort> & {
-  status?: RunStatus;
-  graphId?: string;
+  status: readonly RunStatus[];
+  workflow: readonly string[];
   rootOnly: boolean;
   q?: string | undefined;
 };
@@ -64,10 +65,15 @@ const RUN_ORDER = {
   finished: sql.ref('r.completed_at')
 };
 
-export const searchRuns = (db: Db, agencyId: string, f: RunFilters) => {
+const RUN_FACETS = {
+  status: { value: sql.ref('r.status') },
+  workflow: { value: sql.ref('g.key'), label: sql.ref('g.name') }
+};
+
+type RunFacet = keyof typeof RUN_FACETS;
+
+const filteredRuns = (db: Db, agencyId: string, f: RunFilters, except?: RunFacet) => {
   let q = runColumns(db).where('r.agency_id', '=', agencyId);
-  if (f.status) q = q.where('r.status', '=', f.status);
-  if (f.graphId) q = q.where('g.id', '=', f.graphId);
   if (f.rootOnly) q = q.where('r.parent_id', 'is', null);
   if (f.q) {
     const like = containsPattern(f.q);
@@ -80,7 +86,15 @@ export const searchRuns = (db: Db, agencyId: string, f: RunFilters) => {
       ])
     );
   }
-  return paged(q, f, RUN_ORDER, sql.ref('r.id'));
+  return whereFacets(q, RUN_FACETS, f, except);
+};
+
+export const searchRuns = async (db: Db, agencyId: string, f: RunFilters) => {
+  const [page, facets] = await Promise.all([
+    paged(filteredRuns(db, agencyId, f), f, RUN_ORDER, sql.ref('r.id')),
+    facetCounts((except) => filteredRuns(db, agencyId, f, except), RUN_FACETS)
+  ]);
+  return { ...page, facets };
 };
 
 const startedByEvent = sql<{

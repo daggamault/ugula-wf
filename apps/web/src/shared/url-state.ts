@@ -6,21 +6,28 @@ export const PAGE_SIZES = [10, 25, 50, 100] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
-type TableSpec<K extends string> = {
+type TableSpec<K extends string, F extends string> = {
   prefix?: string;
   sorts: Readonly<Record<K, SortDir>>;
   sort: NoInfer<K>;
+  filters?: readonly F[];
 };
 
-export type TableState<K extends string> = {
+export type FilterValues<F extends string = string> = Readonly<Record<F, readonly string[]>>;
+
+export type TableState<K extends string, F extends string = never> = {
   sort: K;
   dir: SortDir;
   page: number;
   pageSize: number;
+  filters: FilterValues<F>;
+  isFiltered: boolean;
   sortHref: (key: K) => string;
   sortTo: (key: K, dir: SortDir) => string;
   pageHref: (page: number) => string;
   sizeHref: (size: number) => string;
+  filterHref: (key: F, values: readonly string[]) => string;
+  clearFiltersHref: string;
   apiQuery: string;
   href: string;
 };
@@ -52,11 +59,13 @@ const positive = (raw: string | null) => {
   return Number.isInteger(n) && n > 0 ? n : null;
 };
 
-export const tableStateOf = <K extends string>(
+const valuesOf = (raw: string | null) => [...new Set((raw ?? '').split(',').filter(Boolean))];
+
+export const tableStateOf = <K extends string, F extends string = never>(
   path: string,
   query: URLSearchParams,
-  { prefix, sorts, sort: defaultSort }: TableSpec<K>
-): TableState<K> => {
+  { prefix, sorts, sort: defaultSort, filters: keys = [] }: TableSpec<K, F>
+): TableState<K, F> => {
   const p = (name: string) => paramOf(prefix, name);
   const rawSort = query.get(p('sort'));
   const sort = isKey(sorts, rawSort) ? rawSort : defaultSort;
@@ -65,6 +74,11 @@ export const tableStateOf = <K extends string>(
   const page = positive(query.get(p('page'))) ?? 1;
   const size = positive(query.get(p('pageSize')));
   const pageSize = PAGE_SIZES.find((s) => s === size) ?? DEFAULT_PAGE_SIZE;
+  const filters = Object.fromEntries(keys.map((k) => [k, valuesOf(query.get(p(k)))])) as Record<
+    F,
+    string[]
+  >;
+  const chosen = keys.filter((k) => filters[k].length);
   const href = (patch: Record<string, string | null>) =>
     hrefWith(path, query, Object.fromEntries(Object.entries(patch).map(([k, v]) => [p(k), v])));
   const sortTo = (key: K, next: SortDir) => {
@@ -76,42 +90,54 @@ export const tableStateOf = <K extends string>(
     dir,
     page,
     pageSize,
+    filters,
+    isFiltered: chosen.length > 0,
     sortHref: (key) => sortTo(key, key === sort ? (dir === 'asc' ? 'desc' : 'asc') : sorts[key]),
     sortTo,
     pageHref: (n) => href({ page: n > 1 ? String(n) : null }),
     sizeHref: (n) => href({ pageSize: n === DEFAULT_PAGE_SIZE ? null : String(n), page: null }),
+    filterHref: (key, values) =>
+      href({ [key]: values.length ? values.join(',') : null, page: null }),
+    clearFiltersHref: href({ ...Object.fromEntries(keys.map((k) => [k, null])), page: null }),
     href: hrefWith(path, query, {}),
-    apiQuery: new URLSearchParams({
-      page: String(page),
-      pageSize: String(pageSize),
-      sort,
-      dir
-    }).toString()
+    apiQuery: new URLSearchParams([
+      ['page', String(page)],
+      ['pageSize', String(pageSize)],
+      ['sort', sort],
+      ['dir', dir],
+      ...chosen.map((k) => [k, filters[k].join(',')])
+    ]).toString()
   };
 };
 
-export const useTableState = <K extends string>(path: string, spec: TableSpec<K>) =>
-  tableStateOf(path, useLocation().query, spec);
+export const useTableState = <K extends string, F extends string = never>(
+  path: string,
+  spec: TableSpec<K, F>
+) => tableStateOf(path, useLocation().query, spec);
 
-export const useFilterHref = (path: string, prefix?: string) => {
-  const { query } = useLocation();
-  return (name: string, value: string | null) =>
-    hrefWith(path, query, { [name]: value, [paramOf(prefix, 'page')]: null });
+export type FacetOption = { value: string; label?: string; count: number };
+
+export type Facets = Readonly<Record<string, readonly FacetOption[]>>;
+
+export type Page<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  facets?: Facets;
 };
-
-export type Page<T> = { items: T[]; total: number; page: number; pageSize: number };
 
 const SEARCH_MAX = 80;
 
-type SearchState<K extends string> = TableState<K> & {
+type SearchState<K extends string, F extends string> = TableState<K, F> & {
   q: string;
 };
 
-export const searchStateOf = <K extends string>(
+export const searchStateOf = <K extends string, F extends string = never>(
   path: string,
   query: URLSearchParams,
-  spec: TableSpec<K>
-): SearchState<K> => {
+  spec: TableSpec<K, F>
+): SearchState<K, F> => {
   const table = tableStateOf(path, query, spec);
   const q = (query.get('q') ?? '').trim().slice(0, SEARCH_MAX);
   return {
@@ -121,8 +147,10 @@ export const searchStateOf = <K extends string>(
   };
 };
 
-export const useSearchState = <K extends string>(path: string, spec: TableSpec<K>) =>
-  searchStateOf(path, useLocation().query, spec);
+export const useSearchState = <K extends string, F extends string = never>(
+  path: string,
+  spec: TableSpec<K, F>
+) => searchStateOf(path, useLocation().query, spec);
 
 const BACK = 'back';
 
@@ -157,8 +185,12 @@ export type SearchView = {
   dir: SortDir;
   page: number;
   pageSize: number;
+  filters: FilterValues;
+  isFiltered: boolean;
   sortHref(key: string): string;
   sortTo(key: string, dir: SortDir): string;
   pageHref(page: number): string;
   sizeHref(size: number): string;
+  filterHref(key: string, values: readonly string[]): string;
+  clearFiltersHref: string;
 };

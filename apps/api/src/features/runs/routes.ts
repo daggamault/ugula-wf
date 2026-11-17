@@ -33,15 +33,13 @@ export const createRunRoutes = (service: RunService) =>
       }
     )
     .get('/', sValidator('query', searchRunsQuery, invalidRequest), async (c) => {
-      const { q, status, graphId, root, ...page } = c.req.valid('query');
+      const { q, root, ...filters } = c.req.valid('query');
       return respond(
         c,
         await service.search(c.get('access').agencyId, {
           ...(q ? { q } : {}),
-          ...(status ? { status } : {}),
-          ...(graphId ? { graphId } : {}),
           rootOnly: root === 'true',
-          ...page
+          ...filters
         })
       );
     })

@@ -13,7 +13,21 @@ import {
   searchClaims
 } from './queries.ts';
 
-const PAGE = { page: 1, pageSize: 25, sort: 'created', dir: 'desc' } as const;
+const PAGE = {
+  page: 1,
+  pageSize: 25,
+  sort: 'created',
+  dir: 'desc',
+  status: [],
+  waiting: []
+} as const;
+
+const NO_FACETS = { status: [], waiting: [] };
+
+const isFacet = (sql: string) => sql.includes('group by 1');
+
+const listOf = <Q extends { sql: string }>(queries: readonly Q[]) =>
+  queries.filter((q) => !isFacet(q.sql));
 
 const CLAIM_IDS =
   'select "c"."id", count(*) over () as "total" from "claims" as "c" ' +
@@ -26,6 +40,8 @@ const OPEN_TASKS =
   'left join "users" as "u" on "u"."id" = "t"."assignee_id" ' +
   'where "t"."status" = \'open\' and "cr"."claim_id" = "c"."id" ' +
   'order by "t"."priority" desc, "t"."created_at"';
+
+const WAITING = `coalesce((select "t"."queue" ${OPEN_TASKS} limit 1), 'none')`;
 
 const EVENT_ROWS =
   'select "e"."id", "e"."kind", "e"."batch_id", "cb"."control_number" as "batch_number", ' +
@@ -64,18 +80,26 @@ const idsOf = (rows: { id: string }[], total: number) =>
 describe('searchClaims', () => {
   it('pages claim ids by agency and filters first, then loads details for that page only', async () => {
     const { db, queries } = createRecordingDb((q) =>
-      q.sql.startsWith('select "c"."id", count(*) over ()')
-        ? [
-            { id: 'c2', total: '30' },
-            { id: 'c1', total: '30' }
-          ]
-        : [
-            { id: 'c1', balance_cents: 5 },
-            { id: 'c2', balance_cents: 9 }
-          ]
+      isFacet(q.sql)
+        ? []
+        : q.sql.startsWith('select "c"."id", count(*) over ()')
+          ? [
+              { id: 'c2', total: '30' },
+              { id: 'c1', total: '30' }
+            ]
+          : [
+              { id: 'c1', balance_cents: 5 },
+              { id: 'c2', balance_cents: 9 }
+            ]
     );
     assert.deepEqual(
-      await searchClaims(db, 't-1', { ...PAGE, status: 'open', page: 2, sort: 'balance' }),
+      await searchClaims(db, 't-1', {
+        ...PAGE,
+        status: ['denied', 'paid'],
+        waiting: ['billing-review', 'none'],
+        page: 2,
+        sort: 'balance'
+      }),
       {
         items: [
           { id: 'c2', balance_cents: 9 },
@@ -83,25 +107,18 @@ describe('searchClaims', () => {
         ],
         total: 30,
         page: 2,
-        pageSize: 25
+        pageSize: 25,
+        facets: NO_FACETS
       }
     );
-    const [ids, details] = queries;
+    const [ids, details] = listOf(queries);
     assert.equal(
       ids?.sql,
-      `${CLAIM_IDS} and "c"."status" not in ($2, $3, $4, $5) order by (select "b"."balance_cents" ` +
+      `${CLAIM_IDS} and "c"."status" in ($2, $3) and ${WAITING} in ($4, $5) order by (select "b"."balance_cents" ` +
         'from "claim_balances" as "b" where "b"."claim_id" = "c"."id") desc nulls last, ' +
         '"c"."id" desc limit $6 offset $7'
     );
-    assert.deepEqual(ids?.parameters, [
-      't-1',
-      'paid',
-      'written_off',
-      'collections',
-      'void',
-      25,
-      25
-    ]);
+    assert.deepEqual(ids?.parameters, ['t-1', 'denied', 'paid', 'billing-review', 'none', 25, 25]);
     assert.ok(
       details?.sql.includes('inner join "claim_balances" as "b" on "b"."claim_id" = "c"."id"')
     );
@@ -124,33 +141,73 @@ describe('searchClaims', () => {
     assert.deepEqual(details?.parameters, ['t-1', 'c2', 'c1']);
   });
 
+  it('counts statuses and waiting queues under the search and the other facet', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      isFacet(q.sql) ? [{ value: 'denied', label: null, count: '4' }] : []
+    );
+    const page = await searchClaims(db, 't-1', {
+      ...PAGE,
+      lastName: 'Smith',
+      status: ['denied'],
+      waiting: ['none']
+    });
+    assert.deepEqual(page.facets, {
+      status: [{ value: 'denied', count: 4 }],
+      waiting: [{ value: 'denied', count: 4 }]
+    });
+    const facet = (by: string) =>
+      `select ${by}::text as "value", null as "label", count(*) as "count" from "claims" as "c" ` +
+      'left join "patients" as "p" on "p"."id" = "c"."patient_id" ' +
+      'left join "import_reports" as "ir" on "ir"."id" = "c"."import_report_id" ' +
+      'where "c"."agency_id" = $1 and "p"."last_name_key" like $2';
+    assert.deepEqual(
+      queries.filter((q) => isFacet(q.sql)).map((q) => [q.sql, q.parameters]),
+      [
+        [
+          `${facet('"c"."status"')} and ${WAITING} in ($3) and "c"."status" is not null ` +
+            'group by 1 order by count(*) desc, 1 limit $4',
+          ['t-1', 'smith%', 'none', 200]
+        ],
+        [
+          `${facet(WAITING)} and "c"."status" in ($3) and ${WAITING} is not null ` +
+            'group by 1 order by count(*) desc, 1 limit $4',
+          ['t-1', 'smith%', 'denied', 200]
+        ]
+      ]
+    );
+  });
+
   it('drops a paged claim whose details are no longer there', async () => {
     const { db } = createRecordingDb((q) =>
-      q.sql.startsWith('select "c"."id", count(*) over ()')
-        ? [
-            { id: 'c1', total: '2' },
-            { id: 'c2', total: '2' }
-          ]
-        : [{ id: 'c2' }]
+      isFacet(q.sql)
+        ? []
+        : q.sql.startsWith('select "c"."id", count(*) over ()')
+          ? [
+              { id: 'c1', total: '2' },
+              { id: 'c2', total: '2' }
+            ]
+          : [{ id: 'c2' }]
     );
-    assert.deepEqual(await searchClaims(db, 't-1', { ...PAGE, status: 'all' }), {
+    assert.deepEqual(await searchClaims(db, 't-1', { ...PAGE }), {
       items: [{ id: 'c2' }],
       total: 2,
       page: 1,
-      pageSize: 25
+      pageSize: 25,
+      facets: NO_FACETS
     });
   });
 
   it('skips the detail query when the page is empty', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    assert.deepEqual(await searchClaims(db, 't-1', { ...PAGE, status: 'all' }), {
+    assert.deepEqual(await searchClaims(db, 't-1', { ...PAGE }), {
       items: [],
       total: 0,
       page: 1,
-      pageSize: 25
+      pageSize: 25,
+      facets: NO_FACETS
     });
     assert.deepEqual(
-      queries.map((q) => [q.sql, q.parameters]),
+      listOf(queries).map((q) => [q.sql, q.parameters]),
       [
         [
           `${CLAIM_IDS} order by "c"."created_at" desc nulls last, "c"."id" desc limit $2 offset $3`,
@@ -164,7 +221,6 @@ describe('searchClaims', () => {
     const { db, queries } = createRecordingDb(() => []);
     await searchClaims(db, 't-1', {
       ...PAGE,
-      status: 'all',
       firstName: 'Ja%',
       lastName: "O'Neil",
       birthDate: '1980-01-02',
@@ -172,7 +228,7 @@ describe('searchClaims', () => {
       patientId: 'p-1'
     });
     assert.deepEqual(
-      queries.map((q) => [q.sql, q.parameters]),
+      listOf(queries).map((q) => [q.sql, q.parameters]),
       [
         [
           `${CLAIM_IDS} and "c"."patient_id" = $2 and lower(p.first_name) like $3 ` +
@@ -199,9 +255,9 @@ describe('searchClaims', () => {
 
   it('matches only the PCR number for text that is not a daily number and ignores a name without letters', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    await searchClaims(db, 't-1', { ...PAGE, status: 'all', number: 'PCR-7', lastName: "'-" });
+    await searchClaims(db, 't-1', { ...PAGE, number: 'PCR-7', lastName: "'-" });
     assert.deepEqual(
-      queries.map((q) => [q.sql, q.parameters]),
+      listOf(queries).map((q) => [q.sql, q.parameters]),
       [
         [
           `${CLAIM_IDS} and "c"."pcr_number" = $2 order by "c"."created_at" desc nulls last, ` +
@@ -214,9 +270,9 @@ describe('searchClaims', () => {
 
   it('orders claims by their oldest open task', async () => {
     const { db, queries } = idsOf([{ id: 'c1' }], 1);
-    await searchClaims(db, 't-1', { ...PAGE, status: 'all', sort: 'waiting', dir: 'asc' });
+    await searchClaims(db, 't-1', { ...PAGE, sort: 'waiting', dir: 'asc' });
     assert.equal(
-      queries[0]?.sql,
+      listOf(queries)[0]?.sql,
       `${CLAIM_IDS} order by (select "t"."created_at" ${OPEN_TASKS} limit 1) asc nulls last, ` +
         '"c"."id" asc limit $2 offset $3'
     );
@@ -224,9 +280,9 @@ describe('searchClaims', () => {
 
   it('orders statuses the way a claim moves through them', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    await searchClaims(db, 't-1', { ...PAGE, status: 'all', sort: 'status', dir: 'asc' });
+    await searchClaims(db, 't-1', { ...PAGE, sort: 'status', dir: 'asc' });
     assert.equal(
-      queries[0]?.sql,
+      listOf(queries)[0]?.sql,
       `${CLAIM_IDS} order by array_position(array['draft', 'needs_review', 'ready', 'submitted', ` +
         "'follow_up', 'reconcile', 'denied', 'facility_billing', 'patient_balance', " +
         "'balance_review', 'paid', 'written_off', 'collections', 'void']::text[], c.status::text) " +
@@ -236,10 +292,10 @@ describe('searchClaims', () => {
 
   it('orders by the encounter number a claim was imported from and by patient name', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    await searchClaims(db, 't-1', { ...PAGE, status: 'all', sort: 'encounter' });
-    await searchClaims(db, 't-1', { ...PAGE, status: 'all', sort: 'patient' });
+    await searchClaims(db, 't-1', { ...PAGE, sort: 'encounter' });
+    await searchClaims(db, 't-1', { ...PAGE, sort: 'patient' });
     assert.deepEqual(
-      queries.map((q) => q.sql),
+      listOf(queries).map((q) => q.sql),
       [
         `${CLAIM_IDS} order by (select "er"."number" from "import_reports" as "er" where ` +
           '"er"."id" = "c"."import_report_id") desc nulls last, "c"."id" desc limit $2 offset $3',
@@ -285,7 +341,7 @@ describe('claimExists', () => {
     const { db, queries } = createRecordingDb(() => [{ id: 'c1' }]);
     assert.equal(await claimExists(db, 't-1', 'c1'), true);
     assert.deepEqual(
-      queries.map((q) => [q.sql, q.parameters]),
+      listOf(queries).map((q) => [q.sql, q.parameters]),
       [['select "id" from "claims" where "id" = $1 and "agency_id" = $2', ['c1', 't-1']]]
     );
   });
@@ -302,7 +358,7 @@ describe('claim document queries', () => {
     const { db, queries } = createRecordingDb(() => [doc]);
     assert.deepEqual(await listClaimDocuments(db, 'c1'), [doc]);
     assert.deepEqual(
-      queries.map((q) => [q.sql, q.parameters]),
+      listOf(queries).map((q) => [q.sql, q.parameters]),
       [
         [
           'select "d"."id", "d"."kind", "d"."file_name", "d"."signed_on", "d"."created_at", ' +
@@ -320,7 +376,7 @@ describe('claim document queries', () => {
     const { db, queries } = createRecordingDb(() => [doc]);
     assert.deepEqual(await findClaimDocument(db, 't-1', 'c1', 'd1'), doc);
     assert.deepEqual(
-      queries.map((q) => [q.sql, q.parameters]),
+      listOf(queries).map((q) => [q.sql, q.parameters]),
       [
         [
           'select "document", "file_name" from "claim_documents" where "id" = $1 ' +
@@ -345,7 +401,7 @@ describe('claim event queries', () => {
       { items: [], total: 0, page: 2, pageSize: 10 }
     );
     assert.deepEqual(
-      queries.map((q) => [q.sql, q.parameters]),
+      listOf(queries).map((q) => [q.sql, q.parameters]),
       [
         [
           `${EVENT_ROWS}, count(*) over () as "total" ${EVENT_JOINS} where "e"."claim_id" = $3 ` +
@@ -372,7 +428,7 @@ describe('claim event queries', () => {
     const { db, queries } = createRecordingDb(() => []);
     assert.deepEqual(await listClaimFiles(db, 'c1'), []);
     assert.deepEqual(
-      queries.map((q) => [q.sql, q.parameters]),
+      listOf(queries).map((q) => [q.sql, q.parameters]),
       [
         [
           `${EVENT_ROWS} ${EVENT_JOINS} where "e"."claim_id" = $3 and ` +
@@ -388,7 +444,7 @@ describe('claim event queries', () => {
     const { db, queries } = createRecordingDb(() => []);
     assert.deepEqual(await listClaimPayerFiles(db, 'c1'), []);
     assert.deepEqual(
-      queries.map((q) => [q.sql, q.parameters]),
+      listOf(queries).map((q) => [q.sql, q.parameters]),
       [
         [
           'select "f"."id", "f"."kind", "f"."file_name", "f"."created_at", ' +
@@ -408,7 +464,7 @@ describe('claim event queries', () => {
     const { db, queries } = createRecordingDb(() => [doc]);
     assert.deepEqual(await findEventDocument(db, 't-1', 'c1', 'e1'), doc);
     assert.deepEqual(
-      queries.map((q) => [q.sql, q.parameters]),
+      listOf(queries).map((q) => [q.sql, q.parameters]),
       [
         [
           'select "e"."document", "e"."kind" from "claim_events" as "e" inner join "claims" as "c" ' +

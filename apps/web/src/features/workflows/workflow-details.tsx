@@ -3,6 +3,7 @@ import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button } from '../../shared/ui/button.tsx';
+import type { ColumnFilter } from '../../shared/ui/column-filters.tsx';
 import { Dialog } from '../../shared/ui/dialog.tsx';
 import { FormActions } from '../../shared/ui/field.tsx';
 import { Input } from '../../shared/ui/input.tsx';
@@ -10,6 +11,12 @@ import { Select } from '../../shared/ui/select.tsx';
 import type { GraphDetails, GraphKind } from './client.ts';
 
 export const kindLabel = (kind: GraphKind) => (kind === 'workflow' ? 'Workflow' : 'Subworkflow');
+
+export const KIND_FILTER: ColumnFilter = {
+  key: 'kind',
+  label: 'Kind',
+  labelOf: (o) => kindLabel(o.value === 'node' ? 'node' : 'workflow')
+};
 
 const GRAPH_KINDS = [
   { value: 'workflow', label: 'Workflow' },

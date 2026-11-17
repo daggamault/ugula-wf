@@ -26,7 +26,7 @@ export type ClaimSearch = {
   number: string;
 };
 
-type ClaimQuery = Partial<ClaimSearch> & { status: 'open' | 'all'; patientId?: string };
+type ClaimQuery = Partial<ClaimSearch> & { patientId?: string };
 
 export const claimSearchOf = (query: URLSearchParams): ClaimSearch => ({
   firstName: query.get('firstName') ?? '',
@@ -39,7 +39,7 @@ const listQuery = (query: ClaimQuery, page: string) => {
   const filters = new URLSearchParams(
     Object.entries(query).flatMap(([k, v]) => (v?.trim() ? [[k, v.trim()]] : []))
   );
-  return `${filters}&${page}`;
+  return [filters.toString(), page].filter(Boolean).join('&');
 };
 
 type EventAdjustment = {

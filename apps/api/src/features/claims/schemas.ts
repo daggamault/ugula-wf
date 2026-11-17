@@ -1,5 +1,6 @@
-import { CLAIM_TASK_KEYS } from '@ugula/billing';
+import { CLAIM_STATUSES, CLAIM_TASK_KEYS } from '@ugula/billing';
 import * as v from 'valibot';
+import { facetValues } from '../../shared/facets.ts';
 import { uuid } from '../../shared/http.ts';
 import { pageEntries } from '../../shared/paging.ts';
 
@@ -21,7 +22,8 @@ export type ClaimSort = (typeof CLAIM_SORTS)[number];
 const name = v.optional(v.pipe(v.string(), v.trim(), v.maxLength(60)));
 
 export const searchClaimsQuery = v.object({
-  status: v.optional(v.picklist(['open', 'all']), 'open'),
+  status: facetValues(v.picklist(CLAIM_STATUSES)),
+  waiting: facetValues(v.pipe(v.string(), v.maxLength(60))),
   firstName: name,
   lastName: name,
   birthDate: v.optional(v.pipe(v.string(), v.isoDate('Use a date like 1980-01-02'))),

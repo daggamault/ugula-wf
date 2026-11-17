@@ -57,9 +57,12 @@ describe('user routes', () => {
     const { service, calls } = recordingService();
     const access = testAccess();
     const request = withSession(createUserRoutes(service), access);
-    assert.deepEqual(await send(request, '/?q=ada&sort=email'), [200, { called: 'search' }]);
+    assert.deepEqual(await send(request, `/?q=ada&sort=email&role=${ID}`), [
+      200,
+      { called: 'search' }
+    ]);
     assert.deepEqual(calls, [
-      ['search', access, { q: 'ada', page: 1, pageSize: 25, sort: 'email', dir: 'asc' }]
+      ['search', access, { q: 'ada', role: [ID], page: 1, pageSize: 25, sort: 'email', dir: 'asc' }]
     ]);
   });
 
@@ -199,9 +202,13 @@ describe('invitation routes', () => {
     const { service, calls } = recordingService();
     const access = testAccess();
     const request = withSession(createInvitationRoutes(service), access);
-    assert.deepEqual(await send(request, '/?q=ada'), [200, { called: 'invitations' }]);
+    assert.deepEqual(await send(request, `/?q=ada&role=${ID}`), [200, { called: 'invitations' }]);
     assert.deepEqual(calls, [
-      ['invitations', access, { q: 'ada', page: 1, pageSize: 25, sort: 'expires', dir: 'asc' }]
+      [
+        'invitations',
+        access,
+        { q: 'ada', role: [ID], page: 1, pageSize: 25, sort: 'expires', dir: 'asc' }
+      ]
     ]);
   });
 
@@ -272,6 +279,7 @@ describe('invitation routes', () => {
         }
       ]
     );
+    assert.equal((await send(request, '/?role=nope'))[0], 400);
     assert.deepEqual(await send(request, '/nope/resend', { method: 'POST' }), [400, BAD_ID]);
     assert.deepEqual(await send(request, '/nope', { method: 'DELETE' }), [400, BAD_ID]);
     assert.equal(calls.length, 0);

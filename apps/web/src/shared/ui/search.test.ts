@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
-import { render, screen, userEvent } from '../testing-dom.ts';
-import { type Page, searchStateOf } from '../url-state.ts';
+import { render, screen, userEvent, within } from '../testing-dom.ts';
+import { type Facets, type Page, searchStateOf } from '../url-state.ts';
 import type { Resource } from '../use-resource.ts';
+import type { ColumnFilter } from './column-filters.tsx';
 import { Search } from './search.tsx';
 
 type Row = { id: string };
 
-const spec = { sorts: { name: 'asc' }, sort: 'name' } as const;
+const spec = { sorts: { name: 'asc' }, sort: 'name', filters: ['status'] } as const;
+
+const STATUS: ColumnFilter = { key: 'status', label: 'Status' };
 
 const resource = (over: Partial<Resource<Page<Row>>>): Resource<Page<Row>> => ({
   data: undefined,
@@ -18,13 +21,13 @@ const resource = (over: Partial<Resource<Page<Row>>>): Resource<Page<Row>> => ({
   ...over
 });
 
-const loaded = (items: Row[], total = items.length) =>
-  resource({ data: { items, total, page: 1, pageSize: 25 } });
+const loaded = (items: Row[], total = items.length, facets?: Facets) =>
+  resource({ data: { items, total, page: 1, pageSize: 25, ...(facets ? { facets } : {}) } });
 
 const show = (
   query: string,
   results: Resource<Page<Row>>,
-  extra: { isFiltered?: boolean; filters?: ReturnType<typeof createElement> } = {}
+  extra: { filters?: readonly ColumnFilter[] } = {}
 ) => {
   window.history.replaceState(null, '', `/imports${query ? `?${query}` : ''}`);
   const shown: (readonly Row[])[] = [];
@@ -69,9 +72,44 @@ describe('Search', () => {
     );
   });
 
-  it('shows extra filters beside the search box', () => {
-    show('', loaded([]), { filters: createElement('button', { type: 'button' }, 'Status') });
-    assert.equal(screen.getByRole('button', { name: 'Status' }).tagName, 'BUTTON');
+  it('shows a filter for each column beside the search box, with counts from the database', async () => {
+    show('', loaded([{ id: 'a' }], 1, { status: [{ value: 'open', count: 4 }] }), {
+      filters: [STATUS]
+    });
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Status' }));
+    assert.equal(
+      within(screen.getByRole('dialog', { name: 'Filter by Status' }))
+        .getByRole('checkbox', {
+          name: /open/
+        })
+        .closest('label')?.textContent,
+      'open4'
+    );
+  });
+
+  it('keeps the last counts while the next page of results loads', async () => {
+    const props = {
+      label: 'Imports',
+      path: '/imports',
+      search: searchStateOf('/imports', new URLSearchParams(), spec),
+      filters: [STATUS],
+      empty: { title: 'No Imports Yet' },
+      children: () => null
+    };
+    const { rerender } = render(
+      createElement(Search<Row>, {
+        ...props,
+        results: loaded([{ id: 'a' }], 1, { status: [{ value: 'open', count: 4 }] })
+      })
+    );
+    rerender(createElement(Search<Row>, { ...props, results: resource({ loading: true }) }));
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Status' }));
+    assert.ok(screen.getByRole('checkbox', { name: /open/ }));
+  });
+
+  it('shows no filters when the list has none', () => {
+    show('', loaded([]));
+    assert.ok(!screen.queryByRole('button', { name: 'Status' }));
   });
 
   it('renders the results with pagination', () => {
@@ -123,12 +161,16 @@ describe('Search', () => {
     );
   });
 
-  it('explains filters without matches', () => {
-    show('', loaded([]), { isFiltered: true });
+  it('explains filters without matches and offers to clear them', () => {
+    show('status=open&sort=name', loaded([]), { filters: [STATUS] });
     assert.equal(emptyTitle(), 'No Matching Imports');
     assert.equal(
       screen.getByText(/^Nothing matches/).textContent,
       'Nothing matches these filters.'
+    );
+    assert.equal(
+      screen.getByRole('link', { name: 'Clear Filters' }).getAttribute('href'),
+      '/imports?sort=name'
     );
   });
 

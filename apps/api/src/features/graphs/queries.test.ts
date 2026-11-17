@@ -46,10 +46,18 @@ const row = {
   total: '1'
 };
 
+const isFacet = (sql: string) => sql.includes('group by 1');
+const pageOf = <Q extends { sql: string }>(queries: readonly Q[]) =>
+  queries.find((q) => !isFacet(q.sql));
+const NO_FACETS = { kind: [], scope: [] } as const;
+const ALL = { ...BASE, ...NO_FACETS };
+
 describe('searchGraphs', () => {
-  it('maps a page of graphs with versions, override links and staleness', async () => {
-    const { db } = createRecordingDb(() => [row]);
-    assert.deepEqual(await searchGraphs(db, S, { ...BASE, show: 'customized' }), {
+  it('maps a page of graphs with versions, override links, staleness and facets', async () => {
+    const { db } = createRecordingDb((q) =>
+      isFacet(q.sql) ? [{ value: 'node', label: null, count: '4' }] : [row]
+    );
+    assert.deepEqual(await searchGraphs(db, S, ALL), {
       items: [
         {
           id: 'g1',
@@ -71,22 +79,25 @@ describe('searchGraphs', () => {
       ],
       total: 1,
       page: 1,
-      pageSize: 25
+      pageSize: 25,
+      facets: { kind: [{ value: 'node', count: 4 }], scope: [{ value: 'node', count: 4 }] }
     });
     await db.destroy();
   });
 
   it('marks system graphs', async () => {
-    const { db } = createRecordingDb(() => [{ ...row, scope: 'system', overrides: null }]);
-    const page = await searchGraphs(db, S, { ...BASE, show: 'blocks' });
+    const { db } = createRecordingDb((q) =>
+      isFacet(q.sql) ? [] : [{ ...row, scope: 'system', overrides: null }]
+    );
+    const page = await searchGraphs(db, S, ALL);
     assert.equal(page.items[0]?.isSystem, true);
     await db.destroy();
   });
 
   it('selects each visible graph with its scope, links and staleness', async () => {
     const { db, queries } = createRecordingDb();
-    await searchGraphs(db, S, { ...BASE, show: 'workflows' });
-    const sql = flat(queries[0]?.sql);
+    await searchGraphs(db, S, ALL);
+    const sql = flat(pageOf(queries)?.sql);
     assert.ok(
       sql.startsWith(
         `select "g"."id", "g"."key", "g"."name", "g"."kind", "g"."role", "g"."description", case when "g"."agency_id" is not null then 'agency' else 'system' end as "scope", "g"."updated_at", "v"."published", "v"."draft", "v"."trigger", ( select o.id from "graphs" o where o.id = (`
@@ -110,45 +121,57 @@ describe('searchGraphs', () => {
     await db.destroy();
   });
 
-  it('shows only workflows', async () => {
+  it('lists every visible graph when no facet is chosen', async () => {
     const { db, queries } = createRecordingDb();
-    await searchGraphs(db, S, { ...BASE, show: 'workflows' });
+    await searchGraphs(db, S, ALL);
     assert.equal(
-      tailOf(queries[0]?.sql),
-      `${LATERAL} where ${visibleTo('g', 5)} and "g"."kind" = $6 order by lower(g.name) asc nulls last, "g"."id" asc limit $7 offset $8`
+      tailOf(pageOf(queries)?.sql),
+      `${LATERAL} where ${visibleTo('g', 5)} order by lower(g.name) asc nulls last, "g"."id" asc limit $6 offset $7`
     );
-    assert.deepEqual(queries[0]?.parameters.slice(5), ['workflow', 25, 0]);
     await db.destroy();
   });
 
-  it('shows blocks matching a trimmed, escaped search of names and keys, sorted by kind', async () => {
+  it('filters by kind and scope and searches trimmed, escaped names and keys, sorted by kind', async () => {
     const { db, queries } = createRecordingDb();
-    await searchGraphs(db, S, { ...BASE, sort: 'kind', dir: 'desc', show: 'blocks', q: ' Ma_ch ' });
+    await searchGraphs(db, S, {
+      ...BASE,
+      sort: 'kind',
+      dir: 'desc',
+      kind: ['node'],
+      scope: ['agency'],
+      q: ' Ma_ch '
+    });
     assert.equal(
-      tailOf(queries[0]?.sql),
-      `${LATERAL} where ${visibleTo('g', 5)} and "g"."kind" != $6 and (lower(g.name) like $7 or lower(g.key) like $8) order by (g.kind, lower(g.name)) desc nulls last, "g"."id" desc limit $9 offset $10`
+      tailOf(pageOf(queries)?.sql),
+      `${LATERAL} where ${visibleTo('g', 5)} and (lower(g.name) like $6 or lower(g.key) like $7) and "g"."kind" in ($8) and case when "g"."agency_id" is not null then 'agency' else 'system' end in ($9) order by (g.kind, lower(g.name)) desc nulls last, "g"."id" desc limit $10 offset $11`
     );
-    assert.deepEqual(queries[0]?.parameters.slice(5), [
-      'workflow',
+    assert.deepEqual(pageOf(queries)?.parameters.slice(5), [
       '%ma\\_ch%',
       '%ma\\_ch%',
+      'node',
+      'agency',
       25,
       0
     ]);
     await db.destroy();
   });
 
-  it('shows everything the agency owns as customized, by kind or update time', async () => {
+  it('counts each facet under the search and the other facet', async () => {
     const { db, queries } = createRecordingDb();
-    await searchGraphs(db, S, { ...BASE, sort: 'kind', show: 'customized' });
-    await searchGraphs(db, S, { ...BASE, sort: 'updated', show: 'customized' });
-    const [byKind, byUpdate] = queries;
-    assert.equal(
-      tailOf(byKind?.sql),
-      `${LATERAL} where ${visibleTo('g', 5)} and "g"."agency_id" is not null order by (g.kind, lower(g.name)) asc nulls last, "g"."id" asc limit $6 offset $7`
-    );
+    await searchGraphs(db, S, { ...ALL, kind: ['node'], scope: ['agency'], q: 'x' });
+    const facets = queries.filter((q) => isFacet(q.sql)).map((q) => flat(q.sql));
+    assert.deepEqual(facets, [
+      `select "g"."kind"::text as "value", null as "label", count(*) as "count" from "graphs" as "g" where ${visibleTo('g', 1)} and (lower(g.name) like $2 or lower(g.key) like $3) and case when "g"."agency_id" is not null then 'agency' else 'system' end in ($4) and "g"."kind" is not null group by 1 order by count(*) desc, 1 limit $5`,
+      `select case when "g"."agency_id" is not null then 'agency' else 'system' end::text as "value", null as "label", count(*) as "count" from "graphs" as "g" where ${visibleTo('g', 1)} and (lower(g.name) like $2 or lower(g.key) like $3) and "g"."kind" in ($4) and case when "g"."agency_id" is not null then 'agency' else 'system' end is not null group by 1 order by count(*) desc, 1 limit $5`
+    ]);
+    await db.destroy();
+  });
+
+  it('sorts by update time', async () => {
+    const { db, queries } = createRecordingDb();
+    await searchGraphs(db, S, { ...ALL, sort: 'updated' });
     assert.ok(
-      flat(byUpdate?.sql).endsWith(
+      flat(pageOf(queries)?.sql).endsWith(
         'order by "g"."updated_at" asc nulls last, "g"."id" asc limit $6 offset $7'
       )
     );
@@ -159,17 +182,14 @@ describe('searchGraphs', () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('select count') ? [{ total: '30' }] : []
     );
-    assert.deepEqual(await searchGraphs(db, S, { ...BASE, page: 3, show: 'workflows' }), {
-      items: [],
-      total: 30,
-      page: 3,
-      pageSize: 25
-    });
+    const page = await searchGraphs(db, S, { ...ALL, page: 3, kind: ['workflow'] });
+    assert.equal(page.total, 30);
+    const count = queries.find((q) => q.sql.startsWith('select count'));
     assert.equal(
-      flat(queries[1]?.sql),
-      `select count(*) as "total" ${LATERAL} where ${visibleTo('g', 1)} and "g"."kind" = $2`
+      flat(count?.sql),
+      `select count(*) as "total" ${LATERAL} where ${visibleTo('g', 1)} and "g"."kind" in ($2)`
     );
-    assert.deepEqual(queries[1]?.parameters, ['a-1', 'workflow']);
+    assert.deepEqual(count?.parameters, ['a-1', 'workflow']);
     await db.destroy();
   });
 });
@@ -206,7 +226,7 @@ describe('graph reads', () => {
     await db.destroy();
   });
 
-  it('lists published built-in nodes and custom nodes that override nothing visible', async () => {
+  it('lists published standard nodes and custom nodes that override nothing visible', async () => {
     const { db, queries } = createRecordingDb();
     await listPublishedNodes(db, S);
     const sql = flat(queries[0]?.sql);

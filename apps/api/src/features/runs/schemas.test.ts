@@ -38,6 +38,8 @@ describe('startRunSchema', () => {
 describe('searchRunsQuery', () => {
   it('lists top-level runs newest first by default', () => {
     assert.deepEqual(v.parse(searchRunsQuery, {}), {
+      status: [],
+      workflow: [],
       root: 'true',
       page: 1,
       pageSize: 25,
@@ -50,15 +52,15 @@ describe('searchRunsQuery', () => {
     assert.deepEqual(
       v.parse(searchRunsQuery, {
         q: ' ingest ',
-        status: 'faulted',
-        graphId: ID,
+        status: 'faulted,failed',
+        workflow: 'demo.batch',
         root: 'false',
         sort: 'finished'
       }),
       {
         q: 'ingest',
-        status: 'faulted',
-        graphId: ID,
+        status: ['faulted', 'failed'],
+        workflow: ['demo.batch'],
         root: 'false',
         page: 1,
         pageSize: 25,
@@ -68,10 +70,10 @@ describe('searchRunsQuery', () => {
     );
   });
 
-  it('rejects unknown statuses, bad workflow ids, nesting flags, sorts and long searches', () => {
+  it('rejects unknown statuses, long workflow keys, nesting flags, sorts and long searches', () => {
     for (const bad of [
       { status: 'odd' },
-      { graphId: 'g1' },
+      { workflow: 'x'.repeat(121) },
       { root: 'yes' },
       { q: 'x'.repeat(81) },
       { sort: 'name' }

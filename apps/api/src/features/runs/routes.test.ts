@@ -31,13 +31,16 @@ const request = withSession(createRunRoutes(service));
 
 describe('run routes', () => {
   it('translate query filters', async () => {
-    await request('/?q=ingest&status=faulted&root=false&page=3&sort=workflow&dir=asc');
+    await request(
+      '/?q=ingest&status=faulted,failed&workflow=demo.batch&root=false&page=3&sort=workflow&dir=asc'
+    );
     assert.deepEqual(calls.at(-1), [
       't-1',
       {
         q: 'ingest',
-        status: 'faulted',
         rootOnly: false,
+        status: ['faulted', 'failed'],
+        workflow: ['demo.batch'],
         page: 3,
         pageSize: 25,
         sort: 'workflow',
@@ -117,17 +120,25 @@ describe('run input file uploads', () => {
 });
 
 describe('run route validation', () => {
-  it('pass graph filters and step narrowing through and reject bad values', async () => {
-    await request(`/?graphId=${ID}&root=true`);
+  it('pass top-level runs and step narrowing through and reject bad values', async () => {
+    await request('/?root=true');
     assert.deepEqual(calls.at(-1), [
       't-1',
-      { graphId: ID, rootOnly: true, page: 1, pageSize: 25, sort: 'started', dir: 'desc' }
+      {
+        rootOnly: true,
+        status: [],
+        workflow: [],
+        page: 1,
+        pageSize: 25,
+        sort: 'started',
+        dir: 'desc'
+      }
     ]);
     await request(`/${ID}/steps?node=n1&limit=20`);
     assert.deepEqual(calls.at(-1), ['t-1', ID, { node: 'n1', after: 0, limit: 20 }]);
     const count = calls.length;
     const bad = [
-      await request('/?graphId=nope'),
+      await request('/?status=running,odd'),
       await request('/?root=yes'),
       await request('/?sort=key'),
       await request(`/${ID}/steps?limit=0`),

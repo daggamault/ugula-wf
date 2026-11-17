@@ -194,18 +194,18 @@ describe('EditorActions', () => {
     assert.ok(screen.getByRole('link', { name: 'Hide Removed' }));
   });
 
-  it('customizes a built-in graph', async () => {
+  it('customizes a standard graph', async () => {
     const { calls, user } = show(system('system'), { signatureHref: null, removable: false });
     await user.click(button('Customize'));
     assert.deepEqual(calls, ['override']);
     assert.ok(!screen.queryByRole('button', { name: 'Edit as New Draft' }));
   });
 
-  it('opens the agency copy of a built-in graph instead of customizing it again', () => {
+  it('opens the agency copy of a standard graph instead of customizing it again', () => {
     show(system('agency'), { signatureHref: null, removable: false });
     assert.ok(!screen.queryByRole('button', { name: 'Customize' }));
     assert.equal(
-      screen.getByRole('link', { name: 'Open Agency Copy' }).getAttribute('href'),
+      screen.getByRole('link', { name: 'Open Custom Copy' }).getAttribute('href'),
       '/workflows/g9'
     );
   });

@@ -5,7 +5,16 @@ import { deleteFee, findFee, payerExists, searchFees, upsertFee } from './querie
 
 const PAYER = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
 
-const PAGE = { page: 1, pageSize: 25, sort: 'payer', dir: 'asc' } as const;
+const PAGE = {
+  page: 1,
+  pageSize: 25,
+  sort: 'payer',
+  dir: 'asc',
+  payer: [],
+  code: []
+} as const;
+
+const isFacet = (text: string) => text.includes('group by 1');
 
 const ROW = {
   id: 'f1',
@@ -18,12 +27,15 @@ const ROW = {
 
 describe('fee queries', () => {
   it('pages agency fees with their directory payer, defaults first', async () => {
-    const { db, queries } = createRecordingDb(() => [{ ...ROW, total: '1' }]);
+    const { db, queries } = createRecordingDb((q) =>
+      isFacet(q.sql) ? [] : [{ ...ROW, total: '1' }]
+    );
     assert.deepEqual(await searchFees(db, 't-1', PAGE), {
       items: [ROW],
       total: 1,
       page: 1,
-      pageSize: 25
+      pageSize: 25,
+      facets: { payer: [], code: [] }
     });
     assert.equal(
       queries[0]?.sql,
@@ -42,17 +54,52 @@ describe('fee queries', () => {
     assert.deepEqual(queries[0]?.parameters, ['t-1', '%a0\\_4%', '%a0\\_4%', 25, 0]);
   });
 
+  it('counts payers, with the default schedule as Default, and described codes', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.startsWith('select coalesce')
+        ? [
+            { value: PAYER, label: 'Medicare', count: '2' },
+            { value: 'default', label: 'Default', count: '1' }
+          ]
+        : isFacet(q.sql)
+          ? [{ value: 'A0427', label: 'ALS1 emergency (A0427)', count: '3' }]
+          : []
+    );
+    const page = await searchFees(db, 't-1', { ...PAGE, payer: ['default'], code: ['A0427'] });
+    assert.deepEqual(page.facets, {
+      payer: [
+        { value: PAYER, label: 'Medicare', count: 2 },
+        { value: 'default', label: 'Default', count: 1 }
+      ],
+      code: [{ value: 'A0427', label: 'ALS1 emergency (A0427)', count: 3 }]
+    });
+    const [filtered, payers, codes] = queries;
+    assert.ok(
+      filtered?.sql.includes(
+        `where "f"."agency_id" = $1 and coalesce(f.payer_id::text, 'default') in ($2) and "f"."code" in ($3) order by`
+      )
+    );
+    assert.deepEqual(filtered?.parameters, ['t-1', 'default', 'A0427', 25, 0]);
+    assert.equal(
+      payers?.sql,
+      `select coalesce(f.payer_id::text, 'default')::text as "value", min(coalesce(p.name, 'Default')::text) as "label", count(*) as "count" from "fee_schedules" as "f" left join "payers" as "p" on "p"."id" = "f"."payer_id" where "f"."agency_id" = $1 and "f"."code" in ($2) and coalesce(f.payer_id::text, 'default') is not null group by 1 order by count(*) desc, 1 limit $3`
+    );
+    assert.equal(
+      codes?.sql,
+      `select "f"."code"::text as "value", min((select c.description || ' (' || c.code || ')' from codes c where c.code_set = 'hcpcs' and c.code = f.code)::text) as "label", count(*) as "count" from "fee_schedules" as "f" left join "payers" as "p" on "p"."id" = "f"."payer_id" where "f"."agency_id" = $1 and coalesce(f.payer_id::text, 'default') in ($2) and "f"."code" is not null group by 1 order by count(*) desc, 1 limit $3`
+    );
+  });
+
   it('sorts by code or by when the fee last changed', async () => {
     const { db, queries } = createRecordingDb(() => []);
     await searchFees(db, 't-1', { ...PAGE, sort: 'code' });
     await searchFees(db, 't-1', { ...PAGE, sort: 'updated' });
+    const [byCode, byUpdated] = queries.filter((q) => !isFacet(q.sql));
     assert.ok(
-      queries[0]?.sql.endsWith(
-        'order by "f"."code" asc nulls last, "f"."id" asc limit $2 offset $3'
-      )
+      byCode?.sql.endsWith('order by "f"."code" asc nulls last, "f"."id" asc limit $2 offset $3')
     );
     assert.ok(
-      queries[1]?.sql.endsWith(
+      byUpdated?.sql.endsWith(
         'order by "f"."updated_at" asc nulls last, "f"."id" asc limit $2 offset $3'
       )
     );

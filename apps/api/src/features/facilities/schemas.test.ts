@@ -93,6 +93,7 @@ describe('facilitySchema', () => {
 describe('facility search queries', () => {
   it('pages facilities by name ascending by default', () => {
     assert.deepEqual(v.parse(searchFacilitiesQuery, {}), {
+      kind: [],
       page: 1,
       pageSize: 25,
       sort: 'name',
@@ -100,12 +101,19 @@ describe('facility search queries', () => {
     });
   });
 
-  it('sorts facilities by city with trimmed search text', () => {
+  it('sorts facilities by city with trimmed search text and chosen kinds', () => {
     assert.deepEqual(
-      v.parse(searchFacilitiesQuery, { q: ' oak ', sort: 'city', dir: 'desc', page: '2' }),
-      { q: 'oak', page: 2, pageSize: 25, sort: 'city', dir: 'desc' }
+      v.parse(searchFacilitiesQuery, {
+        q: ' oak ',
+        kind: 'snf,dialysis,snf',
+        sort: 'city',
+        dir: 'desc',
+        page: '2'
+      }),
+      { q: 'oak', kind: ['snf', 'dialysis'], page: 2, pageSize: 25, sort: 'city', dir: 'desc' }
     );
     assert.equal(v.safeParse(searchFacilitiesQuery, { sort: 'state' }).success, false);
+    assert.equal(v.safeParse(searchFacilitiesQuery, { kind: 'mall' }).success, false);
   });
 
   it('searches hospitals by trimmed text only', () => {

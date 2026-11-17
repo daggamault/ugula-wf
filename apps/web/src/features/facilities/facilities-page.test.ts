@@ -151,6 +151,40 @@ describe('FacilitiesPage', () => {
     );
   });
 
+  it('filters by kind from the counts in the database', async () => {
+    window.history.replaceState(null, '', '/facilities');
+    const { client, queries } = fakeClient({
+      search: async (query: string) => {
+        queries.push(query);
+        return {
+          ...pageOf(listed),
+          facets: {
+            kind: [
+              { value: 'snf', count: 3 },
+              { value: 'hospital', count: 5 }
+            ]
+          }
+        };
+      }
+    });
+    show(client);
+    await table();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Kind' }));
+    const panel = screen.getByRole('dialog', { name: 'Filter by Kind' });
+    assert.deepEqual(
+      within(panel)
+        .getAllByRole('checkbox')
+        .map((c) => c.closest('label')?.textContent),
+      ['Hospital5', 'Skilled nursing facility3']
+    );
+    await user.click(within(panel).getByRole('checkbox', { name: /Skilled/ }));
+    assert.equal(window.location.search, '?kind=snf');
+    await waitFor(() =>
+      assert.equal(queries.at(-1), 'page=1&pageSize=25&sort=name&dir=asc&kind=snf')
+    );
+  });
+
   it('suggests adding a facility when there are none', async () => {
     const { client } = fakeClient({ search: async () => pageOf([]) });
     show(client);

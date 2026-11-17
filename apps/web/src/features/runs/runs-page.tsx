@@ -1,42 +1,44 @@
 import { formatDateTime } from '../../shared/format.ts';
 import { isOnPage, LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
-import { FilterSelect } from '../../shared/ui/filter-select.tsx';
+import type { ColumnFilter } from '../../shared/ui/column-filters.tsx';
 import { Highlight } from '../../shared/ui/highlight.tsx';
 import { OpenLink, RowActions } from '../../shared/ui/icon-button.tsx';
 import { Page } from '../../shared/ui/page.tsx';
 import {
   RUN_STATUSES,
-  type RunStatus,
   RunStatusBadge,
   runStatusStyles
 } from '../../shared/ui/run-status-badge.tsx';
 import { Search } from '../../shared/ui/search.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
-import { type SearchView, useFilterHref, useSearchState } from '../../shared/url-state.ts';
+import { type SearchView, useSearchState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import type { RunSummary, RunsClient } from './client.ts';
 
 type RunsPageProps = {
   client: RunsClient;
   live: Live;
-  status: RunStatus | null;
 };
 
 const PATH = '/runs';
 
-export const statusOptions = (filterHref: (name: string, value: string | null) => string) => [
-  { value: '', label: 'All Statuses', href: filterHref('status', null) },
-  ...RUN_STATUSES.map((s) => ({
-    value: s,
-    label: runStatusStyles[s].label,
-    href: filterHref('status', s)
-  }))
-];
-
 const RUN_TABLE = {
   sorts: { started: 'desc', workflow: 'asc', status: 'asc', finished: 'desc' },
-  sort: 'started'
+  sort: 'started',
+  filters: ['status', 'workflow']
 } as const;
+
+const RUN_FILTERS: readonly ColumnFilter[] = [
+  {
+    key: 'status',
+    label: 'Status',
+    labelOf: (o) => {
+      const status = RUN_STATUSES.find((s) => s === o.value);
+      return status ? runStatusStyles[status].label : o.value;
+    }
+  },
+  { key: 'workflow', label: 'Workflow' }
+];
 
 export const RunsTable = ({
   runs,
@@ -95,12 +97,11 @@ export const RunsTable = ({
   </Table>
 );
 
-export const RunsPage = ({ client, live, status }: RunsPageProps) => {
+export const RunsPage = ({ client, live }: RunsPageProps) => {
   const search = useSearchState(PATH, RUN_TABLE);
-  const filterHref = useFilterHref(PATH);
   const runs = useResource(
-    `runs:${status ?? 'all'}:${search.apiQuery}`,
-    (signal) => client.list(status, search.apiQuery, signal),
+    `runs:${search.apiQuery}`,
+    (signal) => client.list(search.apiQuery, signal),
     30_000
   );
   const ids = runs.data?.items.map((r) => r.id) ?? [];
@@ -117,15 +118,7 @@ export const RunsPage = ({ client, live, status }: RunsPageProps) => {
         path={PATH}
         search={search}
         results={runs}
-        filters={
-          <FilterSelect
-            id="runs-status"
-            label="Status"
-            value={status ?? ''}
-            options={statusOptions(filterHref)}
-          />
-        }
-        isFiltered={status !== null}
+        filters={RUN_FILTERS}
         empty={{ title: 'No Runs Yet', children: 'Runs show up here as workflows start.' }}
       >
         {(items) => <RunsTable runs={items} search={search} />}

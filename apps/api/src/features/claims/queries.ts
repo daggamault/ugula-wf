@@ -1,14 +1,16 @@
-import { CLAIM_STATUSES, CLOSED_CLAIM_STATUSES, dailyNumberOf, nameKey } from '@ugula/billing';
+import { CLAIM_STATUSES, type ClaimStatus, dailyNumberOf, nameKey } from '@ugula/billing';
 import { type Db, DOCUMENTATION_COLUMNS, payerName } from '@ugula/db';
 import { sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
+import { facetCounts, whereFacets } from '../../shared/facets.ts';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { escapeLike } from '../../shared/search.ts';
 import { withDecision } from './decisions.ts';
 import type { ClaimEventSort, ClaimSort } from './schemas.ts';
 
 export type ClaimFilters = PageRequest<ClaimSort> & {
-  status: 'open' | 'all';
+  status: readonly ClaimStatus[];
+  waiting: readonly string[];
   firstName?: string | undefined;
   lastName?: string | undefined;
   birthDate?: string | undefined;
@@ -99,14 +101,24 @@ const claimOrder = (db: Db) => ({
   status: sql`array_position(array[${sql.join(CLAIM_STATUSES.map((s) => sql.lit(s)))}]::text[], c.status::text)`
 });
 
-const claimIds = (db: Db, agencyId: string, f: ClaimFilters) => {
+const NOT_WAITING = 'none';
+
+const claimFacets = (db: Db) => ({
+  status: { value: sql.ref('c.status') },
+  waiting: {
+    value: sql<string>`coalesce(${tasksOfClaim(db).select('t.queue').limit(sql.lit(1))}, ${sql.lit(NOT_WAITING)})`
+  }
+});
+
+type ClaimFacet = keyof ReturnType<typeof claimFacets>;
+
+const claimIds = (db: Db, agencyId: string, f: ClaimFilters, except?: ClaimFacet) => {
   let q = db
     .selectFrom('claims as c')
     .leftJoin('patients as p', 'p.id', 'c.patient_id')
     .leftJoin('import_reports as ir', 'ir.id', 'c.import_report_id')
     .select('c.id')
     .where('c.agency_id', '=', agencyId);
-  if (f.status === 'open') q = q.where('c.status', 'not in', CLOSED_CLAIM_STATUSES);
   if (f.patientId) q = q.where('c.patient_id', '=', f.patientId);
   if (f.firstName) {
     q = q.where(sql`lower(p.first_name)`, 'like', `${escapeLike(f.firstName.toLowerCase())}%`);
@@ -126,15 +138,18 @@ const claimIds = (db: Db, agencyId: string, f: ClaimFilters) => {
       ])
     );
   }
-  return q;
+  return whereFacets(q, claimFacets(db), f, except);
 };
 
 export const searchClaims = async (db: Db, agencyId: string, f: ClaimFilters) => {
-  const page = await paged(claimIds(db, agencyId, f), f, claimOrder(db), sql.ref('c.id'));
+  const [page, facets] = await Promise.all([
+    paged(claimIds(db, agencyId, f), f, claimOrder(db), sql.ref('c.id')),
+    facetCounts((except) => claimIds(db, agencyId, f, except), claimFacets(db))
+  ]);
   const ids = page.items.map((r) => r.id);
   const rows = ids.length ? await claimRows(db, agencyId).where('c.id', 'in', ids).execute() : [];
   const byId = new Map(rows.map((r) => [r.id, r]));
-  return { ...page, items: ids.flatMap((id) => byId.get(id) ?? []) };
+  return { ...page, items: ids.flatMap((id) => byId.get(id) ?? []), facets };
 };
 
 export const findClaim = (db: Db, agencyId: string, id: string) =>

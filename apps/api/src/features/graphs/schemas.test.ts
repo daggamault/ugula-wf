@@ -164,9 +164,10 @@ describe('graph rebase schema', () => {
 });
 
 describe('graph search query', () => {
-  it('shows workflows by name by default', () => {
+  it('shows every graph by name by default', () => {
     assert.deepEqual(v.parse(searchGraphsQuery, {}), {
-      show: 'workflows',
+      kind: [],
+      scope: [],
       page: 1,
       pageSize: 25,
       sort: 'name',
@@ -174,23 +175,32 @@ describe('graph search query', () => {
     });
   });
 
-  it('reads a trimmed search, view, page and sort', () => {
+  it('reads a trimmed search, facets, page and sort', () => {
     assert.deepEqual(
       v.parse(searchGraphsQuery, {
         q: '  Match ',
-        show: 'customized',
+        kind: 'node',
+        scope: 'agency,system',
         page: '2',
         pageSize: '50',
         sort: 'updated',
         dir: 'desc'
       }),
-      { q: 'Match', show: 'customized', page: 2, pageSize: 50, sort: 'updated', dir: 'desc' }
+      {
+        q: 'Match',
+        kind: ['node'],
+        scope: ['agency', 'system'],
+        page: 2,
+        pageSize: 50,
+        sort: 'updated',
+        dir: 'desc'
+      }
     );
   });
 
-  it('refuses unknown views and sorts, page zero and long searches', () => {
-    assert.deepEqual(issues(searchGraphsQuery, { show: 'system' }), [
-      'Invalid type: Expected ("workflows" | "blocks" | "customized") but received "system"'
+  it('refuses unknown facet values and sorts, page zero and long searches', () => {
+    assert.deepEqual(issues(searchGraphsQuery, { kind: 'workflow,table' }), [
+      'Invalid type: Expected ("workflow" | "node") but received "table"'
     ]);
     assert.deepEqual(issues(searchGraphsQuery, { sort: 'status' }), [
       'Invalid type: Expected ("name" | "kind" | "updated") but received "status"'

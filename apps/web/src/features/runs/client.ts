@@ -77,8 +77,8 @@ const FINISHED_STATUSES: readonly RunStatus[] = ['completed', 'failed', 'cancell
 export const isFinished = (status: RunStatus) => FINISHED_STATUSES.includes(status);
 
 export const createRunsClient = (api: Api) => ({
-  list: (status: RunStatus | null, query: string, signal?: AbortSignal) =>
-    api.get<Page<RunSummary>>(`/api/runs?${status ? `status=${status}&` : ''}${query}`, signal),
+  list: (query: string, signal?: AbortSignal) =>
+    api.get<Page<RunSummary>>(`/api/runs?${query}`, signal),
   find: (id: string, signal?: AbortSignal) =>
     api.get<RunDetail>(`/api/runs/${encodeURIComponent(id)}`, signal),
   graphs: async (id: string) =>

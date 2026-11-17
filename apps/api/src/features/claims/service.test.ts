@@ -284,7 +284,8 @@ describe('claim service', () => {
   it('searches the claims of the agency', async () => {
     const { service, queries } = setup({ row: null });
     const filters = {
-      status: 'open' as const,
+      status: [],
+      waiting: [],
       page: 1,
       pageSize: 25,
       sort: 'created' as const,
@@ -292,9 +293,15 @@ describe('claim service', () => {
     };
     assert.deepEqual(await service.search('t', filters), {
       ok: true,
-      value: { items: [], total: 0, page: 1, pageSize: 25 }
+      value: {
+        items: [],
+        total: 0,
+        page: 1,
+        pageSize: 25,
+        facets: { status: [], waiting: [] }
+      }
     });
-    assert.equal(queries[0]?.parameters.includes('t'), true);
+    assert.ok(queries.every((q) => q.parameters.includes('t')));
   });
 
   it('pages the history of claims of the agency only', async () => {

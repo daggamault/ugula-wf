@@ -24,7 +24,7 @@ const spec = (calls: string[]) => ({
 });
 
 describe('findBaseVersion', () => {
-  it('bases agency copies on the newest published built-in', async () => {
+  it('bases agency copies on the newest published standard', async () => {
     const { db, queries } = createRecordingDb((q) => {
       if (q.sql.startsWith('select "id" from')) return [{ id: 'sys' }];
       return [NEWEST];
@@ -38,7 +38,7 @@ describe('findBaseVersion', () => {
 });
 
 describe('compareCopy', () => {
-  it('has nothing to compare for built-ins and reports a base that moved on', async () => {
+  it('has nothing to compare for standards and reports a base that moved on', async () => {
     const none = createRecordingDb();
     assert.deepEqual(await compareCopy(none.db, 'graphs', { id: 'g', key: 'k', scope: 'system' }), {
       mine: null,

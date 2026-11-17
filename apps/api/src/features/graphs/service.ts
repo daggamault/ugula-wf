@@ -178,7 +178,7 @@ export const createGraphService = ({
   const editable = async (tx: Db, access: AgencyAccess, graphId: string) => {
     const graph = await findGraph(tx, scopeIds(access), graphId);
     if (!graph) return notFound;
-    if (graph.scope === 'system') return fail('forbidden', 'Built-in graphs are read-only');
+    if (graph.scope === 'system') return fail('forbidden', 'Standard graphs are read-only');
     if (!canEditScope(access, graph.scope, graph.role)) return forbidden();
     await lockOwner(tx, 'graphs', graphId);
     return ok(graph);
@@ -239,7 +239,7 @@ export const createGraphService = ({
       if (!canEditScope(access, 'agency', role)) return forbidden();
       const key = input.key ?? newKey();
       if (await findSystem(db, 'graphs', key)) {
-        return fail('conflict', 'A built-in graph uses that key; override it instead');
+        return fail('conflict', 'A standard graph uses that key; override it instead');
       }
       try {
         return ok(
@@ -349,7 +349,7 @@ export const createGraphService = ({
         if (graph.value.overrides) {
           return fail(
             'conflict',
-            'A customized built-in keeps the name and description it was copied with'
+            'A customized standard graph keeps the name and description it was copied with'
           );
         }
         await updateGraphDetails(tx, graphId, details);

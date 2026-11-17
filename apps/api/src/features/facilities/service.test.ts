@@ -31,13 +31,23 @@ const TAKEN = {
 
 describe('facility service', () => {
   it('searches, creates, finds, updates and deletes agency facilities', async () => {
-    const { db, queries } = createRecordingDb(() => [{ id: 'f1', total: '1' }]);
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.includes('group by 1')
+        ? [{ value: 'snf', label: null, count: '1' }]
+        : [{ id: 'f1', total: '1' }]
+    );
     const service = createFacilityService({ db });
     assert.deepEqual(
-      await service.search('t-1', { page: 1, pageSize: 25, sort: 'name', dir: 'asc' }),
+      await service.search('t-1', { page: 1, pageSize: 25, sort: 'name', dir: 'asc', kind: [] }),
       {
         ok: true,
-        value: { items: [{ id: 'f1' }], total: 1, page: 1, pageSize: 25 }
+        value: {
+          items: [{ id: 'f1' }],
+          total: 1,
+          page: 1,
+          pageSize: 25,
+          facets: { kind: [{ value: 'snf', count: 1 }] }
+        }
       }
     );
     assert.deepEqual(await service.create('t-1', input), { ok: true, value: { id: 'f1' } });

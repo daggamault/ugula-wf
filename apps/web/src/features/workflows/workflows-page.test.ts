@@ -3,12 +3,11 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { idleLive } from '../../shared/testing.ts';
 import { render, screen, userEvent, waitFor, within } from '../../shared/testing-dom.ts';
-import { type Page, searchStateOf } from '../../shared/url-state.ts';
+import { type Facets, type Page, searchStateOf } from '../../shared/url-state.ts';
 import type { GraphSummary, WorkflowsClient } from './client.ts';
 import {
   GRAPH_TABLE,
-  graphFilterOf,
-  graphsQueryOf,
+  newKindOf,
   startsLabel,
   WorkflowsPage,
   WorkflowsTable
@@ -80,43 +79,36 @@ const cellsOf = (row: HTMLElement) =>
     .slice(0, 6)
     .map((c) => c.lastElementChild?.textContent);
 
-const pageOf = (items: GraphSummary[]): Page<GraphSummary> => ({
+const pageOf = (items: GraphSummary[], facets?: Facets): Page<GraphSummary> => ({
   items,
   total: items.length,
   page: 1,
-  pageSize: 25
+  pageSize: 25,
+  ...(facets ? { facets } : {})
 });
 
-const fakeClient = (items: GraphSummary[] = graphs) => {
+const fakeClient = (items: GraphSummary[] = graphs, facets?: Facets) => {
   const queries: string[] = [];
   const client = {
     search: async (query: string) => {
       queries.push(query);
-      return pageOf(items);
+      return pageOf(items, facets);
     }
   } as unknown as WorkflowsClient;
   return { client, queries };
 };
 
-const showPage = (client: WorkflowsClient, show: Parameters<typeof WorkflowsPage>[0]['show']) =>
-  render(createElement(WorkflowsPage, { client, live: idleLive, show }));
+const showPage = (client: WorkflowsClient, query = '') => {
+  window.history.replaceState(null, '', `/workflows${query ? `?${query}` : ''}`);
+  return render(createElement(WorkflowsPage, { client, live: idleLive }));
+};
 
-describe('graphFilterOf', () => {
-  it('reads a known kind filter and defaults to workflows', () => {
-    assert.equal(graphFilterOf(new URLSearchParams()), 'workflows');
-    assert.equal(graphFilterOf(new URLSearchParams('kind=blocks')), 'blocks');
-    assert.equal(graphFilterOf(new URLSearchParams('kind=customized')), 'customized');
-    assert.equal(graphFilterOf(new URLSearchParams('kind=mine')), 'workflows');
-    assert.equal(graphFilterOf(new URLSearchParams('kind=nope')), 'workflows');
-  });
-});
-
-describe('graphsQueryOf', () => {
-  it('asks the API for the chosen filter after the search query', () => {
-    assert.equal(
-      graphsQueryOf(search('q=bat').apiQuery, 'customized'),
-      'q=bat&page=1&pageSize=25&sort=name&dir=asc&show=customized'
-    );
+describe('newKindOf', () => {
+  it('offers a subworkflow only when the list shows subworkflows alone', () => {
+    assert.equal(newKindOf({}), 'workflow');
+    assert.equal(newKindOf({ kind: [] }), 'workflow');
+    assert.equal(newKindOf({ kind: ['node'] }), 'node');
+    assert.equal(newKindOf({ kind: ['node', 'workflow'] }), 'workflow');
   });
 });
 
@@ -124,10 +116,10 @@ describe('WorkflowsTable', () => {
   it('lists each graph with its kind, what starts it, scope and versions', () => {
     showTable();
     assert.deepEqual(rowsOf().map(cellsOf), [
-      ['Batch', 'Workflow', 'When Someone Runs It', 'Agency', 'v2', 'v3'],
-      ['Payer Rule', 'Subworkflow', '—', 'Built-in', '—', '—'],
-      ['Match', 'Subworkflow', '—', 'Built-inHas Your Copy', 'v2', '—'],
-      ['Match', 'Subworkflow', '—', 'AgencyBase Updated', 'v2', '—']
+      ['Batch', 'Workflow', 'When Someone Runs It', 'Custom', 'v2', 'v3'],
+      ['Payer Rule', 'Subworkflow', '—', 'Standard', '—', '—'],
+      ['Match', 'Subworkflow', '—', 'StandardHas Custom Copy', 'v2', '—'],
+      ['Match', 'Subworkflow', '—', 'CustomBase Updated', 'v2', '—']
     ]);
   });
 
@@ -190,23 +182,69 @@ describe('WorkflowsTable', () => {
 });
 
 describe('WorkflowsPage', () => {
-  it('searches graphs of the chosen filter and lists them', async () => {
+  it('lists every graph and asks for the chosen kinds and scopes', async () => {
     const { client, queries } = fakeClient();
-    showPage(client, 'customized');
+    showPage(client, 'kind=node&scope=agency,system');
     await screen.findByRole('table', { name: 'Workflows and subworkflows' });
     assert.equal(rowsOf().length, 4);
-    assert.deepEqual(queries, ['page=1&pageSize=25&sort=name&dir=asc&show=customized']);
+    assert.deepEqual(queries, [
+      'page=1&pageSize=25&sort=name&dir=asc&kind=node&scope=agency%2Csystem'
+    ]);
+  });
+
+  it('filters by kind from the counts in the database', async () => {
+    const { client } = fakeClient(graphs, {
+      kind: [
+        { value: 'workflow', count: 4 },
+        { value: 'node', count: 9 }
+      ],
+      scope: [{ value: 'system', count: 13 }]
+    });
+    showPage(client);
+    await screen.findByRole('table');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Kind' }));
+    const panel = screen.getByRole('dialog', { name: 'Filter by Kind' });
+    assert.deepEqual(
+      within(panel)
+        .getAllByRole('checkbox')
+        .map((c) => c.closest('label')?.textContent),
+      ['Subworkflow9', 'Workflow4']
+    );
+    await user.click(within(panel).getByRole('checkbox', { name: /Subworkflow/ }));
+    assert.equal(window.location.search, '?kind=node');
+    await screen.findByRole('table');
+    assert.ok(screen.getByRole('button', { name: 'New Subworkflow' }));
+    assert.equal(screen.getByRole('button', { name: /^Kind/ }).textContent, 'Kind1 selected');
+  });
+
+  it('names scopes Standard and Custom', async () => {
+    const { client } = fakeClient(graphs, {
+      kind: [],
+      scope: [
+        { value: 'system', count: 3 },
+        { value: 'agency', count: 1 }
+      ]
+    });
+    showPage(client);
+    await screen.findByRole('table');
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Scope' }));
+    assert.deepEqual(
+      within(screen.getByRole('dialog', { name: 'Filter by Scope' }))
+        .getAllByRole('checkbox')
+        .map((c) => c.closest('label')?.textContent),
+      ['Custom1', 'Standard3']
+    );
   });
 
   it('creates a workflow from a name and opens it, without asking for a key', async () => {
-    window.history.replaceState(null, '', '/workflows');
     const { client } = fakeClient();
     const created: unknown[] = [];
     client.create = async (graph) => {
       created.push(graph);
       return { id: 'g9' };
     };
-    showPage(client, 'workflows');
+    showPage(client);
     await screen.findByRole('table');
     assert.ok(screen.getByRole('heading', { level: 1, name: 'Workflows' }));
     const user = userEvent.setup();
@@ -227,7 +265,7 @@ describe('WorkflowsPage', () => {
     client.create = async () => {
       throw new Error('Name is taken');
     };
-    showPage(client, 'workflows');
+    showPage(client);
     await screen.findByRole('table');
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'New Workflow' }));
@@ -240,7 +278,7 @@ describe('WorkflowsPage', () => {
 
   it('offers the customization map', async () => {
     const { client } = fakeClient();
-    showPage(client, 'workflows');
+    showPage(client);
     await screen.findByRole('table');
     assert.equal(
       screen.getByRole('link', { name: 'Customization Map' }).getAttribute('href'),
@@ -251,55 +289,29 @@ describe('WorkflowsPage', () => {
 
   it('offers a new subworkflow when showing subworkflows', async () => {
     const { client } = fakeClient();
-    showPage(client, 'blocks');
+    showPage(client, 'kind=node');
     await screen.findByRole('table');
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'New Subworkflow' }));
     assert.ok(screen.getByRole('form', { name: 'Create Subworkflow' }));
-    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+  });
+
+  it('offers to clear filters that match nothing', async () => {
+    const { client } = fakeClient([]);
+    showPage(client, 'kind=node&scope=agency');
+    await screen.findByRole('heading', { name: 'No Matching Workflows' });
     assert.equal(
-      document.querySelector('search')?.getAttribute('aria-label'),
-      'Search Subworkflows'
+      screen.getByRole('link', { name: 'Clear Filters' }).getAttribute('href'),
+      '/workflows'
     );
-    assert.equal(screen.getByRole('button', { name: 'Show' }).textContent, 'Subworkflows');
   });
 
-  it('switches the filter by navigating to its kind', async () => {
-    window.history.replaceState(null, '', '/workflows?kind=blocks');
-    const { client } = fakeClient();
-    showPage(client, 'blocks');
-    await screen.findByRole('table');
-    const user = userEvent.setup();
-    assert.deepEqual(
-      within(screen.getByRole('listbox', { name: 'Show' }))
-        .getAllByRole('option')
-        .map((o) => o.textContent),
-      ['Workflows', 'Subworkflows', 'Customized']
-    );
-    await user.click(screen.getByRole('button', { name: 'Show' }));
-    await user.click(screen.getByRole('option', { name: 'Customized' }));
-    assert.equal(window.location.search, '?kind=customized');
-    await user.click(screen.getByRole('button', { name: 'Show' }));
-    await user.click(screen.getByRole('option', { name: 'Workflows' }));
-    assert.equal(window.location.search, '');
+  it('says when there are no workflows at all', async () => {
+    const { client } = fakeClient([]);
+    showPage(client);
+    assert.ok(await screen.findByRole('heading', { name: 'No Workflows Yet' }));
+    assert.ok(!screen.queryByRole('table'));
   });
-
-  for (const [show, title, text] of [
-    [
-      'customized',
-      'Nothing Customized Yet',
-      'Every workflow runs as built. Customize a built-in one or create your own to change it.'
-    ],
-    ['blocks', 'Nothing Here Yet', 'Nothing matches this filter.']
-  ] as const) {
-    it(`explains an empty ${show} list`, async () => {
-      const { client } = fakeClient([]);
-      showPage(client, show);
-      const heading = await screen.findByRole('heading', { name: title });
-      assert.equal(heading.nextElementSibling?.textContent, text);
-      assert.ok(!screen.queryByRole('table'));
-    });
-  }
 
   it('shows why the graphs could not be loaded', async () => {
     const client = {
@@ -307,7 +319,7 @@ describe('WorkflowsPage', () => {
         throw new Error('Server down');
       }
     } as unknown as WorkflowsClient;
-    showPage(client, 'workflows');
+    showPage(client);
     await waitFor(() => assert.equal(screen.getByRole('alert').textContent, 'Server down'));
   });
 });

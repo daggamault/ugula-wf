@@ -100,9 +100,7 @@ describe('PatientClaims', () => {
         'StatusSubmitted'
       ]
     );
-    assert.deepEqual(calls, [
-      [{ status: 'all', patientId: 'p1' }, 'page=1&pageSize=25&sort=created&dir=desc']
-    ]);
+    assert.deepEqual(calls, [[{ patientId: 'p1' }, 'page=1&pageSize=25&sort=created&dir=desc']]);
   });
 
   it('opens a claim and comes back to the patient', async () => {

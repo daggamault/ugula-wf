@@ -8,45 +8,36 @@ import { navigate } from '../../shared/router.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { emptyValue } from '../../shared/ui/empty-state.tsx';
-import { FilterSelect } from '../../shared/ui/filter-select.tsx';
 import { Highlight } from '../../shared/ui/highlight.tsx';
 import { EditLink, RowActions, RunLink } from '../../shared/ui/icon-button.tsx';
 import { Page } from '../../shared/ui/page.tsx';
 import { Search } from '../../shared/ui/search.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
-import { type SearchView, useFilterHref, useSearchState } from '../../shared/url-state.ts';
+import { type FilterValues, type SearchView, useSearchState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import type { GraphKind, GraphSummary, WorkflowsClient } from './client.ts';
-import { ScopeBadge, StaleBadge } from './scope-badges.tsx';
-import { kindLabel, WorkflowDetailsDialog } from './workflow-details.tsx';
+import { SCOPE_FILTER, ScopeBadge, StaleBadge } from './scope-badges.tsx';
+import { KIND_FILTER, kindLabel, WorkflowDetailsDialog } from './workflow-details.tsx';
 
 type WorkflowsPageProps = {
   client: WorkflowsClient;
   live: Live;
-  show: GraphFilter;
 };
 
 export const WORKFLOWS_PATH = '/workflows';
 
 export const CUSTOMIZED_PATH = `${WORKFLOWS_PATH}/customized`;
 
-type GraphFilter = 'workflows' | 'blocks' | 'customized';
-
-const GRAPH_FILTERS: readonly { value: GraphFilter; label: string }[] = [
-  { value: 'workflows', label: 'Workflows' },
-  { value: 'blocks', label: 'Subworkflows' },
-  { value: 'customized', label: 'Customized' }
-];
-
-export const graphFilterOf = (query: URLSearchParams): GraphFilter =>
-  GRAPH_FILTERS.find((f) => f.value === query.get('kind'))?.value ?? 'workflows';
-
 export const GRAPH_TABLE = {
   sorts: { name: 'asc', kind: 'desc', updated: 'desc' },
-  sort: 'name'
+  sort: 'name',
+  filters: ['kind', 'scope']
 } as const;
 
-export const graphsQueryOf = (apiQuery: string, show: GraphFilter) => `${apiQuery}&show=${show}`;
+export const newKindOf = (filters: FilterValues): GraphKind => {
+  const [only, ...rest] = filters.kind ?? [];
+  return only === 'node' && !rest.length ? 'node' : 'workflow';
+};
 
 export const startsLabel = (
   g: Pick<GraphSummary, 'kind' | 'trigger'>,
@@ -93,7 +84,7 @@ export const WorkflowsTable = ({
           <TableCell>
             <span className="flex flex-wrap items-center gap-2">
               <ScopeBadge scope={g.scope} />
-              {g.overriddenBy ? <Badge intent="custom">Has Your Copy</Badge> : null}
+              {g.overriddenBy ? <Badge intent="custom">Has Custom Copy</Badge> : null}
               <StaleBadge stale={g.isStale} />
             </span>
           </TableCell>
@@ -115,13 +106,13 @@ export const WorkflowsTable = ({
   );
 };
 
-export const WorkflowsPage = ({ client, live, show }: WorkflowsPageProps) => {
+export const WorkflowsPage = ({ client, live }: WorkflowsPageProps) => {
   const search = useSearchState(WORKFLOWS_PATH, GRAPH_TABLE);
-  const query = graphsQueryOf(search.apiQuery, show);
-  const graphs = useResource(`graphs:${query}`, (signal) => client.search(query, signal));
+  const graphs = useResource(`graphs:${search.apiQuery}`, (signal) =>
+    client.search(search.apiQuery, signal)
+  );
   useReconnect(live, graphs.reload);
-  const filterHref = useFilterHref(WORKFLOWS_PATH);
-  const newKind: GraphKind = show === 'blocks' ? 'node' : 'workflow';
+  const newKind = newKindOf(search.filters);
   const [isCreating, setCreating] = useState(false);
   const addLabel = newKind === 'node' ? 'New Subworkflow' : 'New Workflow';
   return (
@@ -152,31 +143,12 @@ export const WorkflowsPage = ({ client, live, show }: WorkflowsPageProps) => {
         />
       ) : null}
       <Search
-        label={show === 'blocks' ? 'Subworkflows' : 'Workflows'}
+        label="Workflows"
         path={WORKFLOWS_PATH}
         search={search}
         results={graphs}
-        filters={
-          <FilterSelect
-            id="workflows-kind"
-            label="Show"
-            value={show}
-            options={GRAPH_FILTERS.map((f) => ({
-              value: f.value,
-              label: f.label,
-              href: filterHref('kind', f.value === 'workflows' ? null : f.value)
-            }))}
-          />
-        }
-        empty={
-          show === 'customized'
-            ? {
-                title: 'Nothing Customized Yet',
-                children:
-                  'Every workflow runs as built. Customize a built-in one or create your own to change it.'
-              }
-            : { title: 'Nothing Here Yet', children: 'Nothing matches this filter.' }
-        }
+        filters={[KIND_FILTER, SCOPE_FILTER]}
+        empty={{ title: 'No Workflows Yet' }}
       >
         {(items) => <WorkflowsTable graphs={items} search={search} />}
       </Search>

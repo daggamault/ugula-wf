@@ -40,7 +40,7 @@ const SAVED = {
 
 describe('facility routes', () => {
   it('lists, reads, creates, updates and deletes facilities of the session agency', async () => {
-    const list = await request('/?q=sun');
+    const list = await request('/?q=sun&kind=snf,hospital');
     assert.equal(list.status, 200);
     assert.deepEqual(await list.json(), { items: [], total: 0, page: 1, pageSize: 25 });
     assert.deepEqual(await (await request('/hospitals?q=mercy')).json(), { hospitals: [] });
@@ -52,7 +52,11 @@ describe('facility routes', () => {
     assert.equal((await request(`/${ID}`, { method: 'PUT', body })).status, 200);
     assert.equal((await request(`/${ID}`, { method: 'DELETE' })).status, 200);
     assert.deepEqual(calls, [
-      ['search', 't-1', { q: 'sun', page: 1, pageSize: 25, sort: 'name', dir: 'asc' }],
+      [
+        'search',
+        't-1',
+        { q: 'sun', kind: ['snf', 'hospital'], page: 1, pageSize: 25, sort: 'name', dir: 'asc' }
+      ],
       ['hospitals', 'mercy'],
       ['find', 't-1', ID],
       ['create', 't-1', SAVED],
@@ -70,7 +74,8 @@ describe('facility routes', () => {
       await request('/nope', { method: 'PUT', body }),
       await request('/nope', { method: 'DELETE' }),
       await request('/nope'),
-      await request('/?sort=kind')
+      await request('/?sort=kind'),
+      await request('/?kind=snf,mall')
     ];
     assert.deepEqual(
       bad.map((r) => r.status),

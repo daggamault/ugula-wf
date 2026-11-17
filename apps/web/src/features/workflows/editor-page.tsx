@@ -41,7 +41,7 @@ import { documentationHints, EditorNotices } from './editor-notices.tsx';
 import { NodeInspector } from './node-inspector.tsx';
 import { NodePicker } from './node-picker.tsx';
 import { diffGraphs } from './override-diff.ts';
-import { CopyBadge, ScopeBadge, StaleBadge, scopeLabel } from './scope-badges.tsx';
+import { CopyBadge, ScopeBadge, StaleBadge } from './scope-badges.tsx';
 import { graphPath, type TrailStep, VERSION_PARAMS } from './trail.ts';
 import { kindLabel, WorkflowDetailsDialog } from './workflow-details.tsx';
 import { type VariableNode, WorkflowPanel } from './workflow-panel.tsx';
@@ -117,9 +117,9 @@ export const lockedReason = (
   noun: string
 ) =>
   graph.overrides
-    ? `A copy keeps the inputs and outputs of the built-in ${noun} it overrides, so everything that uses it keeps working.`
+    ? `A copy keeps the inputs and outputs of the standard ${noun} it overrides, so everything that uses it keeps working.`
     : graph.scope === 'system'
-      ? `Built-in ${noun}s are read-only. This is what it takes in, hands back and keeps while it runs.`
+      ? `Standard ${noun}s are read-only. This is what it takes in, hands back and keeps while it runs.`
       : editable
         ? null
         : `Published versions are read-only. Open a draft to change what this ${noun} takes and returns.`;
@@ -365,8 +365,8 @@ export const EditorView = ({
     ? 'Select a node to see what it does and set it up. Drag from one pin to another to connect them, or drop a wire on empty space to add a node that fits; right-click or press A to add any node. Alt+click a wire or pin to disconnect it.'
     : graph.scope === 'system'
       ? graph.effectiveScope !== 'system'
-        ? `Your ${scopeLabel(graph.effectiveScope).toLowerCase()} has its own copy of this built-in ${noun}; runs use it once it is published. Select a node to see what it does.`
-        : `Built-in ${noun}s are read-only. Customize this one to change how your agency runs it.`
+        ? `Your agency has its own copy of this standard ${noun}; runs use it once it is published. Select a node to see what it does.`
+        : `Standard ${noun}s are read-only. Customize this one to change how your agency runs it.`
       : draft
         ? `Published versions are read-only. Open draft v${draft.version} to make changes.`
         : 'Published versions are read-only. Edit as a new draft to make changes.';
@@ -505,7 +505,7 @@ export const EditorView = ({
                       Inside {catalog.titleOf(insideNode)}
                     </h2>
                     <p className="text-surface-fg-muted text-xs">
-                      A built-in subworkflow, shown read-only.
+                      A standard subworkflow, shown read-only.
                     </p>
                   </div>
                   <IconButton

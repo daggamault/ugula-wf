@@ -130,7 +130,7 @@ The goal is a clean, intuitive UI that just works and explains itself. When a ru
   - Labels are Title Case; sentences stay sentence case.
   - A code always shows with its meaning through `CodeLabel`: the description, then the code in muted `text-xs`, on its own line in detail lists and table cells and on the same line (`isInline`) in dropdowns and lists of several codes. Plain text that cannot be styled (CSV, the report CSV column, select search text) writes `Description (code)`, such as `Ambulance - Land (41)`. A bare code is shown only when no description is known.
   - Editing happens on its own page, never in a dialog, so all app state lives in the URL. Dialogs only confirm or choose, and destructive confirmations are danger themed.
-  - Lists search, sort and page on the server, and keep every column left-aligned.
+  - Lists search, sort, filter and page on the server, and keep every column left-aligned. Categorical columns filter through `facets` from the database (see Web App, Lists), never through a separate dropdown.
   - Reuse the existing shared components and patterns before writing new ones.
 - **Mobile-First & Fully Responsive:** Design layouts starting from mobile viewports upward, ensuring fluid usability across mobile, tablet, and desktop breakpoints.
 - **WCAG Compliance:** Meet WCAG AA accessibility standards at minimum—maintain proper color contrast ratios, visible focus rings, keyboard navigability, and accurate ARIA attributes where native semantics do not suffice.

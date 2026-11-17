@@ -15,9 +15,10 @@ const issues = (schema: v.GenericSchema, input: unknown) =>
 const ID = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
 
 describe('searchClaimsQuery', () => {
-  it('defaults to the first page of open claims, newest first', () => {
+  it('defaults to the first page of every claim, newest first', () => {
     assert.deepEqual(v.parse(searchClaimsQuery, {}), {
-      status: 'open',
+      status: [],
+      waiting: [],
       page: 1,
       pageSize: 25,
       sort: 'created',
@@ -28,7 +29,8 @@ describe('searchClaimsQuery', () => {
   it('trims the name and number filters and keeps the other filters', () => {
     assert.deepEqual(
       v.parse(searchClaimsQuery, {
-        status: 'all',
+        status: 'denied,paid',
+        waiting: 'billing-review,none',
         firstName: ' ann ',
         lastName: ' smith ',
         birthDate: '1980-01-02',
@@ -40,7 +42,8 @@ describe('searchClaimsQuery', () => {
         dir: 'asc'
       }),
       {
-        status: 'all',
+        status: ['denied', 'paid'],
+        waiting: ['billing-review', 'none'],
         firstName: 'ann',
         lastName: 'smith',
         birthDate: '1980-01-02',
@@ -75,12 +78,11 @@ describe('searchClaimsQuery', () => {
     ]);
   });
 
-  it('filters only open or all claims', () => {
-    for (const status of ['needs_review', 'pending']) {
-      assert.deepEqual(issues(searchClaimsQuery, { status }), [
-        `Invalid type: Expected ("open" | "all") but received "${status}"`
-      ]);
-    }
+  it('filters only by known statuses and short waiting queues', () => {
+    assert.equal(v.safeParse(searchClaimsQuery, { status: 'paid,open' }).success, false);
+    assert.deepEqual(issues(searchClaimsQuery, { waiting: 'x'.repeat(61) }), [
+      'Invalid length: Expected <=60 but received 61'
+    ]);
   });
 
   it('rejects a malformed birth date, patient id or overlong filter', () => {

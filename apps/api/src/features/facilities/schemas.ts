@@ -5,6 +5,7 @@ import {
   ZIP_CODE_PATTERN
 } from '@ugula/billing';
 import * as v from 'valibot';
+import { facetValues } from '../../shared/facets.ts';
 import { pageEntries } from '../../shared/paging.ts';
 import { searchText } from '../../shared/search.ts';
 
@@ -17,6 +18,8 @@ const optionalText = (max: number) =>
     ),
     null
   );
+
+const FACILITY_KIND_KEYS = Object.keys(FACILITY_KINDS) as [FacilityKind, ...FacilityKind[]];
 
 export const facilitySchema = v.object({
   name: v.pipe(v.string(), v.trim(), v.nonEmpty(), v.maxLength(80)),
@@ -39,10 +42,7 @@ export const facilitySchema = v.object({
     null
   ),
   phone: optionalText(20),
-  kind: v.optional(
-    v.picklist(Object.keys(FACILITY_KINDS) as [FacilityKind, ...FacilityKind[]]),
-    'other'
-  ),
+  kind: v.optional(v.picklist(FACILITY_KIND_KEYS), 'other'),
   hasContract: v.optional(v.boolean(), false),
   contractNote: optionalText(500)
 });
@@ -57,5 +57,6 @@ export const searchHospitalsQuery = v.object({ q: searchText });
 
 export const searchFacilitiesQuery = v.object({
   q: searchText,
+  kind: facetValues(v.picklist(FACILITY_KIND_KEYS)),
   ...pageEntries(FACILITY_SORTS, 'name', 'asc')
 });

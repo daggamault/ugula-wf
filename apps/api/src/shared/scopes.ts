@@ -2,7 +2,9 @@ import { type Db, type GraphRole, resolvedGraph, resolvedTable } from '@ugula/db
 import { type RawBuilder, sql } from 'kysely';
 import { type AgencyAccess, hasPermission } from './access.ts';
 
-export type Scope = 'system' | 'agency';
+export const SCOPES = ['system', 'agency'] as const;
+
+export type Scope = (typeof SCOPES)[number];
 
 export type ScopeIds = { agencyId: string };
 

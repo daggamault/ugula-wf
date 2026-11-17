@@ -212,7 +212,7 @@ const sysV = (version: number, definition = flow): Version => ({
 
 const failure = (code: string, message: string) => ({ ok: false, failure: { code, message } });
 
-const READ_ONLY = failure('forbidden', 'Built-in graphs are read-only');
+const READ_ONLY = failure('forbidden', 'Standard graphs are read-only');
 const NO_PERMISSION = failure('forbidden', 'You do not have permission to change this graph');
 const NOT_FOUND = failure('not_found', 'Graph not found');
 
@@ -307,7 +307,7 @@ describe('customization map', () => {
     ]);
   });
 
-  it('checks agency graphs against built-in and agency graphs and tables', async () => {
+  it('checks agency graphs against standard and agency graphs and tables', async () => {
     const { service, queries } = createWorld({
       graphs: [agency()],
       versions: { 'g-agency': [{ id: 'd1', version: 1, definition: flow }] }
@@ -397,10 +397,14 @@ describe('graph service reads', () => {
       pageSize: 25,
       sort: 'name',
       dir: 'asc',
-      show: 'workflows'
+      kind: [],
+      scope: []
     });
-    assert.deepEqual(search, { ok: true, value: { items: [], total: 0, page: 1, pageSize: 25 } });
-    assert.ok(queries.at(-1)?.parameters.includes('t-1'));
+    assert.deepEqual(search, {
+      ok: true,
+      value: { items: [], total: 0, page: 1, pageSize: 25, facets: { kind: [], scope: [] } }
+    });
+    assert.ok(queries.every((q) => !q.sql.includes('graphs') || q.parameters.includes('t-1')));
     assert.deepEqual(await service.nodes(admin), { ok: true, value: { nodes: [] } });
     assert.ok(queries.at(-1)?.parameters.every((p) => p === 't-1'));
   });
@@ -482,7 +486,7 @@ describe('graph service reads', () => {
 });
 
 describe('graph service compare', () => {
-  it('has nothing to compare for built-in graphs', async () => {
+  it('has nothing to compare for standard graphs', async () => {
     const { service } = createWorld({ graphs: [system()], versions: { 'g-sys': [sysV(1)] } });
     assert.deepEqual(await service.compare(admin, 'g-sys'), {
       ok: true,
@@ -549,12 +553,12 @@ describe('graph service create', () => {
     assert.equal(graph?.parameters[1], 'custom.k7f3x9q2ab');
   });
 
-  it('refuses users without permission, built-in keys and duplicate keys', async () => {
+  it('refuses users without permission, standard keys and duplicate keys', async () => {
     const { service, queries } = createWorld({ graphs: [system({ key: 'acme.new' })] });
     assert.deepEqual(await service.create(reader, input), NO_PERMISSION);
     assert.deepEqual(
       await service.create(admin, input),
-      failure('conflict', 'A built-in graph uses that key; override it instead')
+      failure('conflict', 'A standard graph uses that key; override it instead')
     );
     assert.ok(!queries.some((q) => q.sql.startsWith('insert')));
     const dup = createWorld({ graphs: [], fail: { sql: 'insert into "graphs"', code: '23505' } });
@@ -588,15 +592,18 @@ describe('graph service details', () => {
     assert.deepEqual(update?.parameters.slice(0, 2), ['Payer Rules', 'Reorders payers']);
   });
 
-  it('refuses built-ins, customized built-ins and users without permission', async () => {
+  it('refuses standards, customized standards and users without permission', async () => {
     const world = createWorld({ graphs: [system(), agency({ overrides: 'g-sys' })] });
     assert.deepEqual(
       await world.service.updateDetails(admin, 'g-sys', details),
-      failure('forbidden', 'Built-in graphs are read-only')
+      failure('forbidden', 'Standard graphs are read-only')
     );
     assert.deepEqual(
       await world.service.updateDetails(admin, 'g-agency', details),
-      failure('conflict', 'A customized built-in keeps the name and description it was copied with')
+      failure(
+        'conflict',
+        'A customized standard graph keeps the name and description it was copied with'
+      )
     );
     const own = createWorld({ graphs: [agency()] });
     assert.deepEqual(await own.service.updateDetails(reader, 'g-agency', details), NO_PERMISSION);
@@ -605,7 +612,7 @@ describe('graph service details', () => {
 });
 
 describe('graph service drafts', () => {
-  it('refuses built-ins and workflows without manage', async () => {
+  it('refuses standards and workflows without manage', async () => {
     const { service, queries } = createWorld({ graphs: [system(), agency()] });
     assert.deepEqual(await service.saveDraft(admin, 'g-sys', flow), READ_ONLY);
     assert.deepEqual(await service.saveDraft(editor, 'g-agency', flow), NO_PERMISSION);
@@ -672,7 +679,7 @@ describe('graph service drafts', () => {
     assert.deepEqual(queries[lock]?.parameters, ['g-agency']);
   });
 
-  it('bases new drafts of an override on the newest built-in', async () => {
+  it('bases new drafts of an override on the newest standard', async () => {
     const world = createWorld({
       graphs: [system(), agency({ overrides: 'g-sys' })],
       versions: { 'g-sys': [sysV(2)] }
@@ -715,7 +722,7 @@ describe('graph service publish', () => {
     assert.deepEqual(publish?.parameters, [['acme.thing@2'], 'd1']);
   });
 
-  it('refuses publishing an override that changes the contract of the built-in', async () => {
+  it('refuses publishing an override that changes the contract of the standard', async () => {
     const draft = (definition: GraphDef) => ({
       graphs: [system({ kind: 'node' }), agency({ kind: 'node', overrides: 'g-sys' })],
       versions: {
@@ -749,7 +756,7 @@ describe('graph service publish', () => {
 describe('graph service override', () => {
   const versions = { 'g-sys': [sysV(1), sysV(2, usesComposite)] };
 
-  it('copies the newest published built-in into an agency override', async () => {
+  it('copies the newest published standard into an agency override', async () => {
     const toAgency = createWorld({ graphs: [system()], versions });
     assert.deepEqual(await toAgency.service.override(manager, 'g-sys'), {
       ok: true,
@@ -768,7 +775,7 @@ describe('graph service override', () => {
     assert.equal(copy?.parameters[4], 'v-sys-2');
   });
 
-  it('only overrides built-ins that the user may edit', async () => {
+  it('only overrides standards that the user may edit', async () => {
     const { service, queries } = createWorld({ graphs: [system(), agency()], versions });
     assert.deepEqual(
       await service.override(admin, 'g-agency'),
@@ -901,7 +908,7 @@ describe('graph service remove', () => {
     assert.equal(find('delete').length, 0);
   });
 
-  it('deletes custom graphs unless runs still use them, and never built-ins', async () => {
+  it('deletes custom graphs unless runs still use them, and never standards', async () => {
     const gone = createWorld({ graphs: [system(), agency()] });
     assert.deepEqual(await gone.service.remove(admin, 'g-agency'), {
       ok: true,

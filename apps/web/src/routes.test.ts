@@ -202,12 +202,6 @@ describe('resolveRoute', () => {
     assert.equal(props('/users/invitations').tab, 'invitations');
   });
 
-  it('reads the run filter and keeps only known statuses', () => {
-    assert.equal(props('/runs', 'status=faulted').status, 'faulted');
-    assert.equal(props('/runs', 'status=bogus').status, null);
-    assert.equal(props('/runs').status, null);
-  });
-
   it('starts a run for the graph in the URL', () => {
     assert.equal(props('/runs/new', 'graph=g1').graphId, 'g1');
     assert.equal(props('/runs/new').graphId, '');
@@ -233,11 +227,7 @@ describe('resolveRoute', () => {
     ]);
   });
 
-  it('reads the workflow, table and customization filters', () => {
-    assert.equal(props('/workflows', 'kind=blocks').show, 'blocks');
-    assert.equal(props('/workflows').show, 'workflows');
-    assert.equal(props('/tables', 'show=customized').show, 'customized');
-    assert.equal(props('/tables', 'show=bogus').show, 'all');
+  it('reads the customization map filter', () => {
     assert.equal(props('/workflows/customized', 'all=shown').showAll, true);
     assert.equal(props('/workflows/customized', 'all=yes').showAll, false);
   });
@@ -262,15 +252,7 @@ describe('resolveRoute', () => {
     });
   });
 
-  it('reads the task filter and tab', () => {
-    assert.deepEqual(props('/tasks', 'queue=billing-review&assignee=mine').filter, {
-      queue: 'billing-review',
-      assignee: 'mine'
-    });
-    assert.deepEqual(props('/tasks', 'queue=&assignee=bogus').filter, {
-      queue: null,
-      assignee: 'all'
-    });
+  it('reads the task tab', () => {
     assert.equal(props('/tasks/t1', 'tab=patient').tab, 'patient');
     assert.equal(props('/tasks/t1', 'tab=bogus').tab, 'claim');
   });

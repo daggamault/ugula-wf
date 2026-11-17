@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { CLAIM_STATUS_LABELS } from '@ugula/billing';
 import { createElement } from 'react';
 import type { ClaimSummary } from '../../shared/claims/claim-detail.ts';
 import { useLocation } from '../../shared/router.tsx';
 import { idleLive } from '../../shared/testing.ts';
 import { render, screen, userEvent, waitFor, within } from '../../shared/testing-dom.ts';
-import type { Page } from '../../shared/url-state.ts';
+import type { Facets, Page } from '../../shared/url-state.ts';
 import { ClaimsPage, ClaimsTable } from './claims-page.tsx';
 import { type ClaimSearch, type ClaimsClient, claimSearchOf } from './client.ts';
 
@@ -205,11 +206,12 @@ describe('ClaimsTable', () => {
   });
 });
 
-const pageOf = (items: ClaimSummary[]): Page<ClaimSummary> => ({
+const pageOf = (items: ClaimSummary[], facets?: Facets): Page<ClaimSummary> => ({
   items,
   total: items.length,
   page: 1,
-  pageSize: 25
+  pageSize: 25,
+  ...(facets ? { facets } : {})
 });
 
 const fakeClient = (list: () => Promise<Page<ClaimSummary>> = async () => pageOf([claim])) => {
@@ -269,7 +271,7 @@ describe('ClaimsPage', () => {
     assert.equal(window.location.search, '?lastName=doe&number=20261001-0012');
     assert.deepEqual(calls, [
       [
-        { status: 'all', firstName: '', lastName: 'doe', birthDate: '', number: '20261001-0012' },
+        { firstName: '', lastName: 'doe', birthDate: '', number: '20261001-0012' },
         'page=1&pageSize=25&sort=created&dir=desc'
       ]
     ]);
@@ -299,6 +301,62 @@ describe('ClaimsPage', () => {
     show(client, '/claims?lastName=doe');
     assert.equal((await screen.findByRole('alert')).textContent, 'Network down');
     assert.ok(!screen.queryByRole('heading', { name: 'No Matching Claims' }));
+  });
+
+  it('filters by status and waiting queue from the counts in the database', async () => {
+    const { client, calls } = fakeClient(async () =>
+      pageOf([claim], {
+        status: [
+          { value: 'submitted', count: 3 },
+          { value: 'denied', count: 2 }
+        ],
+        waiting: [
+          { value: 'billing-review', count: 4 },
+          { value: 'none', count: 1 }
+        ]
+      })
+    );
+    const user = show(client, '/claims?lastName=doe');
+    await screen.findByRole('table', { name: 'Claims' });
+    await user.click(screen.getByRole('button', { name: 'Waiting On' }));
+    assert.deepEqual(
+      within(screen.getByRole('dialog', { name: 'Filter by Waiting On' }))
+        .getAllByRole('checkbox')
+        .map((c) => c.closest('label')?.textContent),
+      ['Billing Review4', 'Nothing1']
+    );
+    await user.click(screen.getByRole('button', { name: 'Status' }));
+    const panel = screen.getByRole('dialog', { name: 'Filter by Status' });
+    assert.deepEqual(
+      within(panel)
+        .getAllByRole('checkbox')
+        .map((c) => c.closest('label')?.textContent),
+      [`${CLAIM_STATUS_LABELS.denied}2`, `${CLAIM_STATUS_LABELS.submitted}3`].sort((a, b) =>
+        a.localeCompare(b)
+      )
+    );
+    await user.click(
+      within(panel).getByRole('checkbox', { name: new RegExp(CLAIM_STATUS_LABELS.denied) })
+    );
+    assert.equal(window.location.search, '?lastName=doe&status=denied');
+    await waitFor(() =>
+      assert.equal(calls.at(-1)?.[1], 'page=1&pageSize=25&sort=created&dir=desc&status=denied')
+    );
+    assert.equal(screen.getByRole('button', { name: /^Status/ }).textContent, 'Status1 selected');
+  });
+
+  it('lists claims by filters alone and offers to clear filters that match nothing', async () => {
+    const { client, calls } = fakeClient(async () => pageOf([]));
+    show(client, '/claims?status=denied&waiting=none');
+    assert.ok(await screen.findByRole('heading', { name: 'No Matching Claims' }));
+    assert.equal(
+      screen.getByRole('link', { name: 'Clear Filters' }).getAttribute('href'),
+      '/claims'
+    );
+    assert.deepEqual(calls[0], [
+      { firstName: '', lastName: '', birthDate: '', number: '' },
+      'page=1&pageSize=25&sort=created&dir=desc&status=denied&waiting=none'
+    ]);
   });
 
   it('sorts by the encounter number, newest first', async () => {

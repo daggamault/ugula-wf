@@ -44,18 +44,16 @@ describe('isFinished', () => {
 });
 
 describe('createRunsClient', () => {
-  it('lists runs filtered by status ahead of the page query', async () => {
+  it('lists runs with the page, search and filter query', async () => {
     const { api, calls } = fakeApi(() => ({ items: ['r'], total: 1 }));
     const signal = new AbortController().signal;
     const client = createRunsClient(api);
-    assert.deepEqual(await client.list('faulted', 'page=1&pageSize=25', signal), {
+    assert.deepEqual(await client.list('status=faulted%2Cfailed&page=1&pageSize=25', signal), {
       items: ['r'],
       total: 1
     });
-    await client.list(null, 'page=2');
     assert.deepEqual(calls, [
-      ['GET', '/api/runs?status=faulted&page=1&pageSize=25', signal],
-      ['GET', '/api/runs?page=2']
+      ['GET', '/api/runs?status=faulted%2Cfailed&page=1&pageSize=25', signal]
     ]);
   });
 

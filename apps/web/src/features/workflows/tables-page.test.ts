@@ -5,9 +5,9 @@ import { createElement } from 'react';
 import type { Live } from '../../shared/live.ts';
 import { idleLive } from '../../shared/testing.ts';
 import { render, screen, userEvent, waitFor, within } from '../../shared/testing-dom.ts';
-import type { Page } from '../../shared/url-state.ts';
+import type { Facets, Page } from '../../shared/url-state.ts';
 import type { TableSummary, WorkflowsClient } from './client.ts';
-import { TablesPage, tableFilterOf, tableKindLabel } from './tables-page.tsx';
+import { TablesPage, tableKindLabel } from './tables-page.tsx';
 
 const table = (patch: Partial<TableSummary>): TableSummary => ({
   id: 't1',
@@ -39,31 +39,31 @@ const listed = [
   })
 ];
 
-const pageOf = (items: TableSummary[]): Page<TableSummary> => ({
+const pageOf = (items: TableSummary[], facets?: Facets): Page<TableSummary> => ({
   items,
   total: items.length,
   page: 1,
-  pageSize: 25
+  pageSize: 25,
+  ...(facets ? { facets } : {})
 });
 
-const fakeClient = (items: TableSummary[] = listed) => {
+const fakeClient = (items: TableSummary[] = listed, facets?: Facets) => {
   const queries: string[] = [];
   const client = {
     tables: {
       search: async (query: string) => {
         queries.push(query);
-        return pageOf(items);
+        return pageOf(items, facets);
       }
     }
   } as unknown as WorkflowsClient;
   return { client, queries };
 };
 
-const show = (
-  client: WorkflowsClient,
-  filter: 'all' | 'customized' = 'all',
-  live: Live = idleLive
-) => render(createElement(TablesPage, { client, live, show: filter }));
+const show = (client: WorkflowsClient, query = '', live: Live = idleLive) => {
+  window.history.replaceState(null, '', `/tables${query ? `?${query}` : ''}`);
+  return render(createElement(TablesPage, { client, live }));
+};
 
 const list = () => screen.findByRole('table', { name: 'Tables' });
 
@@ -82,7 +82,7 @@ describe('TablesPage', () => {
       'Base Rate',
       'billing.base-rate',
       'Decision Table',
-      'Built-inHas Your Copy',
+      'StandardHas Custom Copy',
       'v1',
       '—'
     ]);
@@ -90,11 +90,11 @@ describe('TablesPage', () => {
       'Mileage Rate',
       'billing.mileage',
       'Lookup Table',
-      'AgencyBase Updated',
+      'CustomBase Updated',
       '—',
       'v2'
     ]);
-    assert.deepEqual(queries, ['page=1&pageSize=25&sort=name&dir=asc&show=all']);
+    assert.deepEqual(queries, ['page=1&pageSize=25&sort=name&dir=asc']);
   });
 
   it('edits each table from an icon action', async () => {
@@ -117,7 +117,7 @@ describe('TablesPage', () => {
     await user.type(screen.getByRole('searchbox', { name: 'Search' }), 'rate');
     await user.click(screen.getByRole('button', { name: 'Search' }));
     await waitFor(() => assert.equal(queries.length, 2));
-    assert.equal(queries[1], 'q=rate&page=1&pageSize=25&sort=name&dir=asc&show=all');
+    assert.equal(queries[1], 'q=rate&page=1&pageSize=25&sort=name&dir=asc');
     assert.equal(window.location.search, '?q=rate');
     await waitFor(() =>
       assert.deepEqual(
@@ -133,25 +133,38 @@ describe('TablesPage', () => {
     await list();
     await userEvent.setup().click(screen.getByRole('link', { name: /^Key/ }));
     await waitFor(() => assert.equal(queries.length, 2));
-    assert.equal(queries[1], 'page=1&pageSize=25&sort=key&dir=asc&show=all');
+    assert.equal(queries[1], 'page=1&pageSize=25&sort=key&dir=asc');
   });
 
-  it('lists only customized tables when chosen', async () => {
+  it('asks for the chosen kinds and scopes', async () => {
     const { client, queries } = fakeClient();
-    show(client, 'customized');
+    show(client, 'kind=lookup&scope=agency');
     await list();
-    assert.deepEqual(queries, ['page=1&pageSize=25&sort=name&dir=asc&show=customized']);
-    assert.equal(screen.getByRole('button', { name: 'Show' }).textContent, 'Customized');
+    assert.deepEqual(queries, ['page=1&pageSize=25&sort=name&dir=asc&kind=lookup&scope=agency']);
+    assert.equal(screen.getByRole('button', { name: /^Scope/ }).textContent, 'Scope1 selected');
   });
 
-  it('goes to the filter chosen', async () => {
-    const { client } = fakeClient();
+  it('filters by kind from the counts in the database', async () => {
+    const { client } = fakeClient(listed, {
+      kind: [
+        { value: 'decide', count: 7 },
+        { value: 'lookup', count: 2 }
+      ],
+      scope: []
+    });
     show(client);
     await list();
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Show' }));
-    await user.click(screen.getByRole('option', { name: 'Customized' }));
-    assert.equal(`${window.location.pathname}${window.location.search}`, '/tables?show=customized');
+    await user.click(screen.getByRole('button', { name: 'Kind' }));
+    const panel = screen.getByRole('dialog', { name: 'Filter by Kind' });
+    assert.deepEqual(
+      within(panel)
+        .getAllByRole('checkbox')
+        .map((c) => c.closest('label')?.textContent),
+      ['Decision Table7', 'Lookup Table2']
+    );
+    await user.click(within(panel).getByRole('checkbox', { name: /Lookup Table/ }));
+    assert.equal(`${window.location.pathname}${window.location.search}`, '/tables?kind=lookup');
   });
 
   it('says there are no tables yet', async () => {
@@ -160,11 +173,14 @@ describe('TablesPage', () => {
     assert.ok(await screen.findByRole('heading', { name: 'No Tables Yet' }));
   });
 
-  it('says nothing is customized yet under the customized filter', async () => {
+  it('offers to clear filters that match nothing', async () => {
     const { client } = fakeClient([]);
-    show(client, 'customized');
-    assert.ok(await screen.findByRole('heading', { name: 'Nothing Customized Yet' }));
-    assert.ok(screen.getByText('Every table is as built. Override one to change its rules.'));
+    show(client, 'scope=agency');
+    assert.ok(await screen.findByRole('heading', { name: 'No Matching Tables' }));
+    assert.equal(
+      screen.getByRole('link', { name: 'Clear Filters' }).getAttribute('href'),
+      '/tables'
+    );
   });
 
   it('reloads after the live connection comes back', async () => {
@@ -177,19 +193,11 @@ describe('TablesPage', () => {
       }
     };
     const { client, queries } = fakeClient();
-    show(client, 'all', live);
+    show(client, '', live);
     await list();
     for (const listener of listeners) listener({ kind: 'task', id: 't1', runId: 'r1' });
     for (const listener of listeners) listener(null);
     await waitFor(() => assert.equal(queries.length, 2));
-  });
-});
-
-describe('tableFilterOf', () => {
-  it('reads the customized filter and defaults to all', () => {
-    assert.equal(tableFilterOf(new URLSearchParams('show=customized')), 'customized');
-    assert.equal(tableFilterOf(new URLSearchParams('show=x')), 'all');
-    assert.equal(tableFilterOf(new URLSearchParams()), 'all');
   });
 });
 

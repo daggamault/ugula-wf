@@ -20,16 +20,15 @@ const recording = (reply: (url: string) => unknown = () => ({})) => {
 };
 
 describe('createClaimsClient', () => {
-  it('lists claims with the trimmed, non-empty filters before the page query', async () => {
+  it('lists claims with the trimmed, non-empty search before the page query', async () => {
     const page = { items: [], total: 0, page: 2, pageSize: 25 };
     const { client, seen } = recording(() => page);
     assert.deepEqual(
-      await client.list({ status: 'open' }, 'page=2&pageSize=25&sort=balance&dir=desc'),
+      await client.list({}, 'page=2&pageSize=25&sort=balance&dir=desc&status=denied'),
       page
     );
     await client.list(
       {
-        status: 'all',
         firstName: '   ',
         lastName: ' doe ',
         number: '',
@@ -39,8 +38,8 @@ describe('createClaimsClient', () => {
       'page=1'
     );
     assert.deepEqual(seen, [
-      'GET http://api.test/api/claims?status=open&page=2&pageSize=25&sort=balance&dir=desc ',
-      'GET http://api.test/api/claims?status=all&lastName=doe&birthDate=1980-01-02&patientId=p1&page=1 '
+      'GET http://api.test/api/claims?page=2&pageSize=25&sort=balance&dir=desc&status=denied ',
+      'GET http://api.test/api/claims?lastName=doe&birthDate=1980-01-02&patientId=p1&page=1 '
     ]);
   });
 

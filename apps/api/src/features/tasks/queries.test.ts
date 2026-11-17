@@ -42,48 +42,90 @@ describe('task queries', () => {
 });
 
 describe('task list', () => {
-  const page = { page: 1, pageSize: 25, sort: 'waiting', dir: 'asc' } as const;
+  const page = {
+    page: 1,
+    pageSize: 25,
+    sort: 'waiting',
+    dir: 'asc',
+    queue: [],
+    assignee: []
+  } as const;
+
+  const isFacet = (text: string) => text.includes('group by 1');
 
   it('lists open tasks of the agency with their claim and patient, oldest first', async () => {
-    const { db, queries } = createRecordingDb();
-    await searchTasks(db, 't-1', 'u1', { ...page, assignee: 'all' });
-    const [list] = queries;
+    const { db, queries } = createRecordingDb((q) =>
+      isFacet(q.sql)
+        ? q.sql.includes('coalesce(t.assignee_id::text')
+          ? [
+              { value: 'u1', label: 'a@b.c', count: '2' },
+              { value: 'none', label: null, count: '1' }
+            ]
+          : [{ value: 'billing', label: null, count: '3' }]
+        : []
+    );
+    const result = await searchTasks(db, 't-1', page);
+    assert.deepEqual(result.facets, {
+      queue: [{ value: 'billing', count: 3 }],
+      assignee: [
+        { value: 'u1', label: 'a@b.c', count: 2 },
+        { value: 'none', count: 1 }
+      ]
+    });
+    const [list, queues, assignees] = queries;
     assert.ok(list?.sql.includes('left join "users" as "u" on "u"."id" = "t"."assignee_id"'));
     assert.ok(list?.sql.includes('left join "claims" as "c" on "c"."id" = "cr"."claim_id"'));
     assert.ok(list?.sql.includes('"c"."number" as "claim_number"'));
     assert.ok(list?.sql.includes('where "t"."agency_id" = $1 and "t"."status" = $2 order by'));
     assert.ok(list?.sql.includes('order by "t"."created_at" asc nulls last, "t"."id" asc'));
-    assert.ok(!list?.sql.includes('"t"."assignee_id" ='));
-    assert.ok(!list?.sql.includes('"t"."queue" ='));
+    assert.ok(!list?.sql.includes(' in ('));
     assert.deepEqual(list?.parameters, ['t-1', 'open', 25, 0]);
+    assert.ok(queues?.sql.startsWith('select "t"."queue"::text as "value", null as "label"'));
+    assert.ok(
+      assignees?.sql.startsWith(
+        `select coalesce(t.assignee_id::text, 'none')::text as "value", min("u"."email"::text) as "label"`
+      )
+    );
     await db.destroy();
   });
 
-  it('filters by queue, run and assignee', async () => {
+  it('filters by queues, run and assignees, counting each facet without its own filter', async () => {
     const { db, queries } = createRecordingDb();
-    await searchTasks(db, 't-1', 'u1', { ...page, queue: 'billing', assignee: 'mine' });
-    await searchTasks(db, 't-1', 'u1', { ...page, assignee: 'unassigned', sort: 'assignee' });
-    await searchTasks(db, 't-1', 'u1', { ...page, assignee: 'all', runId: 'r1' });
-    const [mine, unassigned, ofRun] = queries;
+    await searchTasks(db, 't-1', {
+      ...page,
+      queue: ['billing'],
+      assignee: ['u1', 'none'],
+      sort: 'assignee'
+    });
+    const [list, queues, assignees] = queries;
     assert.ok(
-      ofRun?.sql.includes(
+      list?.sql.includes(
+        `"t"."queue" in ($3) and coalesce(t.assignee_id::text, 'none') in ($4, $5) order by "u"."email" asc nulls last`
+      )
+    );
+    assert.deepEqual(list?.parameters.slice(0, 5), ['t-1', 'open', 'billing', 'u1', 'none']);
+    assert.ok(queues?.sql.includes(`coalesce(t.assignee_id::text, 'none') in ($3, $4)`));
+    assert.ok(!queues?.sql.includes('"t"."queue" in'));
+    assert.ok(assignees?.sql.includes('"t"."queue" in ($3)'));
+    assert.ok(!assignees?.sql.includes(`'none') in`));
+    queries.length = 0;
+    await searchTasks(db, 't-1', { ...page, runId: 'r1' });
+    assert.ok(
+      queries[0]?.sql.includes(
         'where "t"."agency_id" = $1 and "t"."status" = $2 and "t"."run_id" = $3 order by'
       )
     );
-    assert.deepEqual(ofRun?.parameters, ['t-1', 'open', 'r1', 25, 0]);
-    assert.ok(mine?.sql.includes('"t"."queue" = $3 and "t"."assignee_id" = $4'));
-    assert.deepEqual(mine?.parameters.slice(0, 4), ['t-1', 'open', 'billing', 'u1']);
-    assert.ok(unassigned?.sql.includes('"t"."assignee_id" is null'));
-    assert.ok(unassigned?.sql.includes('order by "u"."email" asc nulls last'));
-    assert.ok(!unassigned?.parameters.includes('u1'));
+    assert.deepEqual(queries[0]?.parameters, ['t-1', 'open', 'r1', 25, 0]);
     await db.destroy();
   });
 
   it('searches titles, subjects, patients, PCRs and claim numbers', async () => {
     const { db, queries } = createRecordingDb();
-    await searchTasks(db, 't-1', 'u1', { ...page, assignee: 'all', q: ' #202611050007 ' });
-    await searchTasks(db, 't-1', 'u1', { ...page, assignee: 'all', q: '50%' });
-    const [byNumber, byText] = queries;
+    await searchTasks(db, 't-1', { ...page, q: ' #202611050007 ' });
+    const [byNumber] = queries;
+    queries.length = 0;
+    await searchTasks(db, 't-1', { ...page, q: '50%' });
+    const [byText] = queries;
     assert.ok(
       byNumber?.sql.includes(
         '(lower(t.title) like $3 or lower(t.subject) like $4 or lower(p.last_name || \', \' || p.first_name) like $5 or "c"."pcr_number" = $6 or "c"."number" = $7)'

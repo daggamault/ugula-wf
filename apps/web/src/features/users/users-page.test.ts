@@ -57,6 +57,27 @@ const invitations = [
 
 const pageOf = <T>(items: T[]): Page<T> => ({ items, total: items.length, page: 1, pageSize: 25 });
 
+const withRoles = <T>(items: T[]): Page<T> => ({
+  ...pageOf(items),
+  facets: {
+    role: [
+      { value: 'r1', label: 'Biller', count: 2 },
+      { value: 'r2', label: 'Admin', count: 1 }
+    ]
+  }
+});
+
+const roleChoices = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.click(button('Role'));
+  const panel = screen.getByRole('dialog', { name: 'Filter by Role' });
+  return {
+    panel,
+    labels: within(panel)
+      .getAllByRole('checkbox')
+      .map((c) => c.closest('label')?.textContent)
+  };
+};
+
 const ALL: Permission[] = ['users:read', 'users:create', 'users:update', 'users:delete'];
 
 const access = (permissions: Permission[]): Access => ({
@@ -189,6 +210,23 @@ describe('UsersPage users tab', () => {
     assert.equal(searched[1], 'page=1&pageSize=25&sort=email&dir=asc');
   });
 
+  it('filters users by role from the counts in the database', async () => {
+    const { client, searched } = fakeClient({
+      search: async (query: string) => {
+        searched.push(query);
+        return withRoles(users);
+      }
+    });
+    const { user } = show(client);
+    await rowsOf('Users');
+    const { panel, labels } = await roleChoices(user);
+    assert.deepEqual(labels, ['Admin1', 'Biller2']);
+    await user.click(within(panel).getByRole('checkbox', { name: /Biller/ }));
+    assert.equal(window.location.search, '?role=r1');
+    await waitFor(() => assert.equal(searched.length, 2));
+    assert.equal(searched[1], 'page=1&pageSize=25&sort=name&dir=asc&role=r1');
+  });
+
   it('suggests inviting someone when there are no users', async () => {
     const { client } = fakeClient({ search: async () => pageOf([]) });
     show(client);
@@ -260,6 +298,23 @@ describe('UsersPage invitations tab', () => {
         ['Ray', 'Ray', 'Ray']
       )
     );
+  });
+
+  it('filters invitations by role from the counts in the database', async () => {
+    const { client, listed } = fakeClient({
+      invitations: async (query: string) => {
+        listed.push(query);
+        return withRoles(invitations);
+      }
+    });
+    const { user } = show(client, 'invitations');
+    await rowsOf('Invitations');
+    const { panel, labels } = await roleChoices(user);
+    assert.deepEqual(labels, ['Admin1', 'Biller2']);
+    await user.click(within(panel).getByRole('checkbox', { name: /Admin/ }));
+    assert.equal(window.location.pathname + window.location.search, '/users/invitations?role=r2');
+    await waitFor(() => assert.equal(listed.length, 2));
+    assert.equal(listed[1], 'page=1&pageSize=25&sort=expires&dir=asc&role=r2');
   });
 
   it('makes a new link once confirmed and shows it', async () => {

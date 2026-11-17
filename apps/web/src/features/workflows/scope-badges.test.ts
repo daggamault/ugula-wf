@@ -12,22 +12,22 @@ const badge = (el: ReactElement) => {
 
 describe('scopeLabel', () => {
   it('names each scope', () => {
-    assert.equal(scopeLabel('system'), 'Built-in');
-    assert.equal(scopeLabel('agency'), 'Agency');
+    assert.equal(scopeLabel('system'), 'Standard');
+    assert.equal(scopeLabel('agency'), 'Custom');
   });
 });
 
 describe('ScopeBadge', () => {
-  it('shows built-in workflows plainly', () => {
+  it('shows standard workflows plainly', () => {
     assert.deepEqual(badge(createElement(ScopeBadge, { scope: 'system' })), {
-      text: 'Built-in',
+      text: 'Standard',
       accent: false
     });
   });
 
   it('marks agency workflows with the custom accent', () => {
     assert.deepEqual(badge(createElement(ScopeBadge, { scope: 'agency' })), {
-      text: 'Agency',
+      text: 'Custom',
       accent: true
     });
   });
@@ -36,7 +36,7 @@ describe('ScopeBadge', () => {
 describe('CopyBadge', () => {
   it('says when an agency copy is in effect instead', () => {
     assert.deepEqual(badge(createElement(CopyBadge, { scope: 'system', effective: 'agency' })), {
-      text: 'Has Agency Copy',
+      text: 'Has Custom Copy',
       accent: true
     });
   });

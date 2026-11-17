@@ -112,7 +112,7 @@ export const TableView = ({
       await client.tables.remove(table.id);
       notify({
         title: 'Override removed',
-        description: `New runs use the built-in ${table.name} again.`
+        description: `New runs use the standard ${table.name} again.`
       });
       navigate(table.overrides ? tablePath(table.overrides) : TABLES_PATH, { force: true });
     });
@@ -249,7 +249,7 @@ export const TableView = ({
           editable
             ? 'Change rows freely; keep the inputs and outputs so every workflow that uses this table still fits.'
             : table.scope === 'system'
-              ? 'Built-in tables are read-only. Customize this one to change its rows for your agency.'
+              ? 'Standard tables are read-only. Customize this one to change its rows for your agency.'
               : draft
                 ? `Published versions are read-only. Open draft v${draft.version} to make changes.`
                 : 'Published versions are read-only. Edit as a new draft to make changes.'

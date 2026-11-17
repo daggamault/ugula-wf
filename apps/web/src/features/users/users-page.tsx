@@ -6,6 +6,7 @@ import { formatDateTime } from '../../shared/format.ts';
 import { type Live, useReconnect } from '../../shared/live.ts';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { ButtonLink } from '../../shared/ui/button.tsx';
+import type { ColumnFilter } from '../../shared/ui/column-filters.tsx';
 import { ConfirmDialog, DeleteDialog } from '../../shared/ui/dialog.tsx';
 import { Highlight } from '../../shared/ui/highlight.tsx';
 import {
@@ -38,13 +39,17 @@ const USERS_TABS: readonly { value: UsersTab; label: string; href: string }[] = 
 
 export const USER_TABLE = {
   sorts: { name: 'asc', email: 'asc', role: 'asc' },
-  sort: 'name'
+  sort: 'name',
+  filters: ['role']
 } as const;
 
 export const INVITATION_TABLE = {
   sorts: { name: 'asc', email: 'asc', role: 'asc', expires: 'asc' },
-  sort: 'expires'
+  sort: 'expires',
+  filters: ['role']
 } as const;
+
+const ROLE_FILTERS: readonly ColumnFilter[] = [{ key: 'role', label: 'Role' }];
 
 export const UsersTable = ({
   users,
@@ -167,6 +172,7 @@ const UserList = ({ client, live }: ListProps) => {
       path={USERS_PATH}
       search={search}
       results={users}
+      filters={ROLE_FILTERS}
       empty={{ title: 'No Users Yet', children: 'Invite someone to work in this agency.' }}
     >
       {(items) => <UsersTable users={items} search={search} canEdit={can('users:update')} />}
@@ -225,6 +231,7 @@ const InvitationList = ({ client, live }: ListProps) => {
         path={INVITATIONS_PATH}
         search={search}
         results={invitations}
+        filters={ROLE_FILTERS}
         empty={{ title: 'No Invitations' }}
       >
         {(items) => (

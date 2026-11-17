@@ -1,7 +1,8 @@
 import { type Db, type GraphKind, type GraphRole, resolvedGraph } from '@ugula/db';
 import { contractOf, type GraphDef } from '@ugula/graph';
 import { sql } from 'kysely';
-import { type Page, type PageRequest, paged } from '../../shared/paging.ts';
+import { type FacetedPage, facetCounts, whereFacets } from '../../shared/facets.ts';
+import { type PageRequest, paged } from '../../shared/paging.ts';
 import {
   isStaleIn,
   overriddenByIn,
@@ -13,7 +14,7 @@ import {
   visible
 } from '../../shared/scopes.ts';
 import { containsPattern } from '../../shared/search.ts';
-import type { GraphShow, GraphSort } from './schemas.ts';
+import type { GraphSort } from './schemas.ts';
 
 type GraphSummary = {
   id: string;
@@ -35,7 +36,8 @@ type GraphSummary = {
 
 export type GraphFilters = PageRequest<GraphSort> & {
   q?: string | undefined;
-  show: GraphShow;
+  kind: readonly GraphKind[];
+  scope: readonly Scope[];
 };
 
 type GraphRow = {
@@ -61,6 +63,13 @@ const GRAPH_ORDER = {
   updated: sql.ref('g.updated_at')
 };
 
+const GRAPH_FACETS = {
+  kind: { value: sql.ref('g.kind') },
+  scope: { value: scopeOf('g') }
+};
+
+type GraphFacet = keyof typeof GRAPH_FACETS;
+
 const overriddenBy = (s: ScopeIds) => overriddenByIn('graphs', 'g', s);
 
 const overridesOf = (s: ScopeIds) => overridesIn('graphs', 'g', s);
@@ -85,13 +94,23 @@ const toSummary = (r: GraphRow): GraphSummary => ({
   updatedAt: r.updated_at
 });
 
+const filteredGraphs = (db: Db, s: ScopeIds, f: GraphFilters, except?: GraphFacet) => {
+  let q = db.selectFrom('graphs as g').where(visible('g', s));
+  if (f.q) {
+    const like = containsPattern(f.q);
+    q = q.where((eb) =>
+      eb.or([eb(sql`lower(g.name)`, 'like', like), eb(sql`lower(g.key)`, 'like', like)])
+    );
+  }
+  return whereFacets(q, GRAPH_FACETS, f, except);
+};
+
 export const searchGraphs = async (
   db: Db,
   s: ScopeIds,
   f: GraphFilters
-): Promise<Page<GraphSummary>> => {
-  let q = db
-    .selectFrom('graphs as g')
+): Promise<FacetedPage<GraphSummary, GraphFacet>> => {
+  const q = filteredGraphs(db, s, f)
     .leftJoinLateral(
       (eb) =>
         eb
@@ -122,19 +141,12 @@ export const searchGraphs = async (
       overriddenBy(s).as('overridden_by'),
       overridesOf(s).as('overrides'),
       isStale.as('is_stale')
-    ])
-    .where(visible('g', s));
-  if (f.show === 'workflows') q = q.where('g.kind', '=', 'workflow');
-  if (f.show === 'blocks') q = q.where('g.kind', '!=', 'workflow');
-  if (f.show === 'customized') q = q.where('g.agency_id', 'is not', null);
-  if (f.q) {
-    const like = containsPattern(f.q);
-    q = q.where((eb) =>
-      eb.or([eb(sql`lower(g.name)`, 'like', like), eb(sql`lower(g.key)`, 'like', like)])
-    );
-  }
-  const page = await paged(q, f, GRAPH_ORDER, sql.ref('g.id'));
-  return { ...page, items: page.items.map((r) => toSummary(r as GraphRow)) };
+    ]);
+  const [page, facets] = await Promise.all([
+    paged(q, f, GRAPH_ORDER, sql.ref('g.id')),
+    facetCounts((except) => filteredGraphs(db, s, f, except), GRAPH_FACETS)
+  ]);
+  return { ...page, items: page.items.map((r) => toSummary(r as GraphRow)), facets };
 };
 
 export const findGraph = (db: Db, s: ScopeIds, id: string) =>

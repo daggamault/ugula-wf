@@ -1,7 +1,8 @@
 import { type Db, resolvedTable, type TableKind } from '@ugula/db';
 import { type Json, tableContract } from '@ugula/graph';
 import { sql } from 'kysely';
-import { type Page, type PageRequest, paged } from '../../shared/paging.ts';
+import { type FacetedPage, facetCounts, whereFacets } from '../../shared/facets.ts';
+import { type PageRequest, paged } from '../../shared/paging.ts';
 import {
   isStaleIn,
   overriddenByIn,
@@ -12,11 +13,12 @@ import {
   visible
 } from '../../shared/scopes.ts';
 import { containsPattern } from '../../shared/search.ts';
-import type { TableShow, TableSort } from './schemas.ts';
+import type { TableSort } from './schemas.ts';
 
 export type TableFilters = PageRequest<TableSort> & {
   q?: string | undefined;
-  show: TableShow;
+  kind: readonly TableKind[];
+  scope: readonly Scope[];
 };
 
 type TableRow = {
@@ -39,6 +41,13 @@ const TABLE_ORDER = {
   key: sql.ref('t.key'),
   updated: sql.ref('t.updated_at')
 };
+
+const TABLE_FACETS = {
+  kind: { value: sql.ref('t.kind') },
+  scope: { value: scopeOf('t') }
+};
+
+type TableFacet = keyof typeof TABLE_FACETS;
 
 const overriddenBy = (s: ScopeIds) => overriddenByIn('data_tables', 't', s);
 
@@ -63,13 +72,23 @@ const toSummary = (r: TableRow) => ({
 
 export type TableSummary = ReturnType<typeof toSummary>;
 
+const filteredTables = (db: Db, s: ScopeIds, f: TableFilters, except?: TableFacet) => {
+  let q = db.selectFrom('data_tables as t').where(visible('t', s));
+  if (f.q) {
+    const like = containsPattern(f.q);
+    q = q.where((eb) =>
+      eb.or([eb(sql`lower(t.name)`, 'like', like), eb(sql`lower(t.key)`, 'like', like)])
+    );
+  }
+  return whereFacets(q, TABLE_FACETS, f, except);
+};
+
 export const searchTables = async (
   db: Db,
   s: ScopeIds,
   f: TableFilters
-): Promise<Page<TableSummary>> => {
-  let q = db
-    .selectFrom('data_tables as t')
+): Promise<FacetedPage<TableSummary, TableFacet>> => {
+  const q = filteredTables(db, s, f)
     .leftJoinLateral(
       (eb) =>
         eb
@@ -97,21 +116,12 @@ export const searchTables = async (
       overriddenBy(s).as('overridden_by'),
       overridesOf(s).as('overrides'),
       isStale.as('is_stale')
-    ])
-    .where(visible('t', s));
-  if (f.show === 'customized') {
-    q = q.where((eb) =>
-      eb.or([eb(overriddenBy(s), 'is not', null), eb(overridesOf(s), 'is not', null)])
-    );
-  }
-  if (f.q) {
-    const like = containsPattern(f.q);
-    q = q.where((eb) =>
-      eb.or([eb(sql`lower(t.name)`, 'like', like), eb(sql`lower(t.key)`, 'like', like)])
-    );
-  }
-  const page = await paged(q, f, TABLE_ORDER, sql.ref('t.id'));
-  return { ...page, items: page.items.map((r) => toSummary(r as TableRow)) };
+    ]);
+  const [page, facets] = await Promise.all([
+    paged(q, f, TABLE_ORDER, sql.ref('t.id')),
+    facetCounts((except) => filteredTables(db, s, f, except), TABLE_FACETS)
+  ]);
+  return { ...page, items: page.items.map((r) => toSummary(r as TableRow)), facets };
 };
 
 export const findTable = (db: Db, s: ScopeIds, id: string) =>

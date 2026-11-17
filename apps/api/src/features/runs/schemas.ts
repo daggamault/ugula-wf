@@ -1,6 +1,7 @@
 import { RUN_STATUSES } from '@ugula/db';
 import { valuesSchema } from '@ugula/graph';
 import * as v from 'valibot';
+import { facetValues } from '../../shared/facets.ts';
 import { uuid } from '../../shared/http.ts';
 import { pageEntries } from '../../shared/paging.ts';
 import { searchText } from '../../shared/search.ts';
@@ -17,8 +18,8 @@ export type RunSort = (typeof RUN_SORTS)[number];
 
 export const searchRunsQuery = v.object({
   q: searchText,
-  status: v.optional(v.picklist(RUN_STATUSES)),
-  graphId: v.optional(uuid),
+  status: facetValues(v.picklist(RUN_STATUSES)),
+  workflow: facetValues(v.pipe(v.string(), v.maxLength(120))),
   root: v.optional(v.picklist(['true', 'false']), 'true'),
   ...pageEntries(RUN_SORTS, 'started', 'desc')
 });

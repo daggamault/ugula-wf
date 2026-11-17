@@ -1,11 +1,16 @@
 import type { Database, Db } from '@ugula/db';
 import { type QueryCreator, sql } from 'kysely';
 import type { Writes } from '../../shared/access.ts';
+import { facetCounts, whereFacets } from '../../shared/facets.ts';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { containsPattern } from '../../shared/search.ts';
-import type { FeeInput, FeeSort } from './schemas.ts';
+import { DEFAULT_PAYER, type FeeInput, type FeeSort } from './schemas.ts';
 
-export type FeeFilters = PageRequest<FeeSort> & { q?: string | undefined };
+export type FeeFilters = PageRequest<FeeSort> & {
+  q?: string | undefined;
+  payer: readonly string[];
+  code: readonly string[];
+};
 
 const feeRows = (db: Db, agencyId: string) =>
   db
@@ -21,18 +26,35 @@ const FEE_ORDER = {
   updated: sql.ref('f.updated_at')
 };
 
-export const searchFees = (db: Db, agencyId: string, f: FeeFilters) => {
+const payerName = sql`coalesce(p.name, 'Default')`;
+
+const FEE_FACETS = {
+  payer: { value: sql`coalesce(f.payer_id::text, ${sql.lit(DEFAULT_PAYER)})`, label: payerName },
+  code: {
+    value: sql.ref('f.code'),
+    label: sql`(select c.description || ' (' || c.code || ')' from codes c where c.code_set = 'hcpcs' and c.code = f.code)`
+  }
+};
+
+type FeeFacet = keyof typeof FEE_FACETS;
+
+const filteredFees = (db: Db, agencyId: string, f: FeeFilters, except?: FeeFacet) => {
   let q = feeRows(db, agencyId);
   if (f.q) {
     const like = containsPattern(f.q);
     q = q.where((eb) =>
-      eb.or([
-        eb(sql`lower(f.code)`, 'like', like),
-        eb(sql`lower(coalesce(p.name, 'Default'))`, 'like', like)
-      ])
+      eb.or([eb(sql`lower(f.code)`, 'like', like), eb(sql`lower(${payerName})`, 'like', like)])
     );
   }
-  return paged(q, f, FEE_ORDER, sql.ref('f.id'));
+  return whereFacets(q, FEE_FACETS, f, except);
+};
+
+export const searchFees = async (db: Db, agencyId: string, f: FeeFilters) => {
+  const [page, facets] = await Promise.all([
+    paged(filteredFees(db, agencyId, f), f, FEE_ORDER, sql.ref('f.id')),
+    facetCounts((except) => filteredFees(db, agencyId, f, except), FEE_FACETS)
+  ]);
+  return { ...page, facets };
 };
 
 export const findFee = (db: Db, agencyId: string, id: string) =>

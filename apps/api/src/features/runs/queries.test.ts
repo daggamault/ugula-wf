@@ -15,7 +15,20 @@ import {
 
 const flat = (sql: string | undefined) => sql?.replace(/\s+/g, ' ').trim();
 
-const PAGE = { rootOnly: false, page: 1, pageSize: 10, sort: 'started', dir: 'desc' } as const;
+const PAGE = {
+  rootOnly: false,
+  status: [],
+  workflow: [],
+  page: 1,
+  pageSize: 10,
+  sort: 'started',
+  dir: 'desc'
+} as const;
+
+const isFacet = (text: string) => text.includes('group by 1');
+
+const pageQueries = (queries: readonly { sql: string; parameters: readonly unknown[] }[]) =>
+  queries.filter((q) => !isFacet(q.sql));
 
 const RUN_COLUMNS =
   'select "r"."id", "r"."status", "r"."parent_id", "r"."parent_index", "r"."parent_wait", "r"."created_at", "r"."updated_at", "r"."completed_at", "g"."id" as "graph_id", "g"."key", "g"."name", "gv"."version", "gv"."id" as "version_id", r.error ->> \'message\' as "error_message"';
@@ -24,62 +37,89 @@ const RUN_FROM =
   'from "workflow_runs" as "r" inner join "graph_versions" as "gv" on "gv"."id" = "r"."graph_version_id" inner join "graphs" as "g" on "g"."id" = "gv"."graph_id"';
 
 describe('searchRuns', () => {
-  it('pages the agency’s runs newest first', async () => {
-    const { db, queries } = createRecordingDb(() => [{ id: 'r1', total: '1' }]);
+  it('pages the agency’s runs newest first with status and workflow counts', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      isFacet(q.sql)
+        ? q.sql.includes('"g"."key"::text')
+          ? [{ value: 'demo.batch', label: 'Batch', count: '2' }]
+          : [{ value: 'faulted', label: null, count: '1' }]
+        : [{ id: 'r1', total: '1' }]
+    );
     assert.deepEqual(await searchRuns(db, 't-1', PAGE), {
       items: [{ id: 'r1' }],
       total: 1,
       page: 1,
-      pageSize: 10
+      pageSize: 10,
+      facets: {
+        status: [{ value: 'faulted', count: 1 }],
+        workflow: [{ value: 'demo.batch', label: 'Batch', count: 2 }]
+      }
     });
+    const [page] = pageQueries(queries);
     assert.equal(
-      queries[0]?.sql,
+      page?.sql,
       `${RUN_COLUMNS}, count(*) over () as "total" ${RUN_FROM} where "r"."agency_id" = $1 order by "r"."created_at" desc nulls last, "r"."id" desc limit $2 offset $3`
     );
-    assert.deepEqual(queries[0]?.parameters, ['t-1', 10, 0]);
+    assert.deepEqual(page?.parameters, ['t-1', 10, 0]);
+    assert.deepEqual(
+      queries.filter((q) => isFacet(q.sql)).map((q) => q.sql),
+      [
+        `select "r"."status"::text as "value", null as "label", count(*) as "count" ${RUN_FROM} where "r"."agency_id" = $1 and "r"."status" is not null group by 1 order by count(*) desc, 1 limit $2`,
+        `select "g"."key"::text as "value", min("g"."name"::text) as "label", count(*) as "count" ${RUN_FROM} where "r"."agency_id" = $1 and "g"."key" is not null group by 1 order by count(*) desc, 1 limit $2`
+      ]
+    );
   });
 
-  it('narrows to a status, a workflow and top-level runs, sorted by workflow name', async () => {
+  it('narrows to statuses, workflows and top-level runs, sorted by workflow name', async () => {
     const { db, queries } = createRecordingDb();
     await searchRuns(db, 't-1', {
       ...PAGE,
-      status: 'faulted',
-      graphId: 'g1',
+      status: ['faulted', 'failed'],
+      workflow: ['demo.batch'],
       rootOnly: true,
       sort: 'workflow',
       dir: 'asc'
     });
+    const [page] = pageQueries(queries);
     assert.ok(
-      queries[0]?.sql.endsWith(
-        `${RUN_FROM} where "r"."agency_id" = $1 and "r"."status" = $2 and "g"."id" = $3 and "r"."parent_id" is null order by lower(g.name) asc nulls last, "r"."id" asc limit $4 offset $5`
+      page?.sql.endsWith(
+        `${RUN_FROM} where "r"."agency_id" = $1 and "r"."parent_id" is null and "r"."status" in ($2, $3) and "g"."key" in ($4) order by lower(g.name) asc nulls last, "r"."id" asc limit $5 offset $6`
       )
     );
-    assert.deepEqual(queries[0]?.parameters, ['t-1', 'faulted', 'g1', 10, 0]);
+    assert.deepEqual(page?.parameters, ['t-1', 'faulted', 'failed', 'demo.batch', 10, 0]);
+    const statuses = queries.find((q) => isFacet(q.sql) && q.sql.startsWith('select "r"."status"'));
+    assert.ok(
+      statuses?.sql.includes(
+        'where "r"."agency_id" = $1 and "r"."parent_id" is null and "g"."key" in ($2) and "r"."status" is not null group by 1'
+      )
+    );
   });
 
   it('searches workflow names, keys, run ids and error messages within the agency', async () => {
     const { db, queries } = createRecordingDb();
     await searchRuns(db, 't-1', { ...PAGE, q: ' Ingest%' });
+    const [page] = pageQueries(queries);
     assert.ok(
-      queries[0]?.sql.endsWith(
+      page?.sql.endsWith(
         `${RUN_FROM} where "r"."agency_id" = $1 and (lower(g.name) like $2 or lower(g.key) like $3 or r.id::text like $4 or lower(r.error ->> 'message') like $5) order by "r"."created_at" desc nulls last, "r"."id" desc limit $6 offset $7`
       )
     );
     const like = '%ingest\\%%';
-    assert.deepEqual(queries[0]?.parameters, ['t-1', like, like, like, like, 10, 0]);
+    assert.deepEqual(page?.parameters, ['t-1', like, like, like, like, 10, 0]);
   });
 
   it('sorts by status or finish time', async () => {
     const { db, queries } = createRecordingDb();
     await searchRuns(db, 't-1', { ...PAGE, sort: 'status' });
     await searchRuns(db, 't-1', { ...PAGE, sort: 'finished' });
+    const [byStatus, byFinish] = pageQueries(queries);
     assert.ok(
-      queries[0]?.sql.endsWith(
+      byStatus?.sql.endsWith(
         'order by "r"."status" desc nulls last, "r"."id" desc limit $2 offset $3'
       )
     );
     assert.ok(
-      queries[1]?.sql.endsWith(
+      byFinish?.sql.endsWith(
         'order by "r"."completed_at" desc nulls last, "r"."id" desc limit $2 offset $3'
       )
     );

@@ -1,22 +1,22 @@
+import { GRAPH_KINDS } from '@ugula/db';
 import { graphDefSchema } from '@ugula/graph';
 import * as v from 'valibot';
+import { facetValues } from '../../shared/facets.ts';
 import { uuid } from '../../shared/http.ts';
 import { pageEntries } from '../../shared/paging.ts';
+import { SCOPES } from '../../shared/scopes.ts';
 import { searchText } from '../../shared/search.ts';
 
 const GRAPH_SORTS = ['name', 'kind', 'updated'] as const;
 
 export type GraphSort = (typeof GRAPH_SORTS)[number];
 
-const GRAPH_SHOWS = ['workflows', 'blocks', 'customized'] as const;
-
-export type GraphShow = (typeof GRAPH_SHOWS)[number];
-
 const DEFINITION_MAX_CHARS = 2_000_000;
 
 export const searchGraphsQuery = v.object({
   q: searchText,
-  show: v.optional(v.picklist(GRAPH_SHOWS), 'workflows'),
+  kind: facetValues(v.picklist(GRAPH_KINDS)),
+  scope: facetValues(v.picklist(SCOPES)),
   ...pageEntries(GRAPH_SORTS, 'name', 'asc')
 });
 

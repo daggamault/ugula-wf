@@ -48,7 +48,7 @@ const send = async (method: string, path: string, body?: unknown) => {
 
 describe('table routes', () => {
   it('searches tables with the paging defaults', async () => {
-    assert.deepEqual(await send('GET', '/?show=customized&q=rate'), {
+    assert.deepEqual(await send('GET', '/?kind=lookup&scope=agency&q=rate'), {
       status: 200,
       body: { items: [] },
       calls: [
@@ -56,12 +56,20 @@ describe('table routes', () => {
           name: 'search',
           args: [
             access,
-            { q: 'rate', show: 'customized', page: 1, pageSize: 25, sort: 'name', dir: 'asc' }
+            {
+              q: 'rate',
+              kind: ['lookup'],
+              scope: ['agency'],
+              page: 1,
+              pageSize: 25,
+              sort: 'name',
+              dir: 'asc'
+            }
           ]
         }
       ]
     });
-    const bad = await send('GET', '/?show=mine');
+    const bad = await send('GET', '/?scope=mine');
     assert.deepEqual([bad.status, bad.calls], [400, []]);
   });
 

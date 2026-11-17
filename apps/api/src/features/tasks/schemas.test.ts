@@ -66,7 +66,8 @@ describe('completeTaskSchema', () => {
 describe('searchTasksQuery', () => {
   it('lists tasks for everyone, longest waiting first, by default', () => {
     assert.deepEqual(v.parse(searchTasksQuery, {}), {
-      assignee: 'all',
+      queue: [],
+      assignee: [],
       page: 1,
       pageSize: 25,
       sort: 'waiting',
@@ -78,15 +79,15 @@ describe('searchTasksQuery', () => {
     assert.deepEqual(
       v.parse(searchTasksQuery, {
         q: ' Doe ',
-        queue: 'coding',
-        assignee: 'mine',
+        queue: 'coding,billing-review',
+        assignee: `${ID},none`,
         runId: ID,
         sort: 'assignee'
       }),
       {
         q: 'Doe',
-        queue: 'coding',
-        assignee: 'mine',
+        queue: ['coding', 'billing-review'],
+        assignee: [ID, 'none'],
         runId: ID,
         page: 1,
         pageSize: 25,
@@ -96,10 +97,10 @@ describe('searchTasksQuery', () => {
     );
   });
 
-  it('rejects unknown assignees and sorts, blank or long queues and bad run ids', () => {
+  it('rejects assignees that are not users or none, unknown sorts, long queues and bad run ids', () => {
     for (const bad of [
-      { assignee: 'x' },
-      { queue: '' },
+      { assignee: 'mine' },
+      { assignee: `none,${ID.slice(1)}` },
       { sort: 'x' },
       { queue: 'q'.repeat(61) },
       { runId: 'r1' }

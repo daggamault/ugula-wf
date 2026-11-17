@@ -42,6 +42,7 @@ type Rows = {
 const userDb = (rows: Rows) =>
   createRecordingDb((q) => {
     const s = q.sql;
+    if (s.includes('group by 1')) return [];
     if (s.includes('"u"."first_name"') && s.startsWith('select') && s.includes('"m"."agency_id"')) {
       return rows.member ? [rows.member] : [];
     }
@@ -98,12 +99,14 @@ describe('user service members', () => {
   it('lists and finds members with why the caller cannot act on them', async () => {
     const { db, service } = setup({ member: { ...member(['fees:update']), total: '1' } });
     const page = await service.search(limited(), {
+      role: [],
       page: 1,
       pageSize: 25,
       sort: 'name',
       dir: 'asc'
     });
     assert.ok(page.ok);
+    assert.deepEqual(page.value.facets, { role: [] });
     assert.deepEqual(page.value.items[0], {
       id: 'u-2',
       email: 'ada@example.com',
@@ -342,13 +345,21 @@ describe('user service invitations', () => {
       permissions: ['fees:update']
     };
     const { db, service } = setup({ invitations: [row] });
-    const page = { q: 'ada', page: 1, pageSize: 25, sort: 'expires', dir: 'asc' } as const;
+    const page = {
+      q: 'ada',
+      role: [],
+      page: 1,
+      pageSize: 25,
+      sort: 'expires',
+      dir: 'asc'
+    } as const;
     assert.deepEqual(await service.invitations(limited(), page), {
       ok: true,
       value: {
         total: 1,
         page: 1,
         pageSize: 25,
+        facets: { role: [] },
         items: [
           {
             id: 'i-1',

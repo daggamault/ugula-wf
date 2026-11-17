@@ -32,10 +32,6 @@ type TaskSummary = {
   completed_at: string | null;
 };
 
-type TaskAssignee = 'mine' | 'unassigned' | 'all';
-
-export type TaskFilter = { queue: string | null; assignee: TaskAssignee };
-
 export type TaskRow = {
   id: string;
   kind: 'task' | 'fault';
@@ -52,13 +48,6 @@ export type TaskRow = {
   first_name: string | null;
   last_name: string | null;
 };
-
-const TASK_ASSIGNEES: readonly TaskAssignee[] = ['mine', 'unassigned', 'all'];
-
-export const taskFilterOf = (query: URLSearchParams): TaskFilter => ({
-  queue: query.get('queue') || null,
-  assignee: TASK_ASSIGNEES.find((a) => a === query.get('assignee')) ?? 'all'
-});
 
 export type TaskDetail = TaskSummary & {
   summary: string | null;
@@ -101,12 +90,8 @@ export type SourceReport = {
 };
 
 export const createTasksClient = (api: Api) => ({
-  list: (filter: TaskFilter, query: string, signal?: AbortSignal) => {
-    const params = new URLSearchParams(query);
-    if (filter.queue) params.set('queue', filter.queue);
-    if (filter.assignee !== 'all') params.set('assignee', filter.assignee);
-    return api.get<Page<TaskRow>>(`/api/tasks?${params}`, signal);
-  },
+  list: (query: string, signal?: AbortSignal) =>
+    api.get<Page<TaskRow>>(`/api/tasks?${query}`, signal),
   queues: async () => (await api.get<{ queues: QueueSummary[] }>('/api/tasks/queues')).queues,
   find: async (id: string, signal?: AbortSignal) =>
     (await api.get<{ task: TaskDetail }>(`/api/tasks/${encodeURIComponent(id)}`, signal)).task,

@@ -9,7 +9,6 @@ import {
   hrefWith,
   searchStateOf,
   tableStateOf,
-  useFilterHref,
   useSearchState,
   useTableState,
   withBack
@@ -124,6 +123,53 @@ describe('tableStateOf', () => {
   });
 });
 
+describe('table filters', () => {
+  const filtered = { ...spec, filters: ['status', 'payer'] } as const;
+  const of = (search: string, prefix?: string) =>
+    tableStateOf(
+      '/claims',
+      new URLSearchParams(search),
+      prefix ? { ...filtered, prefix } : filtered
+    );
+
+  it('reads each filter as a list of distinct values', () => {
+    const s = of('status=paid,denied,paid,&payer=p1&other=x');
+    assert.deepEqual(s.filters, { status: ['paid', 'denied'], payer: ['p1'] });
+    assert.equal(s.isFiltered, true);
+    assert.deepEqual(of('status=').filters, { status: [], payer: [] });
+    assert.equal(of('').isFiltered, false);
+    assert.deepEqual(state('status=paid').filters, {});
+  });
+
+  it('sends only the chosen filters to the API', () => {
+    assert.equal(
+      of('status=paid,denied&page=2').apiQuery,
+      'page=2&pageSize=25&sort=created&dir=desc&status=paid%2Cdenied'
+    );
+    assert.equal(of('payer=').apiQuery, 'page=1&pageSize=25&sort=created&dir=desc');
+  });
+
+  it('links a changed filter back to the first page and leaves an empty one out', () => {
+    const s = of('status=paid&page=3&sort=name');
+    assert.equal(
+      s.filterHref('status', ['paid', 'denied']),
+      '/claims?status=paid%2Cdenied&sort=name'
+    );
+    assert.equal(s.filterHref('status', []), '/claims?sort=name');
+    assert.equal(s.clearFiltersHref, '/claims?sort=name');
+  });
+
+  it('keeps filters of tables with a prefix apart', () => {
+    const s = of('mineStatus=paid&status=denied&minePage=2', 'mine');
+    assert.deepEqual(s.filters.status, ['paid']);
+    assert.equal(
+      s.filterHref('payer', ['p1']),
+      '/claims?mineStatus=paid&status=denied&minePayer=p1'
+    );
+    assert.equal(s.clearFiltersHref, '/claims?status=denied');
+  });
+});
+
 describe('searchStateOf', () => {
   it('adds the trimmed search text to the table state and API query', () => {
     const s = searchStateOf('/payers', new URLSearchParams('q=+blue+cross+&page=2'), spec);
@@ -147,15 +193,13 @@ describe('searchStateOf', () => {
 
 describe('table state hooks', () => {
   const Probe = ({ prefix }: { prefix?: string }) => {
-    const table = useTableState('/claims', spec);
+    const filtered = { ...spec, filters: ['status'] } as const;
+    const table = useTableState('/claims', prefix ? { ...filtered, prefix } : filtered);
     const search = useSearchState('/claims', spec);
-    const filterHref = useFilterHref('/claims', prefix);
     return createElement(
       'output',
       null,
-      [table.sort, table.page, search.q, filterHref('status', 'paid'), filterHref('q', null)].join(
-        '|'
-      )
+      [table.sort, table.page, search.q, table.filterHref('status', ['paid'])].join('|')
     );
   };
 
@@ -164,10 +208,10 @@ describe('table state hooks', () => {
     render(createElement(Probe));
     assert.equal(
       screen.getByRole('status').textContent,
-      'name|2|doe|/claims?sort=name&q=doe&status=paid|/claims?sort=name'
+      'name|2|doe|/claims?sort=name&q=doe&status=paid'
     );
     act(() => navigate('/claims?page=3'));
-    assert.equal(screen.getByRole('status').textContent, 'created|3||/claims?status=paid|/claims');
+    assert.equal(screen.getByRole('status').textContent, 'created|3||/claims?status=paid');
   });
 
   it('resets only the page of its own table when a filter changes', () => {
@@ -175,7 +219,7 @@ describe('table state hooks', () => {
     render(createElement(Probe, { prefix: 'mine' }));
     assert.equal(
       screen.getByRole('status').textContent,
-      'created|2||/claims?page=2&status=paid|/claims?page=2'
+      'created|3||/claims?page=2&mineStatus=paid'
     );
   });
 });
