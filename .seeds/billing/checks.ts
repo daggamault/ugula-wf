@@ -1,6 +1,5 @@
 import { CLAIM_FIX_FIELDS, type ClaimField } from '@ugula/billing';
 import type { GraphDef } from '@ugula/graph';
-import { slot } from '../builder.ts';
 import type { SeedGraph } from '../graphs.ts';
 import { CLAIM_RECORD_IN } from './check-facts.ts';
 import {
@@ -89,7 +88,6 @@ const claimChecks = (): GraphDef => {
     label: 'Every Issue Found',
     config: { count: RULES.length + 1, type: ISSUE_TYPE }
   });
-  g.add('agency', 'billing.agency-checks', { label: 'Agency Checks' });
   g.add('rate', 'std.list.map-rule', {
     label: 'Rate Each Issue',
     config: { rule: 'billing.rate-issue', version: 1, item: 'issue' }
@@ -103,9 +101,7 @@ const claimChecks = (): GraphDef => {
   g.wire('entry.rejectedCoverageId', 'lastSubmission.rejectedCoverageId');
   g.wire('lastSubmission.issues', 'found.list1');
   for (const [i, c] of RULES.entries()) g.wire(`${c.id}.issues`, `found.list${i + 2}`);
-  g.wire('found.list', 'agency.issues');
-  g.wire('entry.facts', 'agency.facts');
-  g.wire('agency.issues', 'rate.list');
+  g.wire('found.list', 'rate.list');
   g.wire('rate.issue', 'shown.list');
   g.wire('shown.list', 'return.issues');
   return g.def;
@@ -438,20 +434,6 @@ const fixClaim = (): GraphDef => {
 };
 
 export const checkGraphs: SeedGraph[] = [
-  slot(
-    'billing.agency-checks',
-    'Agency Checks',
-    'An agency rule after the base claim checks: add checks of its own (a payer that needs a facesheet, say) or drop issues, before severities apply. Passes the issues through unchanged until an agency overrides it.',
-    {
-      execIn: [],
-      execOut: [],
-      inputs: [
-        d('issues', T.issues, 'Issues', 'The issues the base checks found.'),
-        d('facts', T.checkFacts, 'Check Facts', 'The claim as the checks read it.', true)
-      ],
-      outputs: [d('issues', T.issues, 'Issues', 'The issues to rate and show.')]
-    }
-  ),
   ...checkRuleGraphs,
   asRule(
     'billing.rate-issue',
@@ -468,7 +450,7 @@ export const checkGraphs: SeedGraph[] = [
   asRule(
     'billing.claim-checks',
     'Claim Checks',
-    'Runs every claim check on the check facts, then the Agency Checks rule, and rates each issue with the Check Severity table (blocking, warning or off).',
+    'Runs every claim check on the check facts and rates each issue with the Check Severity table (blocking, warning or off).',
     claimChecks()
   ),
   asRule(

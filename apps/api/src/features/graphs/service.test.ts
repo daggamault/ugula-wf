@@ -211,7 +211,7 @@ describe('graph templates and scopes', () => {
   });
 
   it('gives workflows the workflow role and other graphs the role asked for, rules by default', () => {
-    assert.equal(roleFor('workflow', 'slot'), 'workflow');
+    assert.equal(roleFor('workflow', 'rule'), 'workflow');
     assert.equal(roleFor('node', 'stage'), 'stage');
     assert.equal(roleFor('node', undefined), 'rule');
   });

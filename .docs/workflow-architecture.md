@@ -41,7 +41,7 @@ Still missing: insurance discovery, rural/super-rural, automatic chasing of miss
    - **Action** (capability node, code): I/O only — parse, store, send, match, render. Never contains a business decision that a rule could make.
 3. **Decisions return reasons.** Every rule outputs its result plus `reasons` (text and source field), so a biller sees _why_ a claim got ALS2, a GY modifier or a block.
 4. **Contracts are models, not pin lists.** A rule takes `Facts` and returns a model (`Charges`, `ClaimProperties`, `Coverages`). Adding an optional field to a model never breaks an override; adding a pin does.
-5. **Extend before you replace.** Each stage exposes empty **Agency Rule** slots (pass-through by default). Most agency needs are "add one adjustment after the base logic", which needs no copy of the base and never drifts.
+5. **One complete base set.** Ugula ships every rule complete; an agency overrides only the graphs it needs, and drift on a copy is handled by Compare, Keep Mine and Start From Base. (Empty pass-through "Agency Rule" slots were tried and removed: every rule is already overridable, and a slot only added a graph to every stage.)
 6. **Reference data in tables, decisions on the canvas.** Code sets, code labels, limits, settings and pure code mappings (CARC sets, day limits, the base rate code matrix) are versioned **tables** an agency overrides as forms; every decision on top of them is drawn as visible logic in a rule. Many customizations are a table row, not a node.
 7. **Code is the floor, not the ceiling.** Capability nodes keep only what a graph cannot do (X12 serialization, matching, model calls, storage). Everything they decide today moves to rules.
 
@@ -68,29 +68,29 @@ Each later stage adds its own section to a **Claim Draft** (`Service`, `Diagnose
 
 ## 4. Workflow Catalog
 
-Each row is a top-level workflow (W) started by an event. Stages (S) are overridable subworkflows; rules (R) are the small override points. `+slot` marks an empty Agency Rule slot.
+Each row is a top-level workflow (W) started by an event. Stages (S) are overridable subworkflows; rules (R) are the small override points.
 
-**Built:** §4.1 Map Encounter Facts (with Agency Facts), Classify Trip, Determine Service (Level of Service, Emergency Status, Loaded Miles), Assign Diagnoses (from coded impressions), Determine Payers (Coverages from PCR, Match Payer Directory, Coordination Order), Assign Charges (Base Rate Code, Mileage Lines, Price Precedence), Assign Claim Properties (Origin/Destination Modifiers, Transport Reason; Place of Service, Ambulance Conditions, Claim Frequency and Line Modifiers at 837P time), Check Claim (§4.6 base checks except ABN, prior authorization, weight, duplicate, member ID format and PO box) and Coding Review, each with its slot; §4.4 Read Claim Ledger, Next Claim Step and Claim Policy; §4.7 Classify Adjustments and Route Outcome (Route Remittance) inside Receive Payer File, Work Denial (Denial Category), Correct Claim (Correction Method), Appeal Claim (Appeal Level and Deadline, Build Appeal Packet, Appeal Decision) and Log Records Request; Submit to Payer as the one submission path, Correct Claim as the one correction path (Work Denial, Reconcile Payment, Follow Up with Payer) and Route Remittance as the one posting path (835 lines and Post Payment); §4.4 Bill Facility (the facility step and Invoice Facilities) and Bill Patient (Patient Responsibility with balance-billing protection); §4.8 Refund Overpayment and collections and write-off approval (Approve Closing); §4.9 Watch Deadlines. Also built: Deceased Handling (QL) and Non-Covered Miles (A0888) in Determine Service, Line Modifiers per line (Modifiers of One Line for QL, GM, GY, GA and GZ, and the Line Code Modifier table), Narrative Note and Admission Date in Map 837P, Medicare Secondary Payer in Determine Payers, Facility Responsibility with Bill Facility in Bill the Claim, the ABN, prior authorization, MSP and facility checks, and §4.9 Receive Document and Chase Document. The catalog with keys is in [Billing Workflows](billing-workflows.md). Multiple patients is a condition in Modifiers of One Line rather than its own rule, and Narrative Note and Admission Date run at 837P time.
+**Built:** §4.1 Map Encounter Facts, Classification, Determine Service (Level of Service, Emergency Status, Loaded Miles), Assign Diagnoses (from coded impressions), Determine Payers (Coverages from PCR, Match Payer Directory, Coordination Order), Assign Charges (Base Rate Code, Mileage Lines, Price Precedence), Assign Claim Properties (Origin/Destination Modifiers, Transport Reason; Place of Service, Ambulance Conditions, Claim Frequency and Line Modifiers at 837P time), Check Claim (§4.6 base checks except ABN, prior authorization, weight, duplicate, member ID format and PO box) and Coding Review; §4.4 Read Claim Ledger, Next Claim Step and Claim Policy; §4.7 Classify Adjustments and Route Outcome (Route Remittance) inside Receive Payer File, Work Denial (Denial Category), Correct Claim (Correction Method), Appeal Claim (Appeal Level and Deadline, Build Appeal Packet, Appeal Decision) and Log Records Request; Submit to Payer as the one submission path, Correct Claim as the one correction path (Work Denial, Reconcile Payment, Follow Up with Payer) and Route Remittance as the one posting path (835 lines and Post Payment); §4.4 Bill Facility (the facility step and Invoice Facilities) and Bill Patient (Patient Responsibility with balance-billing protection); §4.8 Refund Overpayment and collections and write-off approval (Approve Closing); §4.9 Watch Deadlines. Also built: Deceased Handling (QL) and Non-Covered Miles (A0888) in Determine Service, Line Modifiers per line (Modifiers of One Line for QL, GM, GY, GA and GZ, and the Line Code Modifier table), Narrative Note and Admission Date in Map 837P, Medicare Secondary Payer in Determine Payers, Facility Responsibility with Bill Facility in Bill the Claim, the ABN, prior authorization, MSP and facility checks, and §4.9 Receive Document and Chase Document. The catalog with keys is in [Billing Workflows](billing-workflows.md). Multiple patients is a condition in Modifiers of One Line rather than its own rule, and Narrative Note and Admission Date run at 837P time.
 
 ### 4.1 Intake: PCR received → Ready for review
 
 `W Encounter to Claim` (event: NEMSIS PCR received, new or revised)
 
-| Stage                     | Rules and actions                                                                                                                                                | MVP |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- |
-| S Import Report           | A Read NEMSIS Report · A Open Draft Claim · R Detect Revision                                                                                                    | yes |
-| S Map Encounter Facts     | R Trip Facts · R Location Facts · R Clinical Facts · R Documentation Facts · `+slot` Agency Facts                                                                | yes |
-| S Read Documents          | A Store Attachments · A Embed Narrative · A Read Narrative (findings with quotes)                                                                                | yes |
-| S Classify Trip           | R Classification · R Is Billable · `+slot`                                                                                                                       | yes |
-| S Resolve Patient         | A Match Patient · task Confirm Patient · A Assign Patient                                                                                                        | yes |
-| S Determine Service       | R Level of Service · R Emergency Status · R Deceased Handling (QL) · R Multiple Patients (GM) · R Loaded Miles · R Non-covered Miles (A0888) · `+slot`           | yes |
-| S Assign Diagnoses        | R Diagnoses From Coded Impressions · R Diagnoses From Narrative (model + vectors, with quotes) · R Order Diagnoses · `+slot`                                     | yes |
-| S Determine Payers        | see 4.2                                                                                                                                                          | yes |
-| S Assign Charges          | R Base Rate Code · R Mileage Lines · R Modifiers (origin/destination, GA/GY/GZ, QL, GM) · R Supply/Add-on Lines · A Price Charges · R Price Precedence · `+slot` | yes |
-| S Assign Claim Properties | R Place of Service · R Transport Reason (CR104) · R Ambulance Conditions (CRC) · R Narrative Note (NTE) · R Admission Date · R Frequency · `+slot`               | yes |
-| S Check Claim             | runs every Check rule (4.6) and collects `Issues`                                                                                                                | yes |
-| S Coding Review           | task Review PCR (with every rule's reasons) · A Save Claim                                                                                                       | yes |
-| —                         | A Start Claim Cycle                                                                                                                                              | yes |
+| Stage                     | Rules and actions                                                                                                                                      | MVP |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | --- |
+| S Import Report           | A Read NEMSIS Report · A Open Draft Claim · R Detect Revision                                                                                          | yes |
+| S Map Encounter Facts     | R Trip Facts · R Location Facts · R Clinical Facts · R Documentation Facts                                                                             | yes |
+| S Read Documents          | A Store Attachments · A Embed Narrative · A Read Narrative (findings with quotes)                                                                      | yes |
+| S Classify Trip           | R Classification · R Is Billable                                                                                                                       | yes |
+| S Resolve Patient         | A Match Patient · task Confirm Patient · A Assign Patient                                                                                              | yes |
+| S Determine Service       | R Level of Service · R Emergency Status · R Deceased Handling (QL) · R Multiple Patients (GM) · R Loaded Miles · R Non-covered Miles (A0888)           | yes |
+| S Assign Diagnoses        | R Diagnoses From Coded Impressions · R Diagnoses From Narrative (model + vectors, with quotes) · R Order Diagnoses                                     | yes |
+| S Determine Payers        | see 4.2                                                                                                                                                | yes |
+| S Assign Charges          | R Base Rate Code · R Mileage Lines · R Modifiers (origin/destination, GA/GY/GZ, QL, GM) · R Supply/Add-on Lines · A Price Charges · R Price Precedence | yes |
+| S Assign Claim Properties | R Place of Service · R Transport Reason (CR104) · R Ambulance Conditions (CRC) · R Narrative Note (NTE) · R Admission Date · R Frequency               | yes |
+| S Check Claim             | runs every Check rule (4.6) and collects `Issues`                                                                                                      | yes |
+| S Coding Review           | task Review PCR (with every rule's reasons) · A Save Claim                                                                                             | yes |
+| —                         | A Start Claim Cycle                                                                                                                                    | yes |
 
 ### 4.2 Payers
 
@@ -105,7 +105,6 @@ Each row is a top-level workflow (W) started by an event. Stages (S) are overrid
 | R Liability Payers          | MVA/PIP, workers' comp → billed first                                                                  | flag only |
 | R Coordination Order        | primary/secondary/tertiary, crossover expectations (COBA, Medigap)                                     | yes       |
 | R Payer Rules               | merges the payer profile (rounding, A0998 accepted, frequency 7/8 support, timely filing, PA required) | yes       |
-| `+slot` Agency Payer Rules  | e.g. "county contract pays all 911 transports from ZIP X"                                              | yes       |
 | W Check Eligibility (child) | see 4.3                                                                                                | yes       |
 
 ### 4.3 Eligibility and discovery
@@ -134,32 +133,32 @@ Each row is a top-level workflow (W) started by an event. Stages (S) are overrid
 
 ### 4.5 Submission and acknowledgments
 
-| Workflow / stage               | Event                            | Rules and actions                                                                                                                                                                                                 | MVP      |
-| ------------------------------ | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| S Submit to Payer              | step = submit                    | R Ready to Submit (blocking issues, review approved) · S Map 837P (per payer: R Subscriber · R Payer · R Claim Header · R Ambulance Segments · R Service Lines · `+slot`) · A File 837P · A Send to Clearinghouse | yes      |
-| W Receive Acknowledgment       | TA1 received                     | R Interchange Status · task Fix Envelope (agency setup, not claims)                                                                                                                                               | yes      |
-| W Receive Acknowledgment       | 999 received                     | R Group/Transaction Status · per rejected claim: signal claim with reason                                                                                                                                         | yes      |
-| W Receive Claim Acknowledgment | 277CA received                   | per claim: R Claim Status Category (A1/A2 accept, A3+ reject) · A Store Payer Claim Number · signal claim                                                                                                         | yes      |
-| W Check Claim Status           | timer: no 277CA or 835 in N days | A Send 276 · wait 277 · R Status Meaning (pended, ADR, denied, paid)                                                                                                                                              | yes      |
-| W Receive Clearinghouse Report | proprietary front-end rejection  | R Map Report to Claim Rejections                                                                                                                                                                                  | post-MVP |
+| Workflow / stage               | Event                            | Rules and actions                                                                                                                                                                                       | MVP      |
+| ------------------------------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| S Submit to Payer              | step = submit                    | R Ready to Submit (blocking issues, review approved) · S Map 837P (per payer: R Subscriber · R Payer · R Claim Header · R Ambulance Segments · R Service Lines) · A File 837P · A Send to Clearinghouse | yes      |
+| W Receive Acknowledgment       | TA1 received                     | R Interchange Status · task Fix Envelope (agency setup, not claims)                                                                                                                                     | yes      |
+| W Receive Acknowledgment       | 999 received                     | R Group/Transaction Status · per rejected claim: signal claim with reason                                                                                                                               | yes      |
+| W Receive Claim Acknowledgment | 277CA received                   | per claim: R Claim Status Category (A1/A2 accept, A3+ reject) · A Store Payer Claim Number · signal claim                                                                                               | yes      |
+| W Check Claim Status           | timer: no 277CA or 835 in N days | A Send 276 · wait 277 · R Status Meaning (pended, ADR, denied, paid)                                                                                                                                    | yes      |
+| W Receive Clearinghouse Report | proprietary front-end rejection  | R Map Report to Claim Rejections                                                                                                                                                                        | post-MVP |
 
 ### 4.6 Checks (the validator, split up)
 
-`S Check Claim` runs a list of check rules. Each returns `Issues` (`code`, `severity`, `message`, `fix field`). Agencies override one check, change a severity in the **Check Severity** table, or add checks in a slot.
+`S Check Claim` runs a list of check rules. Each returns `Issues` (`code`, `severity`, `message`, `fix field`). Agencies override one check, change a severity in the **Check Severity** table, or add checks by overriding Claim Checks.
 
 Base checks (MVP): Billing Signature or Exception · PCS Required (scheduled non-emergency Medicare, 60 days, 48h/21-day rules) · Prior Authorization UTN (repetitive scheduled) · Transport Reason Present · Origin/Destination Modifiers · Mileage Present and Rounded · Diagnosis Present · ABN for Expected Denial · Timely Filing · Times in Order · Patient Weight (bariatric) · Duplicate Claim · Member ID Format · Pickup Address Not PO Box.
 
 ### 4.7 Remittance, denials and appeals
 
-| Workflow              | Event                  | Stages                                                                                                                                                                                                                                                                | MVP                                                               |
-| --------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| W Receive Remittance  | 835 received           | A Read 835 · per claim: spawn W Post Payment · R Provider Adjustments (PLB) → task                                                                                                                                                                                    | yes                                                               |
-| W Post Payment        | one CLP                | R Match Claim · R Classify Adjustments (CARC/RARC + group → contractual, patient responsibility, denial, other) · A Post Ledger · R Route Outcome (CARC code sets → next payer, patient, fix and resubmit, appeal, write off, bill facility) · `+slot` · signal claim | yes                                                               |
-| W Work Denial         | denial routed          | R Denial Category · task Denial Decision (correct, appeal, rebill other payer, patient, write off)                                                                                                                                                                    | yes                                                               |
-| S Correct Claim       | biller chooses correct | R Correction Method (payer rule: frequency 1/7/8 vs Medicare reopening) · S Submit to Payer                                                                                                                                                                           | yes                                                               |
-| S Appeal Claim        | biller chooses appeal  | R Appeal Level and Deadline · A Build Appeal Packet (PCR, PCS, signatures, facesheet) · task Send Appeal · wait decision                                                                                                                                              | redetermination and reconsideration                               |
-| W Log Records Request | ADR received           | task Gather Records · deadline timer                                                                                                                                                                                                                                  | task only (built: from the claim page; Watch Deadlines raises it) |
-| W Reconcile Deposit   | EFT / lockbox file     | R Match Deposit to 835 (TRN)                                                                                                                                                                                                                                          | post-MVP                                                          |
+| Workflow              | Event                  | Stages                                                                                                                                                                                                                                                      | MVP                                                               |
+| --------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| W Receive Remittance  | 835 received           | A Read 835 · per claim: spawn W Post Payment · R Provider Adjustments (PLB) → task                                                                                                                                                                          | yes                                                               |
+| W Post Payment        | one CLP                | R Match Claim · R Classify Adjustments (CARC/RARC + group → contractual, patient responsibility, denial, other) · A Post Ledger · R Route Outcome (CARC code sets → next payer, patient, fix and resubmit, appeal, write off, bill facility) · signal claim | yes                                                               |
+| W Work Denial         | denial routed          | R Denial Category · task Denial Decision (correct, appeal, rebill other payer, patient, write off)                                                                                                                                                          | yes                                                               |
+| S Correct Claim       | biller chooses correct | R Correction Method (payer rule: frequency 1/7/8 vs Medicare reopening) · S Submit to Payer                                                                                                                                                                 | yes                                                               |
+| S Appeal Claim        | biller chooses appeal  | R Appeal Level and Deadline · A Build Appeal Packet (PCR, PCS, signatures, facesheet) · task Send Appeal · wait decision                                                                                                                                    | redetermination and reconsideration                               |
+| W Log Records Request | ADR received           | task Gather Records · deadline timer                                                                                                                                                                                                                        | task only (built: from the claim page; Watch Deadlines raises it) |
+| W Reconcile Deposit   | EFT / lockbox file     | R Match Deposit to 835 (TRN)                                                                                                                                                                                                                                | post-MVP                                                          |
 
 ### 4.8 Patient balance and money out
 
@@ -186,11 +185,10 @@ Base checks (MVP): Billing Signature or Exception · PCS Required (scheduled non
 
 ### Three ways to customize, from safest to most powerful
 
-| Kind               | What the agency does                                          | Drift risk                 | Example                                                                              |
-| ------------------ | ------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------ |
-| **Table override** | Edits rows of a versioned table (form)                        | none                       | Add a CARC to a denial code set; change a base rate code; relax a check to a warning |
-| **Slot**           | Fills an empty Agency Rule slot that runs after the base rule | none (base keeps updating) | Add modifier `GM` for a county contract; add a supply line                           |
-| **Graph override** | Copies one rule or stage and changes it                       | tracked (diff + merge)     | Replace Level of Service entirely                                                    |
+| Kind               | What the agency does                    | Drift risk             | Example                                                                              |
+| ------------------ | --------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------ |
+| **Table override** | Edits rows of a versioned table (form)  | none                   | Add a CARC to a denial code set; change a base rate code; relax a check to a warning |
+| **Graph override** | Copies one rule or stage and changes it | tracked (diff + merge) | Replace Level of Service entirely                                                    |
 
 The editor offers them in that order: on any node, **Customize** opens a menu "Edit table / Add agency rule / Replace this rule".
 
@@ -202,15 +200,14 @@ The editor offers them in that order: on any node, **Customize** opens a menu "E
 4. **Immutable seeds** (E4): seeding publishes a new version when the definition changes, never edits one in place; references use "latest compatible" instead of `version: 1` (E7).
 5. **Contracts checked continuously** (E5): on every base publish, recheck every active override, including `optional`, defaults and model fields; incompatible overrides stay on the old base and raise a notification.
 6. **Override tables independently:** tables become first-class keyed, versioned assets referenced by key from table nodes, so a table override needs no graph copy.
-7. **Slots:** a slot is a seed graph with role `slot` (`slot()` in `.seeds/builder.ts`) whose definition `slotGraph` (`libs/kernel/graph/src/slot.ts`) wires each output straight from the input of the same name, entry to return. A base rule calls it like any subworkflow (Charges calls `billing.agency-charges`), so filling a slot is an ordinary override with nothing special at run time, and `isPassThrough` tells an empty slot from a filled one.
-8. **Every event through a workflow** (E6): manual payer-file upload starts Receive Payer File like the poll does.
+7. **Every event through a workflow** (E6): manual payer-file upload starts Receive Payer File like the poll does.
 
 ### Showing changes
 
 Add one semantic token, `--color-custom` (a pink/fuchsia `light-dark()` oklch, distinct from `danger` and `primary`), and update the colour rules in [Standards](standards.md) to list it. It means "this agency changed this" everywhere:
 
 - **Canvas:** nodes added or changed in an override get a `border-custom` outline and a small **Custom** chip; base nodes the override removed appear as dashed ghost nodes behind a "Show removed" toggle; wires that differ from the base use the custom colour.
-- **Parent graphs:** a subworkflow node whose key the agency overrides (or whose slot is filled) gets the custom outline, so customizations are visible from the top workflow down.
+- **Parent graphs:** a subworkflow node whose key the agency overrides gets the custom outline, so customizations are visible from the top workflow down.
 - **Inspector:** each changed property shows a custom dot and "Base: _value_" with **Reset to Base**.
 - **Customization map:** a page listing the call tree of each workflow with customized branches highlighted, so an agency (and our support) can see every change at once.
 - **Base updated:** a warning banner on an override whose base has a newer version, with a three-pane diff (base before / base now / yours) and **Apply Base Changes** where they don't conflict (node ids are stable across copies, so diff is per node and per property).
@@ -238,7 +235,7 @@ Batch SFTP covers 837P, 999, 277CA, 835 and batch 270/271/276/277. **Real-time**
 
 ## 7. Suggested Order
 
-1. Engine fixes E1–E8 (pinning, base reference, immutable seeds, pin descriptions, tables as assets, slots).
+1. Engine fixes E1–E8 (pinning, base reference, immutable seeds, pin descriptions, tables as assets).
 2. Diff and custom-accent UI, customization map, rule Test panel.
 3. **Done:** Encounter Facts model; split `validate-claim` into check rules; move claim-step and posting decisions into rules drawn as visible logic, with tables only for reference data (see [Billing Workflows](billing-workflows.md)).
 4. Missing MVP billing: none of the items above. **Done:** MSP, facility responsibility at intake, ABN/GA/GZ, QL, GM, A0888, NTE and admission date, prior authorization and PCS tracking, documents, TA1, 276/277, real-time and batch 270/271 through the port, CARC routing, denials, corrected claims, appeals, records requests, refunds, approvals, deadlines, balance-billing protection, facility invoicing.
@@ -246,7 +243,7 @@ Batch SFTP covers 837P, 999, 277CA, 835 and batch 270/271/276/277. **Real-time**
 
 ## 8. Open Questions
 
-- Should agencies see and override **Stage** graphs, or only rules, tables and slots at first? (Recommendation: rules, tables and slots first; stages behind a role.)
+- Should agencies see and override **Stage** graphs, or only rules and tables at first? (Recommendation: rules and tables first; stages behind a role.)
 - Do we bill hospital-based (837I) or air ambulance at all? (Recommendation: out of scope for MVP.)
 - Expected-payment calculation from the Medicare fee schedule (RVUs, GPCI, rural add-ons) for underpayment detection — MVP or not?
 

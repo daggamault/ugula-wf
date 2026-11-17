@@ -333,13 +333,6 @@ export const P = {
 
 export const listItem = (type: ValueType) => (type as { list: ValueType }).list;
 
-export const pureSlot = (inputs: PinSpec[], outputs: PinSpec[]) => ({
-  execIn: [],
-  execOut: [],
-  inputs,
-  outputs
-});
-
 export const tableOf = (lookup: Json) => (lookup as { table: Json }).table;
 
 export const codeSet = (

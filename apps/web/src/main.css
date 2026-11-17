@@ -27,7 +27,6 @@
   --color-pin-list: light-dark(oklch(68.5% 0.169 237.3), oklch(74.6% 0.16 232.7));
   --color-pin-object: light-dark(oklch(60.6% 0.25 292.7), oklch(70.2% 0.183 293.5));
   --color-node-entry: light-dark(oklch(57% 0.2 25), oklch(68% 0.17 25));
-  --color-node-slot: light-dark(oklch(62% 0.17 50), oklch(72% 0.15 55));
   --color-node-human: light-dark(oklch(70% 0.15 85), oklch(80% 0.14 88));
   --color-node-pure: light-dark(oklch(58% 0.14 150), oklch(72% 0.15 150));
   --color-node-table: light-dark(oklch(58% 0.1 195), oklch(74% 0.1 195));

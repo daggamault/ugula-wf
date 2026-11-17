@@ -38,7 +38,7 @@ const graphs = [
     key: 'billing.payer',
     name: 'Payer Rule',
     kind: 'node',
-    role: 'slot',
+    role: 'rule',
     scope: 'system',
     isSystem: true,
     publishedVersion: null
@@ -124,7 +124,7 @@ describe('WorkflowsTable', () => {
     showTable();
     assert.deepEqual(rowsOf().map(cellsOf), [
       ['Batch', 'Workflow', 'Agency', 'v2', 'v3'],
-      ['Payer Rule', 'SubworkflowAgency Rule', 'Built-in', '—', '—'],
+      ['Payer Rule', 'Subworkflow', 'Built-in', '—', '—'],
       ['Match', 'Subworkflow', 'Built-inHas Your Copy', 'v2', '—'],
       ['Match', 'Subworkflow', 'AgencyBase Updated', 'v2', '—']
     ]);

@@ -1,5 +1,4 @@
 import type { GraphDef, ValueType } from '@ugula/graph';
-import { slot } from '../builder.ts';
 import type { SeedGraph } from '../graphs.ts';
 import { thenExit } from './glossary.ts';
 import {
@@ -18,7 +17,6 @@ import {
   orElse,
   P,
   type Port,
-  pureSlot,
   rule,
   select,
   shared,
@@ -658,7 +656,6 @@ const mapEncounterFacts = (): GraphDef => {
     config: { record: T.locations, path: 'destinationHospital' }
   });
   g.add('facts', 'billing.encounter-facts.make', { label: 'Encounter Facts' });
-  g.add('agency', 'billing.agency-facts', { label: 'Agency Facts' });
   g.ret('done');
   g.wire('entry.exec', 'hospital.exec');
   g.wire('hospital.found', 'keepHospital.exec');
@@ -678,8 +675,7 @@ const mapEncounterFacts = (): GraphDef => {
     'patient.pcr',
     'clinical.pcr',
     'documentation.pcr',
-    'coverages.pcr',
-    'agency.pcr'
+    'coverages.pcr'
   );
   g.wire('pcr.payment', 'payment.payment');
   g.wire('trip.trip', 'facts.trip');
@@ -689,21 +685,11 @@ const mapEncounterFacts = (): GraphDef => {
   g.wire('documentation.documentation', 'facts.documentation');
   g.wire('coverages.coverages', 'facts.coverages');
   g.wire('payment.method', 'facts.paymentMethod');
-  g.wire('facts.facts', 'agency.facts');
-  g.wire('agency.facts', 'done.facts');
+  g.wire('facts.facts', 'done.facts');
   return g.def;
 };
 
 export const factGraphs: SeedGraph[] = [
-  slot(
-    'billing.agency-facts',
-    'Agency Facts',
-    'An agency rule after the encounter facts are mapped: correct or add facts from the report (a local code, a facility the agency knows) before any billing rule reads them. Passes the facts through unchanged until an agency overrides it.',
-    pureSlot(
-      [d('facts', T.facts, 'Encounter Facts', 'The facts the base rules mapped.'), P.pcr(true)],
-      [d('facts', T.facts, 'Encounter Facts', 'The facts every billing rule reads.')]
-    )
-  ),
   asRule(
     'billing.trip-facts',
     'Trip Facts',
@@ -755,7 +741,7 @@ export const factGraphs: SeedGraph[] = [
   asStage(
     'billing.map-encounter-facts',
     'Map Encounter Facts',
-    'Builds the Encounter Facts every billing rule reads, once per report: trip, locations, patient, clinical, documentation and the coverages as reported, then the Agency Facts rule.',
+    'Builds the Encounter Facts every billing rule reads, once per report: trip, locations, patient, clinical, documentation and the coverages as reported.',
     mapEncounterFacts()
   )
 ];

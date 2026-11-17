@@ -6,7 +6,6 @@ import {
 } from '@ugula/billing';
 import type { GraphDef, Json, ValueType } from '@ugula/graph';
 import { PCR_TYPE } from '@ugula/nemsis';
-import { slot } from '../builder.ts';
 import type { SeedGraph } from '../graphs.ts';
 import { action, graph, p } from './glossary.ts';
 import {
@@ -2080,7 +2079,7 @@ const reviewRevision = (): GraphDef => {
   g.input('pcr', 'pcr');
   g.input('contextClaimId', 'claimId');
   g.add('facts', 'billing.map-encounter-facts', { label: 'Map Encounter Facts' });
-  g.add('classify', 'billing.classify-trip', { label: 'Classify Trip' });
+  g.add('classify', 'billing.classification', { label: 'Classification' });
   g.add('trip', 'billing.trip-summary', { label: 'Trip Summary' });
   g.add('subject', 'billing.pcr-subject', { label: 'Task Subject' });
   g.add('canApply', 'billing.can-rework-claim', { label: 'Can Rework Claim' });
@@ -2543,7 +2542,6 @@ const determinePayers = (): GraphDef => {
     execOut: ['then'],
     inputs: [
       d('coverages', COVERAGES, 'Reported Coverages', 'The coverages the report lists.'),
-      p('pcr', PCR_TYPE, true),
       p('pcrNumber', 'string', true),
       p('patientName', 'string', true),
       p('facts', FACTS, true)
@@ -2555,7 +2553,6 @@ const determinePayers = (): GraphDef => {
   g.add('documentation', 'billing.documentation.break', { label: 'Documentation' });
   g.add('msp', 'billing.medicare-secondary-payer', { label: 'Medicare Secondary Payer' });
   g.add('order', 'billing.coordination-order', { label: 'Coordination Order' });
-  g.add('agency', 'billing.agency-payers', { label: 'Agency Payer Rules' });
   g.ret('done');
   g.wire('entry.exec', 'resolve.exec');
   g.wire('entry.coverages', 'resolve.coverages');
@@ -2567,9 +2564,7 @@ const determinePayers = (): GraphDef => {
   g.wire('facts.documentation', 'documentation.documentation');
   for (const { name } of MSP_ANSWERS) g.wire(`documentation.${name}`, `msp.${name}`);
   g.wire('msp.medicareSecondary', 'order.medicareSecondary');
-  g.wire('order.coverages', 'agency.coverages');
-  g.wire('entry.pcr', 'agency.pcr');
-  g.wire('agency.coverages', 'done.coverages');
+  g.wire('order.coverages', 'done.coverages');
   g.wire('resolve.notes', 'done.notes');
   return g.def;
 };
@@ -2581,7 +2576,6 @@ const buildClaim = (): GraphDef => {
     inputs: [
       p('claimId', { id: 'claim' }),
       p('report', BLOB, true),
-      p('pcr', PCR_TYPE),
       p('facts', FACTS),
       p('classification', 'string'),
       p('patient', PATIENT),
@@ -2596,7 +2590,6 @@ const buildClaim = (): GraphDef => {
   g.add('primaryPayer', 'billing.coverage.break', { label: 'Primary Payer' });
   g.add('charges', 'billing.assign-charges', { label: 'Assign Charges' });
   g.add('claim', 'billing.map-claim', { label: 'Assign Claim Properties' });
-  g.add('agencyClaim', 'billing.agency-claim', { label: 'Agency Claim Rules' });
   g.add('save', 'billing.save-claim', { label: 'Save Draft Claim' });
   const eligibilityInputs = makeObject(g, 'eligibilityInputs', 'Eligibility Inputs', {
     claimId: [{ id: 'claim' }, 'entry.claimId']
@@ -2622,9 +2615,7 @@ const buildClaim = (): GraphDef => {
   g.wire('entry.facts', 'claim.facts');
   g.wire('entry.patient', 'claim.patient');
   g.wire('entry.report', 'claim.report');
-  g.wire('claim.claim', 'agencyClaim.claim');
-  g.wire('entry.pcr', 'agencyClaim.pcr');
-  g.wire('agencyClaim.claim', 'save.claim');
+  g.wire('claim.claim', 'save.claim');
   g.wire('entry.claimId', 'save.claimId');
   g.wire(eligibilityInputs, 'eligibility.inputs');
   g.wire('save.then', 'eligibility.exec');
@@ -2708,7 +2699,7 @@ const billClaim = (): GraphDef => {
   g.wire('classified.then', 'review.exec');
   g.wire('entry.facts', 'suggest.facts', 'review.facts', 'build.facts');
   g.wire('entry.findings', 'suggest.findings', 'review.findings');
-  g.wire('entry.pcr', 'review.pcr', 'trip.pcr', 'subject.pcr', 'build.pcr');
+  g.wire('entry.pcr', 'review.pcr', 'trip.pcr', 'subject.pcr');
   g.wire('classification.value', 'suggest.classification', 'review.classification');
   g.wire('suggest.service', 'review.service');
   for (const pin of ['reason', 'patient', 'coverages', 'payerNotes']) {
@@ -2809,7 +2800,7 @@ const workDraftClaim = (): GraphDef => {
   g.ret('voided', 'voided');
 
   g.wire('entry.exec', 'facts.exec');
-  g.wire('entry.pcr', 'facts.pcr', 'decide.pcr', 'payers.pcr', 'bill.pcr');
+  g.wire('entry.pcr', 'facts.pcr', 'decide.pcr', 'bill.pcr');
   g.wire('facts.then', 'decide.exec');
   g.wire('facts.facts', 'parts.facts', 'decide.facts', 'bill.facts');
   g.wire('parts.trip', 'trip.trip');
@@ -2849,25 +2840,6 @@ const workDraftClaim = (): GraphDef => {
 };
 
 export const intakeGraphs: SeedGraph[] = [
-  slot(
-    'billing.agency-payers',
-    'Agency Payer Rules',
-    'Where an agency reorders, adds or drops payers after they are matched and put in billing order, before the claim is billed. Passes the payers through unchanged until an agency overrides it.',
-    {
-      execIn: [],
-      execOut: [],
-      inputs: [
-        d(
-          'coverages',
-          COVERAGES,
-          'Coverages',
-          'The payers matched from the report, in billing order.'
-        ),
-        P.pcr(true)
-      ],
-      outputs: [d('coverages', COVERAGES, 'Coverages', 'The payers to bill, in order.')]
-    }
-  ),
   asRule(
     'billing.person-name',
     'Person Name',
@@ -3045,7 +3017,7 @@ export const intakeGraphs: SeedGraph[] = [
   asStage(
     'billing.determine-payers',
     'Determine Payers',
-    'Decides which payers to bill, in order, from the coverages on the report: Match Payer Directory, Medicare Secondary Payer from the MSP answers on the report, Coordination Order, then the Agency Payer Rules.',
+    'Decides which payers to bill, in order, from the coverages on the report: Match Payer Directory, Medicare Secondary Payer from the MSP answers on the report, then Coordination Order.',
     determinePayers()
   ),
   asRule(
@@ -3081,7 +3053,7 @@ export const intakeGraphs: SeedGraph[] = [
   asStage(
     'billing.build-claim',
     'Build Claim',
-    "Assigns the charges for the confirmed service, priced for the primary payer, assigns the claim properties from the encounter facts, applies the Agency Claim Rules, saves the draft and checks the payers' eligibility. Stops instead when a biller voids the claim rather than pricing a charge code.",
+    "Assigns the charges for the confirmed service, priced for the primary payer, assigns the claim properties from the encounter facts, saves the draft and checks the payers' eligibility. Stops instead when a biller voids the claim rather than pricing a charge code.",
     buildClaim()
   ),
   asStage(

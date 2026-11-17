@@ -108,7 +108,7 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   'fees:delete': 'Remove fees.',
   'reports:read': 'Run reports.',
   'workflows:read': 'See workflows and how they are customized.',
-  'workflows:update': 'Customize rules, tables and agency rule slots.',
+  'workflows:update': 'Customize rules and tables.',
   'workflows:manage': 'Customize stages and workflows, and create new ones.',
   'runs:create': 'Start workflow runs.',
   'runs:read': 'See workflow runs.',

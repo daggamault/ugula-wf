@@ -36,7 +36,7 @@ export const createGraphSchema = v.object({
   ),
   name: v.pipe(v.string(), v.trim(), v.nonEmpty(), v.maxLength(120)),
   kind: v.picklist(['workflow', 'node']),
-  role: v.optional(v.picklist(['stage', 'rule', 'slot'])),
+  role: v.optional(v.picklist(['stage', 'rule'])),
   description: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(2000)), '')
 });
 

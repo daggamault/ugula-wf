@@ -18,7 +18,7 @@ Postgres schema, created by `.migrations/*.ts` and typed in `libs/data/db/src/sc
 
 | Table                 | Holds                                                                                                                                                                                                             |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `graphs`              | One row per graph and scope: system (no agency) or agency; `role` (workflow, stage, rule, slot)                                                                                                                   |
+| `graphs`              | One row per graph and scope: system (no agency) or agency; `role` (workflow, stage, rule)                                                                                                                         |
 | `graph_versions`      | Immutable published versions and one draft per graph; `contract`, `dependencies`, `base_version_id`                                                                                                               |
 | `workflow_runs`       | Runs, their state, status, parent links, leases and the user who started one by hand (`started_by_id`)                                                                                                            |
 | `workflow_run_graphs` | The graph versions each run pinned at start                                                                                                                                                                       |

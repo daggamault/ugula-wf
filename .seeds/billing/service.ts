@@ -1,6 +1,5 @@
 import { CLASSIFICATION_FIELD, CLASSIFICATION_LABELS } from '@ugula/billing';
 import type { GraphDef, ValueType } from '@ugula/graph';
-import { slot } from '../builder.ts';
 import type { SeedGraph } from '../graphs.ts';
 import {
   asRule,
@@ -15,10 +14,8 @@ import {
   keepListed,
   makeList,
   makeObject,
-  orElse,
   P,
   type Port,
-  pureSlot,
   reasonsOf,
   rule,
   select,
@@ -241,11 +238,13 @@ const EMERGENCY: Held[] = [
 
 const classification = (): GraphDef => {
   const g = rule(
-    [d('trip', T.trip, 'Trip Facts', 'The dispositions and type of service of the trip.')],
+    [P.facts()],
     [CLASSIFICATION_OUT, P.reason(), P.reasons('the classification was chosen')]
   );
+  g.add('facts', 'billing.encounter-facts.break', { label: 'Encounter Facts' });
   g.add('trip', 'billing.trip-facts.break', { label: 'Trip Facts' });
-  g.wire('entry.trip', 'trip.trip');
+  g.wire('entry.facts', 'facts.facts');
+  g.wire('facts.trip', 'trip.trip');
   const rules = [...NOT_BILLABLE, ...REFUSAL, ...NO_TRANSPORT, SCHEDULED, ...EMERGENCY];
   const held = heldRules(
     g,
@@ -297,44 +296,6 @@ const classification = (): GraphDef => {
   g.ret('return');
   g.wire(classified, 'return.classification');
   g.wire('first.item', 'return.reason');
-  g.wire(reasons, 'return.reasons');
-  return g.def;
-};
-
-const classifyTrip = (): GraphDef => {
-  const g = rule(
-    [P.facts()],
-    [CLASSIFICATION_OUT, P.reason(), P.reasons('the classification was chosen')]
-  );
-  g.add('facts', 'billing.encounter-facts.break', { label: 'Encounter Facts' });
-  g.add('base', 'billing.classification', { label: 'Classification' });
-  g.add('agency', 'billing.agency-classification', { label: 'Agency Classification' });
-  g.add('unchanged', 'std.logic.equal', { label: 'Agency Kept the Classification' });
-  const agencyReason = orElse(
-    g,
-    'agencyReason',
-    'Agency Reason, Else Changed by an Agency Rule',
-    'agency.reason',
-    fixed('Changed by an agency rule')
-  );
-  const agencyReasons = makeList(g, 'agencyReasons', 'Agency Reason as a List', 'string', [
-    agencyReason
-  ]);
-  const reasons = select(
-    g,
-    'reasons',
-    'Base Reasons When Kept, Else the Agency Reason',
-    'unchanged.result',
-    'base.reasons',
-    agencyReasons
-  );
-  g.ret('return');
-  g.wire('entry.facts', 'facts.facts', 'agency.facts');
-  g.wire('facts.trip', 'base.trip');
-  g.wire('base.classification', 'agency.classification', 'unchanged.b');
-  g.wire('base.reason', 'agency.reason');
-  g.wire('agency.classification', 'return.classification', 'unchanged.a');
-  g.wire('agency.reason', 'return.reason');
   g.wire(reasons, 'return.reasons');
   return g.def;
 };
@@ -442,7 +403,7 @@ const decideClaim = (): GraphDef => {
     ),
     skip: exit('Skip', 'The trip is not billable, by its disposition or by a biller.')
   });
-  g.add('classify', 'billing.classify-trip', { label: 'Classify Trip' });
+  g.add('classify', 'billing.classification', { label: 'Classification' });
   g.add('review', 'billing.classification-review', { label: 'Classification Needs Review?' });
   g.add('label', 'std.table.lookup', {
     label: 'Classification Label',
@@ -1134,18 +1095,16 @@ const determineService = (): GraphDef => {
   });
   g.add('facts', 'billing.encounter-facts.break', { label: 'Encounter Facts' });
   g.add('deceased', 'billing.deceased-handling', { label: 'Deceased Handling (QL)' });
-  g.add('agency', 'billing.agency-service', { label: 'Agency Service' });
   g.ret('return');
-  g.wire('entry.classification', 'byTrip.key', 'agency.classification');
+  g.wire('entry.classification', 'byTrip.key');
   g.wire('scheduled.service', 'byTrip.case1');
   g.wire('treatNoTransport.service', 'byTrip.case2');
   g.wire('refusal.service', 'byTrip.case3');
   g.wire('emergency.service', 'byTrip.otherwise');
-  g.wire('entry.facts', 'facts.facts', 'agency.facts');
+  g.wire('entry.facts', 'facts.facts');
   g.wire('facts.trip', 'deceased.trip');
   g.wire('byTrip.value', 'deceased.service');
-  g.wire('deceased.service', 'agency.service');
-  g.wire('agency.service', 'return.service');
+  g.wire('deceased.service', 'return.service');
   return g.def;
 };
 
@@ -1153,94 +1112,29 @@ const DIAGNOSES: ValueType = { list: { code: 'icd10' } };
 
 const DIAGNOSES_OUT = d('diagnoses', DIAGNOSES, 'Diagnoses', 'ICD-10 diagnoses, primary first.');
 
-const diagnosesFromImpressions = (): GraphDef => {
-  const g = rule(
-    [d('clinical', T.clinical, 'Clinical Facts', 'The primary and secondary impressions.')],
-    [DIAGNOSES_OUT]
-  );
+const assignDiagnoses = (): GraphDef => {
+  const g = rule([P.facts()], [DIAGNOSES_OUT]);
+  g.add('facts', 'billing.encounter-facts.break', { label: 'Encounter Facts' });
   g.add('clinical', 'billing.clinical-facts.break', { label: 'Clinical Facts' });
   const primary = makeList(g, 'primary', 'Primary Impression', { code: 'icd10' }, [
     'clinical.primaryImpression'
   ]);
   g.add('diagnoses', 'std.list.concat', { label: 'With Secondary Impressions' });
   g.ret('return');
-  g.wire('entry.clinical', 'clinical.clinical');
+  g.wire('entry.facts', 'facts.facts');
+  g.wire('facts.clinical', 'clinical.clinical');
   g.wire(primary, 'diagnoses.list');
   g.wire('clinical.secondaryImpressions', 'diagnoses.other');
   g.wire('diagnoses.list', 'return.diagnoses');
   return g.def;
 };
 
-const assignDiagnoses = (): GraphDef => {
-  const g = rule([P.facts()], [DIAGNOSES_OUT]);
-  g.add('facts', 'billing.encounter-facts.break', { label: 'Encounter Facts' });
-  g.add('impressions', 'billing.diagnoses-from-impressions', {
-    label: 'Diagnoses from Coded Impressions'
-  });
-  g.add('agency', 'billing.agency-diagnoses', { label: 'Agency Diagnoses' });
-  g.ret('return');
-  g.wire('entry.facts', 'facts.facts', 'agency.facts');
-  g.wire('facts.clinical', 'impressions.clinical');
-  g.wire('impressions.diagnoses', 'agency.diagnoses');
-  g.wire('agency.diagnoses', 'return.diagnoses');
-  return g.def;
-};
-
-const FACTS_CONTEXT = P.facts(true);
-
 export const serviceGraphs: SeedGraph[] = [
-  slot(
-    'billing.agency-classification',
-    'Agency Classification',
-    'An agency rule after the classification is decided: bill a kind of trip differently (a contract that bills standbys, say). Passes the classification through unchanged until an agency overrides it.',
-    pureSlot(
-      [
-        d('classification', 'string', 'Classification', 'The classification the base rules chose.'),
-        d('reason', 'string', 'Classified By', 'The rule that chose it.', true),
-        FACTS_CONTEXT
-      ],
-      [
-        d('classification', 'string', 'Classification', 'The classification to bill.'),
-        d('reason', 'string', 'Classified By', 'Why, for the biller.', true)
-      ]
-    )
-  ),
-  slot(
-    'billing.agency-service',
-    'Agency Service',
-    'An agency rule after the service is suggested for the classification: change the level, emergency status or miles a biller is asked to confirm. Passes the service through unchanged until an agency overrides it.',
-    pureSlot(
-      [
-        d('service', T.service, 'Service', 'The service the base rules suggested.'),
-        d('classification', 'string', 'Classification', 'The classification being billed.', true),
-        FACTS_CONTEXT
-      ],
-      [d('service', T.service, 'Service', 'The service to suggest to the biller.')]
-    )
-  ),
-  slot(
-    'billing.agency-diagnoses',
-    'Agency Diagnoses',
-    'An agency rule after the diagnoses are assigned: add, drop or reorder ICD-10 codes. Passes the diagnoses through unchanged until an agency overrides it.',
-    pureSlot(
-      [
-        d('diagnoses', DIAGNOSES, 'Diagnoses', 'The diagnoses the base rules assigned.'),
-        FACTS_CONTEXT
-      ],
-      [d('diagnoses', DIAGNOSES, 'Diagnoses', 'The diagnoses to bill, primary first.')]
-    )
-  ),
   asRule(
     'billing.classification',
     'Classification',
     'Decides how the report is billed from its dispositions and type of service, with the rules that held: not billable when it was cancelled, an assist or standby, or a non-patient trip; else a refusal; else treated without transport; else scheduled for a scheduled or interfacility transport; else an emergency.',
     classification()
-  ),
-  asRule(
-    'billing.classify-trip',
-    'Classify Trip',
-    'Classifies the trip from the encounter facts: the Classification rule, then the Agency Classification rule.',
-    classifyTrip()
   ),
   asRule(
     'billing.loaded-miles',
@@ -1311,19 +1205,13 @@ export const serviceGraphs: SeedGraph[] = [
   asRule(
     'billing.determine-service',
     'Determine Service',
-    'Suggests the service for the classification (Emergency Trip, Scheduled Trip, Treat, No Transport or Refusal), bills a patient pronounced dead before loading as BLS without miles (Deceased Handling), then the Agency Service rule.',
+    'Suggests the service for the classification (Emergency Trip, Scheduled Trip, Treat, No Transport or Refusal), bills a patient pronounced dead before loading as BLS without miles (Deceased Handling).',
     determineService()
-  ),
-  asRule(
-    'billing.diagnoses-from-impressions',
-    'Diagnoses from Coded Impressions',
-    'The primary impression, then the secondary impressions, as ICD-10 diagnoses.',
-    diagnosesFromImpressions()
   ),
   asRule(
     'billing.assign-diagnoses',
     'Assign Diagnoses',
-    'Assigns the claim diagnoses: Diagnoses from Coded Impressions, then the Agency Diagnoses rule.',
+    'Assigns the claim diagnoses from the coded impressions: the primary impression, then the secondary impressions.',
     assignDiagnoses()
   ),
   asRule(

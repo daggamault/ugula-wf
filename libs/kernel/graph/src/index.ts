@@ -30,7 +30,6 @@ export {
   valuesSchema,
   valueTypeSchema
 } from './schemas.ts';
-export { isPassThrough, slotGraph } from './slot.ts';
 export { stdGraphInfo, stdGraphSource, stdGraphs } from './std/composites.ts';
 export { isPublicAddress } from './std/http.ts';
 export { TASK_PREFILLS } from './std/human.ts';

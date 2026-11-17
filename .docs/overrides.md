@@ -2,15 +2,14 @@
 
 Every built-in graph and shared table can be customized without code for one agency. Organizations own agencies but no graphs or tables: customization is built-in, then agency.
 
-## Three ways to customize
+## Two ways to customize
 
 | Kind               | What you change                                                          | Drift                                    |
 | ------------------ | ------------------------------------------------------------------------ | ---------------------------------------- |
 | **Table override** | The rows of a shared decision or lookup table, as a form (`/tables/:id`) | None: the graphs that use it stay as-is  |
-| **Agency rule**    | An empty **slot** subworkflow that runs after the base rules             | None: the base keeps updating around it  |
 | **Graph override** | A copy of one rule, stage or workflow                                    | Tracked: compare, Keep Mine, Start Fresh |
 
-Tables hold only reference data: code sets, code labels, limits and settings, and pure code mappings. Every billing decision is a rule drawn on the canvas (conditions, first-that-applies choices, logic gates, rules run per item), so an agency changes a number or a code set by overriding its table, and changes how something is decided by overriding the rule (a graph override, `workflows:update`) or by filling the slot after it.
+Tables hold only reference data: code sets, code labels, limits and settings, and pure code mappings. Every billing decision is a rule drawn on the canvas (conditions, first-that-applies choices, logic gates, rules run per item), so an agency changes a number or a code set by overriding its table, and changes how something is decided by overriding the rule (a graph override, `workflows:update`). Ugula ships one complete base set; an agency overrides only the graphs it needs, and drift on a copy is handled by Compare, Keep Mine and Start From Base.
 
 ## Two levels
 
@@ -30,25 +29,8 @@ Every graph has a `role` (`graphs.role`), set by the seeds and copied by overrid
 | `workflow` | Runs on its own and reacts to an event (always the role of `kind: workflow`) | `workflows:manage` |
 | `stage`    | A subworkflow with exec pins that sequences rules and actions                | `workflows:manage` |
 | `rule`     | A pure subworkflow: facts in, decision out                                   | `workflows:update` |
-| `slot`     | An empty Agency Rule: a pure pass-through meant to be overridden             | `workflows:update` |
 
 Tables need `workflows:update`. `canEditScope` (`apps/api/src/shared/scopes.ts`) applies the tiers. New graphs created in the editor belong to the agency and are rules unless they are workflows. Only these custom graphs edit **Inputs and Outputs** in the editor, to define their pins, exits and variables; other graphs show it read-only, and a copy keeps the contract of the graph it overrides.
-
-## Agency rule slots
-
-A slot is a subworkflow whose system version hands its inputs straight back (`slotGraph` in `libs/kernel/graph/src/slot.ts`; `isPassThrough` tells the editor it is still empty). Every output has an input of the same name and type, plus optional context inputs. The seeds build them with `slot(key, name, description, signature)` from `.seeds/builder.ts`. Nothing is special at run time: an agency overrides the slot like any rule, and only that agency's runs see the change.
-
-| Slot                            | Runs after                                          | Passes through             | Context                     |
-| ------------------------------- | --------------------------------------------------- | -------------------------- | --------------------------- |
-| `billing.agency-facts`          | Map Encounter Facts                                 | `facts`                    | `pcr`                       |
-| `billing.agency-classification` | Classification (in Classify Trip)                   | `classification`, `reason` | `facts`                     |
-| `billing.agency-service`        | the classification's service (in Determine Service) | `service`                  | `classification`, `facts`   |
-| `billing.agency-diagnoses`      | Diagnoses From Coded Impressions                    | `diagnoses`                | `facts`                     |
-| `billing.agency-payers`         | Coordination Order (in Determine Payers)            | `coverages`                | `pcr`                       |
-| `billing.agency-charges`        | Map Charges (in Assign Charges)                     | `lines`                    | `classification`, `service` |
-| `billing.agency-claim`          | Assign Claim Properties (in Build Claim)            | `claim`                    | `pcr`                       |
-| `billing.agency-checks`         | the base checks, before severities (Claim Checks)   | `issues`                   | `facts`                     |
-| `billing.agency-837p`           | Map 837P Claim                                      | `x837`                     | `claim`                     |
 
 ## Shared tables
 
@@ -68,7 +50,7 @@ Decision and lookup table nodes either carry their rules inline or reference a s
 
 ## Contracts
 
-Every graph has a **key**, its permanent identity: subworkflow nodes call it by key, runs pin versions by key, and an override shares the key of the built-in it replaces. Built-in keys are readable names kept in the seeds (`billing.classify-trip`). A graph an agency creates gets an opaque key (`custom.<10 characters>`) generated by the API and never shown when creating it, so renaming it can never leave a misleading key. Its name and description are edited from **Details** in the editor (`PUT /graphs/:id`) and never change the key; built-ins and overrides keep the name and description they were copied with.
+Every graph has a **key**, its permanent identity: subworkflow nodes call it by key, runs pin versions by key, and an override shares the key of the built-in it replaces. Built-in keys are readable names kept in the seeds (`billing.classification`). A graph an agency creates gets an opaque key (`custom.<10 characters>`) generated by the API and never shown when creating it, so renaming it can never leave a misleading key. Its name and description are edited from **Details** in the editor (`PUT /graphs/:id`) and never change the key; built-ins and overrides keep the name and description they were copied with.
 
 An override must keep the signature of the system graph it replaces: the same exec ins, exits, inputs and outputs with the same names, types, optionality and whether each has a default (its value may change). This is the **contract** (`contractOf`), stored on every version.
 
@@ -97,7 +79,7 @@ An override must keep the signature of the system graph it replaces: the same ex
 - **Canvas:** on a copy, nodes added or changed against the version it was copied from (type, version, settings, inputs, label or note) get a custom outline and a **Custom** chip; new wires are drawn in the custom color; **Show Removed** adds the base's removed nodes as dashed ghosts. In any graph, a subworkflow or table node whose key your agency overrides gets the outline too.
 - **Inspector:** a **Changed From Base** section lists each changed property with a custom dot, `Base: value` and **Reset to Base**; changed input pins carry the dot. Table nodes link to their table and say when it is customized.
 - **Base Updated:** a copy whose base has a newer version, or which is stale, shows a warning and a **Compare** panel: Base Then, Base Now (what the base changed) and Yours (what you changed), in plain words, with **Keep Mine** and **Start From Base** (danger confirm).
-- **Lists:** Workflows and Tables show the scope (Built-in, Agency), **Has Agency Copy**, **Base Updated** and **Agency Rule** badges, and filter **Customized**. The **Customization Map** (`/workflows/customized`) shows each workflow's call tree with customized branches and tables highlighted, linking to each copy.
+- **Lists:** Workflows and Tables show the scope (Built-in, Agency), **Has Agency Copy** and **Base Updated** badges, and filter **Customized**. The **Customization Map** (`/workflows/customized`) shows each workflow's call tree with customized branches and tables highlighted, linking to each copy.
 
 ## Scope resolution in SQL
 

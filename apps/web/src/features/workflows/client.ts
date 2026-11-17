@@ -5,7 +5,7 @@ import type { Page } from '../../shared/url-state.ts';
 
 export type GraphKind = 'workflow' | 'node';
 
-export type GraphRole = 'workflow' | 'stage' | 'rule' | 'slot';
+export type GraphRole = 'workflow' | 'stage' | 'rule';
 
 export type GraphScope = 'system' | 'agency';
 

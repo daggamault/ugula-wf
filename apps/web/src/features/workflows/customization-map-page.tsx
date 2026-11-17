@@ -7,21 +7,14 @@ import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { TextLink } from '../../shared/ui/text-link.tsx';
 import { useResource } from '../../shared/use-resource.ts';
-import type {
-  CustomizationMap,
-  EffectiveTable,
-  GraphRole,
-  GraphScope,
-  WorkflowsClient
-} from './client.ts';
-import { RoleBadge, ScopeBadge } from './scope-badges.tsx';
+import type { CustomizationMap, EffectiveTable, GraphScope, WorkflowsClient } from './client.ts';
+import { ScopeBadge } from './scope-badges.tsx';
 import { CUSTOMIZED_PATH } from './workflows-page.tsx';
 
 type MapNode = {
   key: string;
   id: string;
   name: string;
-  role: GraphRole;
   scope: GraphScope;
   customized: boolean;
   tables: EffectiveTable[];
@@ -51,7 +44,6 @@ export const buildMap = (map: CustomizationMap, onlyCustomized: boolean): MapNod
         key: g.key,
         id: g.id,
         name: g.name,
-        role: g.role,
         scope: g.scope,
         customized: isCustom(g.scope),
         tables: g.tables.flatMap((t) => tables.get(t) ?? []),
@@ -77,7 +69,6 @@ const Branch = ({ node }: { node: MapNode }) => (
       <TextLink to={`/workflows/${node.id}`}>{node.name}</TextLink>
       <code className="text-surface-fg-muted font-mono text-xs">{node.key}</code>
       {node.customized ? <ScopeBadge scope={node.scope} /> : null}
-      <RoleBadge role={node.role} />
     </span>
     {node.tables.length || node.children.length ? (
       <ul className="flex flex-col gap-2">

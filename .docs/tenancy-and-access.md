@@ -4,7 +4,7 @@
 
 - An **organization** is the customer: an EMS service, a county, or a billing company.
 - An **agency** belongs to one organization and owns the billing data: claims, patients, imports, payer files, payers, fees, the billing profile and tasks.
-- Workflows and shared tables are built in or belong to one agency; an agency can customize them (see [Overrides](overrides.md)), and nothing is customized for a whole organization. In an agency, `workflows:update` may override rules, Agency Rule slots and tables; `workflows:manage` is needed for stages and workflows.
+- Workflows and shared tables are built in or belong to one agency; an agency can customize them (see [Overrides](overrides.md)), and nothing is customized for a whole organization. In an agency, `workflows:update` may override rules and tables; `workflows:manage` is needed for stages and workflows.
 
 ## Users
 
@@ -44,7 +44,7 @@ A user belongs to at most one organization. Email addresses are unique and store
 | facilities  | create, read, update, delete (facilities that pay for the trips they are responsible for)     |
 | fees        | create, read, update, delete                                                                  |
 | reports     | read                                                                                          |
-| workflows   | read, update (rules, tables, agency rule slots), manage (stages, workflows)                   |
+| workflows   | read, update (rules, tables), manage (stages, workflows)                                      |
 | runs        | create (start runs, upload their files), read, update (cancel runs)                           |
 
 Saving a payer or fee adds it or changes the one with the same name or code, so it needs `create` when it is new and `update` when it exists; the write itself checks which one happens, so a race cannot slip past either.

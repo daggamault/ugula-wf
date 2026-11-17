@@ -28,7 +28,7 @@ export type PublishedNode = {
   key: string;
   name: string;
   kind: 'workflow' | 'node';
-  role: 'workflow' | 'stage' | 'rule' | 'slot';
+  role: 'workflow' | 'stage' | 'rule';
   description: string;
   version: number;
   signature: Signature;
@@ -43,7 +43,7 @@ export const OPENS_LABELS: Readonly<Record<Opens, string>> = {
   rule: 'Rule'
 };
 
-export type NodeKind = 'entry' | 'action' | 'pure' | 'flow' | 'human' | 'table' | 'call' | 'slot';
+export type NodeKind = 'entry' | 'action' | 'pure' | 'flow' | 'human' | 'table' | 'call';
 
 export type PaletteEntry = NodeRef & {
   title: string;
@@ -245,7 +245,6 @@ export const createCatalog = (
     publishedOf,
     kindOf: (inst, signature) => {
       if (inst.type === ENTRY_TYPE || inst.type === RETURN_TYPE) return 'entry';
-      if (publishedOf(inst)?.role === 'slot') return 'slot';
       if (opensAs(inst)) return 'call';
       const kind = CATEGORY_KINDS[registry.node(inst)?.category ?? ''];
       if (kind) return kind;

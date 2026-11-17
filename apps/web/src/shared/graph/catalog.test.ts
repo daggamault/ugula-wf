@@ -323,9 +323,7 @@ describe('createCatalog opensAs and publishedOf', () => {
 });
 
 describe('createCatalog kindOf', () => {
-  const catalog = createCatalog(testNodes, {
-    published: [published({ graph_id: 'g-slot', key: 'acme.facts', name: 'Facts', role: 'slot' })]
-  });
+  const catalog = createCatalog(testNodes);
   const kind = (type: string) => {
     const inst = node(type);
     return catalog.kindOf(inst, catalog.signatureOf(inst, owner));
@@ -336,8 +334,7 @@ describe('createCatalog kindOf', () => {
     assert.equal(kind(RETURN_TYPE), 'entry');
   });
 
-  it('colors slots and called graphs', () => {
-    assert.equal(kind('acme.facts'), 'slot');
+  it('colors called graphs', () => {
     assert.equal(kind('std.math.average'), 'call');
   });
 

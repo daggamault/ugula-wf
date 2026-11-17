@@ -1,11 +1,4 @@
-import {
-  type GraphDef,
-  type Issue,
-  isPassThrough,
-  type NodeDef,
-  type NodeRef,
-  tableRefOf
-} from '@ugula/graph';
+import { type GraphDef, type Issue, type NodeDef, type NodeRef, tableRefOf } from '@ugula/graph';
 import { Redo2Icon, Undo2Icon, XIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isApiError, messageOf } from '../../shared/api.ts';
@@ -48,7 +41,7 @@ import { documentationHints, EditorNotices } from './editor-notices.tsx';
 import { NodeInspector } from './node-inspector.tsx';
 import { NodePicker } from './node-picker.tsx';
 import { diffGraphs } from './override-diff.ts';
-import { CopyBadge, RoleBadge, ScopeBadge, StaleBadge, scopeLabel } from './scope-badges.tsx';
+import { CopyBadge, ScopeBadge, StaleBadge, scopeLabel } from './scope-badges.tsx';
 import { graphPath, type TrailStep, VERSION_PARAMS } from './trail.ts';
 import { kindLabel, WorkflowDetailsDialog } from './workflow-details.tsx';
 import { type VariableNode, WorkflowPanel } from './workflow-panel.tsx';
@@ -368,7 +361,6 @@ export const EditorView = ({
   };
   const graphIssues = issues.filter((i) => !i.node);
   const hints = editable ? documentationHints(def, catalog) : [];
-  const isEmptySlot = graph.role === 'slot' && isPassThrough(def);
   const howTo = editable
     ? 'Select a node to see what it does and set it up. Drag from one pin to another to connect them, or drop a wire on empty space to add a node that fits; right-click or press A to add any node. Alt+click a wire or pin to disconnect it.'
     : graph.scope === 'system'
@@ -409,7 +401,6 @@ export const EditorView = ({
               {isDraft ? `Draft v${version}` : `Published v${version}`}
             </Badge>
             <ScopeBadge scope={graph.scope} />
-            <RoleBadge role={graph.role} />
             <CopyBadge scope={graph.scope} effective={graph.effectiveScope} />
             <StaleBadge stale={baseUpdated} />
             {dirty ? <Badge intent="danger">Unsaved</Badge> : null}
@@ -461,7 +452,6 @@ export const EditorView = ({
             hints={hints}
             base={baseUpdated ? (graph.is_stale ? 'stale' : 'updated') : null}
             compareHref={panelHref('compare')}
-            emptySlot={isEmptySlot ? (graph.scope === 'system' ? 'system' : 'copy') : null}
           />
           <div className="relative min-h-0 flex-1">
             <div className="absolute inset-0">

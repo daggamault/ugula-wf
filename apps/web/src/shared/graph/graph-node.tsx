@@ -35,8 +35,7 @@ const KIND_CLASSES: Readonly<Record<NodeKind, string>> = {
   flow: 'border-t-node-flow bg-node-flow/15',
   human: 'border-t-node-human bg-node-human/15',
   table: 'border-t-node-table bg-node-table/15',
-  call: 'border-t-node-call bg-node-call/15',
-  slot: 'border-t-node-slot bg-node-slot/15'
+  call: 'border-t-node-call bg-node-call/15'
 };
 
 const handleBase = 'size-3! border-0! transition-transform hover:scale-125';

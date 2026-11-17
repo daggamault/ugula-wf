@@ -1,5 +1,5 @@
 import { Badge } from '../../shared/ui/badge.tsx';
-import type { GraphRole, GraphScope } from './client.ts';
+import type { GraphScope } from './client.ts';
 
 const SCOPE_LABELS: Readonly<Record<GraphScope, string>> = {
   system: 'Built-in',
@@ -11,9 +11,6 @@ export const scopeLabel = (scope: GraphScope) => SCOPE_LABELS[scope];
 export const ScopeBadge = ({ scope }: { scope: GraphScope }) => (
   <Badge intent={scope === 'system' ? undefined : 'custom'}>{scopeLabel(scope)}</Badge>
 );
-
-export const RoleBadge = ({ role }: { role: GraphRole }) =>
-  role === 'slot' ? <Badge intent="primary">Agency Rule</Badge> : null;
 
 export const CopyBadge = ({ scope, effective }: { scope: GraphScope; effective: GraphScope }) =>
   effective === scope ? null : <Badge intent="custom">Has Agency Copy</Badge>;

@@ -82,7 +82,7 @@ describe('create graph schema', () => {
       'Invalid type: Expected ("workflow" | "node") but received "table"'
     ]);
     assert.deepEqual(issues(createGraphSchema, { ...base, kind: 'node', role: 'workflow' }), [
-      'Invalid type: Expected ("stage" | "rule" | "slot") but received "workflow"'
+      'Invalid type: Expected ("stage" | "rule") but received "workflow"'
     ]);
   });
 });

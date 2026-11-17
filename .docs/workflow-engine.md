@@ -10,9 +10,8 @@ A graph (`GraphDef`) has a **signature**, **variables**, **nodes**, **edges** an
 - **Data wires** carry typed values between input and output pins.
 - A graph's signature is what callers see: exec ins and outs (exits), typed inputs and outputs. Pins can have a `label` and a `description`; exits can be documented in `signature.exits` (`label`, `description`). Nodes can carry a `note`, shown on the canvas, and `shown`, the fields a Break or Make node reveals on the canvas, which only the editor reads.
 - `documentationIssues(def)` lists pins without a description, exits without a label or description and labels that are not Title Case; the editor shows them as warnings, never blocking.
-- Graph kinds: `workflow` (runs on its own) and `node` (a subworkflow other graphs call as a node). Every graph also has a role (`workflow`, `stage`, `rule`, `slot`) that sets who may override it; see [Overrides](overrides.md).
+- Graph kinds: `workflow` (runs on its own) and `node` (a subworkflow other graphs call as a node). Every graph also has a role (`workflow`, `stage`, `rule`) that sets who may override it; see [Overrides](overrides.md).
 - `comments` are boxes drawn behind nodes (`id`, `text`, `position`, `size`, optional `color` from `COMMENT_COLORS`). They are layout only: the engine, validation and `contractOf` ignore them, and an override that only adds or moves comments changes nothing.
-- `slotGraph(signature)` builds an empty Agency Rule: a pass-through whose outputs are its same-named inputs; `isPassThrough(def)` says whether a slot is still empty.
 - `runRule({ nodes, graphs }, ref, inputs, now)` evaluates a pure graph (a rule) outside a run, through a one-step host graph, and returns its outputs; the API uses it to show the agency's own rules on a claim.
 
 ## Types
@@ -94,13 +93,13 @@ Node titles are Title Case with minor words in lowercase (Greater or Equal, Wait
 
 ## Where things live
 
-| Concern                          | File                                                                 |
-| -------------------------------- | -------------------------------------------------------------------- |
-| Types                            | `libs/kernel/graph/src/types.ts`                                     |
-| Schema validation of definitions | `libs/kernel/graph/src/schemas.ts`                                   |
-| Compile, refs, contracts         | `libs/kernel/graph/src/compile.ts`                                   |
-| Engine                           | `libs/kernel/graph/src/engine.ts`                                    |
-| Standard nodes                   | `libs/kernel/graph/src/std/*.ts`                                     |
-| Resolution and pinning SQL       | `libs/data/db/src/graph-versions.ts`, `data-tables.ts`               |
-| Shared tables, slots, docs lint  | `libs/kernel/graph/src/std/tables.ts`, `slot.ts`, `documentation.ts` |
-| Worker execution                 | `apps/worker/src/features/workflows/*`                               |
+| Concern                          | File                                                      |
+| -------------------------------- | --------------------------------------------------------- |
+| Types                            | `libs/kernel/graph/src/types.ts`                          |
+| Schema validation of definitions | `libs/kernel/graph/src/schemas.ts`                        |
+| Compile, refs, contracts         | `libs/kernel/graph/src/compile.ts`                        |
+| Engine                           | `libs/kernel/graph/src/engine.ts`                         |
+| Standard nodes                   | `libs/kernel/graph/src/std/*.ts`                          |
+| Resolution and pinning SQL       | `libs/data/db/src/graph-versions.ts`, `data-tables.ts`    |
+| Shared tables, docs lint         | `libs/kernel/graph/src/std/tables.ts`, `documentation.ts` |
+| Worker execution                 | `apps/worker/src/features/workflows/*`                    |

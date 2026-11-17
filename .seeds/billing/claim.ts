@@ -1,6 +1,5 @@
 import { NO_TRANSPORT_CODE, NOTE_LENGTH } from '@ugula/billing';
 import type { GraphDef, ValueType } from '@ugula/graph';
-import { slot } from '../builder.ts';
 import type { SeedGraph } from '../graphs.ts';
 import {
   ADDRESS_PINS,
@@ -16,7 +15,6 @@ import {
   makeList,
   P,
   type Port,
-  pureSlot,
   reasonsOf,
   rule,
   select,
@@ -1271,13 +1269,11 @@ const map837p = (): GraphDef => {
   g.add('note', 'billing.narrative-note', { label: 'Narrative Note' });
   g.add('admitted', 'billing.admission-date', { label: 'Admission Date' });
   g.add('x837', 'x837.claim.make', { label: '837P Claim' });
-  g.add('agency', 'billing.agency-837p', { label: 'Agency 837P Rules' });
   g.ret('return');
   g.wire(
     'entry.claim',
     'claim.claim',
     'place.claim',
-    'agency.claim',
     'x12Payer.claim',
     'lines.claim',
     'note.claim'
@@ -1325,33 +1321,11 @@ const map837p = (): GraphDef => {
   g.wire('details.pickup', 'x837.pickup');
   g.wire('details.destination', 'x837.dropoff');
   g.wire('lines.lines', 'x837.lines');
-  g.wire('x837.x837', 'agency.x837');
-  g.wire('agency.x837', 'return.x837');
+  g.wire('x837.x837', 'return.x837');
   return g.def;
 };
 
 export const claimGraphs: SeedGraph[] = [
-  slot(
-    'billing.agency-claim',
-    'Agency Claim Rules',
-    'An agency rule after the claim is mapped: change claim properties such as modifiers, notes or documentation before the draft is saved. Passes the claim through unchanged until an agency overrides it.',
-    pureSlot(
-      [d('claim', T.claim, 'Claim', 'The claim the base rules mapped.'), P.pcr(true)],
-      [d('claim', T.claim, 'Claim', 'The claim to save.')]
-    )
-  ),
-  slot(
-    'billing.agency-837p',
-    'Agency 837P Rules',
-    'An agency rule after a claim is mapped onto an 837P for a payer: change what this payer is sent, such as a payer-specific modifier or reference. Passes the 837P claim through unchanged until an agency overrides it.',
-    pureSlot(
-      [
-        d('x837', T.x837, '837P Claim', 'The 837P claim the base rules mapped.'),
-        d('claim', T.submission, 'Claim', 'The claim as it goes to this payer.', true)
-      ],
-      [d('x837', T.x837, '837P Claim', 'The 837P claim to file.')]
-    )
-  ),
   asRule(
     'billing.transport-reason',
     'Transport Reason',
@@ -1439,7 +1413,7 @@ export const claimGraphs: SeedGraph[] = [
   asRule(
     'billing.map-837p',
     'Map 837P Claim',
-    'Maps a claim on its way to a payer onto an 837P claim: subscriber and patient, 837P Payer, prior payers for coordination of benefits, Claim Frequency, Benefits Assignment, Place of Service, Admission Date, Ambulance Conditions, Narrative Note and 837P Service Lines, then the Agency 837P Rules.',
+    'Maps a claim on its way to a payer onto an 837P claim: subscriber and patient, 837P Payer, prior payers for coordination of benefits, Claim Frequency, Benefits Assignment, Place of Service, Admission Date, Ambulance Conditions, Narrative Note and 837P Service Lines.',
     map837p()
   )
 ];

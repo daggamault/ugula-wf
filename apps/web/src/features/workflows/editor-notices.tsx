@@ -35,18 +35,10 @@ type EditorNoticesProps = {
   hints: readonly string[];
   base: 'stale' | 'updated' | null;
   compareHref: string;
-  emptySlot: 'system' | 'copy' | null;
 };
 
-export const EditorNotices = ({
-  error,
-  issues,
-  hints,
-  base,
-  compareHref,
-  emptySlot
-}: EditorNoticesProps) =>
-  error || issues.length || hints.length || base || emptySlot ? (
+export const EditorNotices = ({ error, issues, hints, base, compareHref }: EditorNoticesProps) =>
+  error || issues.length || hints.length || base ? (
     <div className="flex flex-col gap-2 px-4 py-3">
       {error ? <Alert>{error}</Alert> : null}
       {base ? (
@@ -63,14 +55,6 @@ export const EditorNotices = ({
           {base === 'stale'
             ? 'The base changed its inputs, outputs or exits, so runs use the base until you bring this copy up to date.'
             : 'The base has changed since this copy was made. Compare to see what changed.'}
-        </Alert>
-      ) : null}
-      {emptySlot ? (
-        <Alert intent="info">
-          This Agency Rule does nothing yet: it hands its inputs straight back.{' '}
-          {emptySlot === 'system'
-            ? 'Override it for your agency, then add nodes between Start and Return to change what it hands back.'
-            : 'Add nodes between Start and Return to change what it hands back.'}
         </Alert>
       ) : null}
       {issues.map((issue, i) => (

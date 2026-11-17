@@ -44,13 +44,13 @@ const compiled = (expr: RawBuilder<unknown>) => {
 
 describe('canEditScope', () => {
   it('never edits built-ins', () => {
-    for (const tier of ['rule', 'slot', 'table', 'stage', 'workflow'] as const) {
+    for (const tier of ['rule', 'table', 'stage', 'workflow'] as const) {
       assert.equal(canEditScope(admin, 'system', tier), false, tier);
     }
   });
 
-  it('lets workflows:update change agency rules, slots and tables', () => {
-    for (const tier of ['rule', 'slot', 'table'] as const) {
+  it('lets workflows:update change agency rules and tables', () => {
+    for (const tier of ['rule', 'table'] as const) {
       assert.equal(canEditScope(editor, 'agency', tier), true, tier);
       assert.equal(canEditScope(reader, 'agency', tier), false, tier);
     }

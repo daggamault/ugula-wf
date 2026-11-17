@@ -162,7 +162,7 @@ export const GRAPH_KINDS = ['workflow', 'node'] as const;
 
 export type GraphKind = (typeof GRAPH_KINDS)[number];
 
-export const GRAPH_ROLES = ['workflow', 'stage', 'rule', 'slot'] as const;
+export const GRAPH_ROLES = ['workflow', 'stage', 'rule'] as const;
 
 export type GraphRole = (typeof GRAPH_ROLES)[number];
 

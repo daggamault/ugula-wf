@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement, type ReactElement } from 'react';
 import { render } from '../../shared/testing-dom.ts';
-import { CopyBadge, RoleBadge, ScopeBadge, StaleBadge, scopeLabel } from './scope-badges.tsx';
+import { CopyBadge, ScopeBadge, StaleBadge, scopeLabel } from './scope-badges.tsx';
 
 const badge = (el: ReactElement) => {
   const { container } = render(el);
@@ -30,16 +30,6 @@ describe('ScopeBadge', () => {
       text: 'Agency',
       accent: true
     });
-  });
-});
-
-describe('RoleBadge', () => {
-  it('flags agency rules only', () => {
-    assert.deepEqual(badge(createElement(RoleBadge, { role: 'slot' })), {
-      text: 'Agency Rule',
-      accent: false
-    });
-    assert.equal(badge(createElement(RoleBadge, { role: 'rule' })), null);
   });
 });
 

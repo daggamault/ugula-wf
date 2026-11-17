@@ -1,6 +1,5 @@
 import { NO_TRANSPORT_CODE } from '@ugula/billing';
 import type { GraphDef, ValueType } from '@ugula/graph';
-import { slot } from '../builder.ts';
 import { hcpcsDescriptions } from '../codes.ts';
 import type { SeedGraph } from '../graphs.ts';
 import {
@@ -23,7 +22,6 @@ import {
   orElse,
   P,
   type Port,
-  pureSlot,
   reasonsOf,
   rule,
   select,
@@ -618,15 +616,13 @@ const assignCharges = (): GraphDef => {
     PRICE_EXITS
   );
   g.add('charges', 'billing.map-charges', { label: 'Map Charges' });
-  g.add('agency', 'billing.agency-charges', { label: 'Agency Charges' });
   g.add('price', 'billing.price-charges', { label: 'Price Charges' });
   g.ret('pricedDone', 'priced');
   g.ret('voidedDone', 'voided');
   g.wire('entry.exec', 'price.exec');
-  g.wire('entry.classification', 'charges.classification', 'agency.classification');
-  g.wire('entry.service', 'charges.service', 'agency.service');
-  g.wire('charges.lines', 'agency.lines');
-  g.wire('agency.lines', 'price.lines');
+  g.wire('entry.classification', 'charges.classification');
+  g.wire('entry.service', 'charges.service');
+  g.wire('charges.lines', 'price.lines');
   g.wire('entry.payerId', 'price.payerId');
   g.wire('entry.subject', 'price.subject');
   g.wire('entry.context', 'price.context');
@@ -723,25 +719,6 @@ const repriceClaim = (): GraphDef => {
 };
 
 export const chargeGraphs: SeedGraph[] = [
-  slot(
-    'billing.agency-charges',
-    'Agency Charges',
-    'An agency rule after the base charges: add, change or drop charge lines before they are priced. Passes the lines through unchanged until an agency overrides it.',
-    pureSlot(
-      [
-        d('lines', CHARGE_LINES, 'Charge Lines', 'The HCPCS lines the base rules charged.'),
-        d('classification', 'string', 'Classification', 'The confirmed classification.', true),
-        d(
-          'service',
-          T.service,
-          'Service',
-          'The confirmed level of service, emergency and loaded miles.',
-          true
-        )
-      ],
-      [d('lines', CHARGE_LINES, 'Charge Lines', 'The lines to price and bill.')]
-    )
-  ),
   asRule(
     'billing.base-rate-code',
     'Base Rate Code',
@@ -805,7 +782,7 @@ export const chargeGraphs: SeedGraph[] = [
   asStage(
     'billing.assign-charges',
     'Assign Charges',
-    'Maps the classification and service to charge lines (Map Charges, then the Agency Charges rule) and prices them for the primary payer, or voids.',
+    'Maps the classification and service to charge lines (Map Charges) and prices them for the primary payer, or voids.',
     assignCharges()
   ),
   asRule(

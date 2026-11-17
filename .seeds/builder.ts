@@ -8,11 +8,9 @@ import {
   type NodeInstance,
   RETURN_TYPE,
   type Signature,
-  slotGraph,
   type ValueType,
   type VariableDef
 } from '@ugula/graph';
-import type { SeedGraph } from './graphs.ts';
 
 type Port = `${string}.${string}`;
 
@@ -56,21 +54,6 @@ export const graph = (signature: Signature, variables: VariableDef[] = []) => {
   const input = (id: string, pin: string) => add(id, INPUT_TYPE, { config: { pin } });
   return { add, wire, ret, input, def };
 };
-
-export const slot = (
-  key: string,
-  name: string,
-  description: string,
-  signature: Signature
-): SeedGraph => ({
-  key,
-  name,
-  kind: 'node',
-  role: 'slot',
-  description,
-  version: 1,
-  definition: slotGraph(signature)
-});
 
 export type SeedTable = {
   key: string;

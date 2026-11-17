@@ -28,7 +28,6 @@ const notices = (props: Partial<Parameters<typeof EditorNotices>[0]> = {}) =>
       hints: [],
       base: null,
       compareHref: '/?panel=compare',
-      emptySlot: null,
       ...props
     })
   );
@@ -112,20 +111,6 @@ describe('EditorNotices', () => {
       screen.getByRole('link', { name: 'Compare' }).getAttribute('href'),
       '/w/1?panel=compare'
     );
-  });
-
-  it('tells how to override an empty system agency rule', () => {
-    notices({ emptySlot: 'system' });
-    assert.deepEqual(texts('status'), [
-      'This Agency Rule does nothing yet: it hands its inputs straight back. Override it for your agency, then add nodes between Start and Return to change what it hands back.'
-    ]);
-  });
-
-  it('tells how to fill an empty agency copy', () => {
-    notices({ emptySlot: 'copy' });
-    assert.deepEqual(texts('status'), [
-      'This Agency Rule does nothing yet: it hands its inputs straight back. Add nodes between Start and Return to change what it hands back.'
-    ]);
   });
 
   it('warns of every graph issue, then the documentation hints', () => {

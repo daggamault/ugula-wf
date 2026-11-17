@@ -14,7 +14,7 @@ import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
 import { type SearchView, useFilterHref, useSearchState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import type { GraphKind, GraphSummary, WorkflowsClient } from './client.ts';
-import { RoleBadge, ScopeBadge, StaleBadge } from './scope-badges.tsx';
+import { ScopeBadge, StaleBadge } from './scope-badges.tsx';
 import { kindLabel, WorkflowDetailsDialog } from './workflow-details.tsx';
 
 type WorkflowsPageProps = {
@@ -74,10 +74,7 @@ export const WorkflowsTable = ({
           </span>
         </TableCell>
         <TableCell>
-          <span className="flex flex-wrap items-center gap-2">
-            <Badge intent={g.kind === 'workflow' ? 'info' : undefined}>{kindLabel(g.kind)}</Badge>
-            <RoleBadge role={g.role} />
-          </span>
+          <Badge intent={g.kind === 'workflow' ? 'info' : undefined}>{kindLabel(g.kind)}</Badge>
         </TableCell>
         <TableCell>
           <span className="flex flex-wrap items-center gap-2">

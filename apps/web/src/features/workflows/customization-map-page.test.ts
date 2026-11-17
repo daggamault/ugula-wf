@@ -45,7 +45,7 @@ const map: CustomizationMap = {
       key: 'billing.charges',
       name: 'Agency Charges',
       kind: 'node',
-      role: 'slot',
+      role: 'rule',
       scope: 'agency',
       children: [],
       tables: []
@@ -134,13 +134,14 @@ describe('buildMap', () => {
     ]);
   });
 
-  it('carries each graph id, name, role and scope', () => {
+  it('carries each graph id, name and scope', () => {
     const [flow] = buildMap(map, true);
     const charges = flow?.children[0]?.children[0];
-    assert.deepEqual(
-      charges && { id: charges.id, name: charges.name, role: charges.role, scope: charges.scope },
-      { id: 'g-charges', name: 'Agency Charges', role: 'slot', scope: 'agency' }
-    );
+    assert.deepEqual(charges && { id: charges.id, name: charges.name, scope: charges.scope }, {
+      id: 'g-charges',
+      name: 'Agency Charges',
+      scope: 'agency'
+    });
   });
 });
 
@@ -178,7 +179,7 @@ describe('CustomizationMapView', () => {
       ]
     );
     const charges = screen.getByRole('link', { name: 'Agency Charges' }).parentElement;
-    assert.equal(charges?.textContent, 'Agency Chargesbilling.chargesAgencyAgency Rule');
+    assert.equal(charges?.textContent, 'Agency Chargesbilling.chargesAgency');
     const rates = screen.getByRole('link', { name: 'Rates' }).parentElement;
     assert.equal(rates?.textContent, 'RatesAgency');
   });

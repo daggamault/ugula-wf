@@ -442,30 +442,6 @@ describe('EditorView', () => {
         )
       );
     });
-
-    it('explains an agency rule that does nothing yet', () => {
-      const slot = detail('system', true, {}, { kind: 'node', role: 'slot' });
-      const pass: GraphDef = {
-        signature: {
-          execIn: [],
-          execOut: [],
-          inputs: [{ name: 'x', type: 'number' }],
-          outputs: [{ name: 'x', type: 'number' }]
-        },
-        variables: [],
-        nodes: [
-          { id: 'entry', type: ENTRY_TYPE, version: 1 },
-          { id: 'return', type: 'std.graph.return', version: 1 }
-        ],
-        edges: [{ from: 'entry', fromPin: 'x', to: 'return', toPin: 'x' }]
-      };
-      show(slot, { version: 1, def: pass });
-      assert.ok(screen.getByText('Agency Rule'));
-      assert.ok(
-        screen.getByText(/^This Agency Rule does nothing yet.*Override it for your agency/)
-      );
-      assert.ok(!screen.queryByRole('link', { name: 'Run' }));
-    });
   });
 
   describe('on an agency copy', () => {
