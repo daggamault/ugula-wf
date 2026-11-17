@@ -73,12 +73,9 @@ type Comparison<D> = {
 
 export type GraphComparison = Comparison<GraphDef>;
 
-export type NewGraph = {
-  key: string;
-  name: string;
-  kind: GraphKind;
-  description: string;
-};
+export type GraphDetails = { name: string; description: string };
+
+export type NewGraph = GraphDetails & { kind: GraphKind };
 
 export type MapGraph = {
   id: string;
@@ -136,6 +133,8 @@ export const createWorkflowsClient = (api: Api) => ({
   create: (input: NewGraph) => api.post<{ id: string }>('/api/graphs', input),
   saveDraft: (id: string, definition: GraphDef) =>
     api.put<{ version: number; issues: Issue[] }>(`${graphPathOf(id)}/draft`, { definition }),
+  updateDetails: (id: string, details: GraphDetails) =>
+    api.put<{ id: string }>(graphPathOf(id), details),
   publish: (id: string) => api.post<{ version: number }>(`${graphPathOf(id)}/publish`),
   override: (id: string) => api.post<{ id: string }>(`${graphPathOf(id)}/override`),
   rebase: (id: string, mode: 'keep' | 'reset') =>

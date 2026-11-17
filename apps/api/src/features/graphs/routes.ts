@@ -6,6 +6,7 @@ import { respond } from '../../shared/result.ts';
 import {
   createGraphSchema,
   definitionSchema,
+  graphDetailsSchema,
   rebaseSchema,
   searchGraphsQuery,
   versionParam
@@ -47,6 +48,16 @@ export const createGraphRoutes = (service: GraphService) =>
             c.req.valid('param').id,
             c.req.valid('json').definition
           )
+        )
+    )
+    .put(
+      '/:id',
+      sValidator('param', idParam, invalidRequest),
+      sValidator('json', graphDetailsSchema, invalidRequest),
+      async (c) =>
+        respond(
+          c,
+          await service.updateDetails(c.get('access'), c.req.valid('param').id, c.req.valid('json'))
         )
     )
     .post('/:id/publish', sValidator('param', idParam, invalidRequest), async (c) =>

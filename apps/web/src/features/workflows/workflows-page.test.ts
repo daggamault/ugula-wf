@@ -9,7 +9,6 @@ import {
   GRAPH_TABLE,
   graphFilterOf,
   graphsQueryOf,
-  kindLabel,
   WorkflowsPage,
   WorkflowsTable
 } from './workflows-page.tsx';
@@ -76,7 +75,7 @@ const rowsOf = () =>
 const cellsOf = (row: HTMLElement) =>
   within(row)
     .getAllByRole('cell')
-    .slice(0, 6)
+    .slice(0, 5)
     .map((c) => c.lastElementChild?.textContent);
 
 const pageOf = (items: GraphSummary[]): Page<GraphSummary> => ({
@@ -120,29 +119,22 @@ describe('graphsQueryOf', () => {
   });
 });
 
-describe('kindLabel', () => {
-  it('calls a node a subworkflow', () => {
-    assert.equal(kindLabel('workflow'), 'Workflow');
-    assert.equal(kindLabel('node'), 'Subworkflow');
-  });
-});
-
 describe('WorkflowsTable', () => {
   it('lists each graph with its kind, scope and versions', () => {
     showTable();
     assert.deepEqual(rowsOf().map(cellsOf), [
-      ['Batch', 'demo.batch', 'Workflow', 'Agency', 'v2', 'v3'],
-      ['Payer Rule', 'billing.payer', 'SubworkflowAgency Rule', 'Built-in', '—', '—'],
-      ['Match', 'billing.match', 'Subworkflow', 'Built-inHas Your Copy', 'v2', '—'],
-      ['Match', 'billing.match', 'Subworkflow', 'AgencyBase Updated', 'v2', '—']
+      ['Batch', 'Workflow', 'Agency', 'v2', 'v3'],
+      ['Payer Rule', 'SubworkflowAgency Rule', 'Built-in', '—', '—'],
+      ['Match', 'Subworkflow', 'Built-inHas Your Copy', 'v2', '—'],
+      ['Match', 'Subworkflow', 'AgencyBase Updated', 'v2', '—']
     ]);
   });
 
-  it('highlights the search in names and keys', () => {
+  it('highlights the search in names', () => {
     showTable('q=bat');
     assert.deepEqual(
       [...document.querySelectorAll('mark')].map((m) => m.textContent),
-      ['Bat', 'bat']
+      ['Bat']
     );
   });
 
@@ -159,7 +151,7 @@ describe('WorkflowsTable', () => {
     assert.ok(screen.getByRole('link', { name: 'Run Batch' }));
   });
 
-  it('sorts by name, key and kind but not by scope or versions', () => {
+  it('sorts by name and kind but not by scope or versions', () => {
     showTable('q=bat');
     const headers = within(screen.getAllByRole('row')[0] as HTMLElement).getAllByRole(
       'columnheader'
@@ -172,7 +164,6 @@ describe('WorkflowsTable', () => {
       ]),
       [
         ['Name', 'ascending', '/workflows?q=bat&sort=name&dir=desc'],
-        ['Key', null, '/workflows?q=bat&sort=key&dir=asc'],
         ['Kind', null, '/workflows?q=bat&sort=kind&dir=desc'],
         ['Scope', null, null],
         ['Published', null, null],
@@ -192,16 +183,50 @@ describe('WorkflowsPage', () => {
     assert.deepEqual(queries, ['page=1&pageSize=25&sort=name&dir=asc&show=mine']);
   });
 
-  it('offers a new workflow that returns to the list, and the customization map', async () => {
-    window.history.replaceState(null, '', '/workflows?q=bat');
+  it('creates a workflow from a name and opens it, without asking for a key', async () => {
+    window.history.replaceState(null, '', '/workflows');
     const { client } = fakeClient();
+    const created: unknown[] = [];
+    client.create = async (graph) => {
+      created.push(graph);
+      return { id: 'g9' };
+    };
     showPage(client, 'workflows');
     await screen.findByRole('table');
     assert.ok(screen.getByRole('heading', { level: 1, name: 'Workflows' }));
-    assert.equal(
-      screen.getByRole('link', { name: 'New Workflow' }).getAttribute('href'),
-      '/workflows/new?kind=workflow&back=%2Fworkflows%3Fq%3Dbat'
-    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'New Workflow' }));
+    const form = screen.getByRole('form', { name: 'Create Workflow' });
+    assert.ok(!within(form).queryByRole('textbox', { name: 'Key' }));
+    await user.type(within(form).getByRole('textbox', { name: 'Name' }), 'Payer Rules');
+    await user.type(within(form).getByRole('textbox', { name: 'Description' }), 'Reorders payers');
+    await user.click(within(form).getByRole('button', { name: 'Create Workflow' }));
+    await waitFor(() => assert.equal(window.location.pathname, '/workflows/g9'));
+    assert.deepEqual(created, [
+      { name: 'Payer Rules', description: 'Reorders payers', kind: 'workflow' }
+    ]);
+  });
+
+  it('keeps the dialog open and says why when creating fails', async () => {
+    const { client } = fakeClient();
+    client.create = async () => {
+      throw new Error('Name is taken');
+    };
+    showPage(client, 'workflows');
+    await screen.findByRole('table');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'New Workflow' }));
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Rules');
+    await user.click(screen.getByRole('button', { name: 'Create Workflow' }));
+    assert.equal((await screen.findByRole('alert')).textContent, 'Name is taken');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    assert.ok(!screen.queryByRole('form', { name: 'Create Workflow' }));
+  });
+
+  it('offers the customization map', async () => {
+    const { client } = fakeClient();
+    showPage(client, 'workflows');
+    await screen.findByRole('table');
     assert.equal(
       screen.getByRole('link', { name: 'Customization Map' }).getAttribute('href'),
       '/workflows/customized'
@@ -213,10 +238,10 @@ describe('WorkflowsPage', () => {
     const { client } = fakeClient();
     showPage(client, 'blocks');
     await screen.findByRole('table');
-    assert.equal(
-      screen.getByRole('link', { name: 'New Subworkflow' }).getAttribute('href'),
-      '/workflows/new?kind=node'
-    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'New Subworkflow' }));
+    assert.ok(screen.getByRole('form', { name: 'Create Subworkflow' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
     assert.equal(
       document.querySelector('search')?.getAttribute('aria-label'),
       'Search Subworkflows'

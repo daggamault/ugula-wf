@@ -16,6 +16,14 @@ const issues = (schema: v.GenericSchema, input: unknown) =>
 const KEY_RULE = 'Use dotted lowercase keys like billing.match-patient';
 
 describe('create graph schema', () => {
+  it('leaves the key out when none is given, so one is generated', () => {
+    assert.deepEqual(v.parse(createGraphSchema, { name: 'Match', kind: 'node' }), {
+      name: 'Match',
+      kind: 'node',
+      description: ''
+    });
+  });
+
   it('trims and lowercases the key and defaults the description', () => {
     assert.deepEqual(
       v.parse(createGraphSchema, { key: ' Billing.Match-Patient ', name: ' Match ', kind: 'node' }),
@@ -185,7 +193,7 @@ describe('graph search query', () => {
       'Invalid type: Expected ("workflows" | "blocks" | "mine" | "customized" | "all") but received "system"'
     ]);
     assert.deepEqual(issues(searchGraphsQuery, { sort: 'status' }), [
-      'Invalid type: Expected ("name" | "key" | "kind" | "updated") but received "status"'
+      'Invalid type: Expected ("name" | "kind" | "updated") but received "status"'
     ]);
     assert.deepEqual(issues(searchGraphsQuery, { page: '0' }), [
       'Invalid value: Expected >=1 but received 0'

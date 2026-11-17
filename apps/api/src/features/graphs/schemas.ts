@@ -4,7 +4,7 @@ import { uuid } from '../../shared/http.ts';
 import { pageEntries } from '../../shared/paging.ts';
 import { searchText } from '../../shared/search.ts';
 
-const GRAPH_SORTS = ['name', 'key', 'kind', 'updated'] as const;
+const GRAPH_SORTS = ['name', 'kind', 'updated'] as const;
 
 export type GraphSort = (typeof GRAPH_SORTS)[number];
 
@@ -21,20 +21,27 @@ export const searchGraphsQuery = v.object({
 });
 
 export const createGraphSchema = v.object({
-  key: v.pipe(
-    v.string(),
-    v.trim(),
-    v.toLowerCase(),
-    v.maxLength(120),
-    v.regex(
-      /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/,
-      'Use dotted lowercase keys like billing.match-patient'
-    ),
-    v.check((key) => !key.startsWith('std.'), 'The std namespace is reserved')
+  key: v.optional(
+    v.pipe(
+      v.string(),
+      v.trim(),
+      v.toLowerCase(),
+      v.maxLength(120),
+      v.regex(
+        /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/,
+        'Use dotted lowercase keys like billing.match-patient'
+      ),
+      v.check((key) => !key.startsWith('std.'), 'The std namespace is reserved')
+    )
   ),
   name: v.pipe(v.string(), v.trim(), v.nonEmpty(), v.maxLength(120)),
   kind: v.picklist(['workflow', 'node']),
   role: v.optional(v.picklist(['stage', 'rule', 'slot'])),
+  description: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(2000)), '')
+});
+
+export const graphDetailsSchema = v.object({
+  name: v.pipe(v.string(), v.trim(), v.nonEmpty(), v.maxLength(120)),
   description: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(2000)), '')
 });
 

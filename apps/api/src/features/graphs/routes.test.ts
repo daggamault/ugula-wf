@@ -32,6 +32,7 @@ const service = {
   publish: async () => fail('invalid', 'Fix', { issues: [{ message: 'x' }] }),
   override: record(ok({ id: ID })),
   rebase: record(ok({ id: ID })),
+  updateDetails: record(ok({ id: ID })),
   remove: async () => fail('conflict', 'Runs still use this graph, so it cannot be removed')
 } as unknown as GraphService;
 
@@ -43,9 +44,9 @@ const post = (path: string, body?: unknown) =>
 
 describe('graph routes', () => {
   it('serve lists, the node catalog, the customization map and validation', async () => {
-    assert.deepEqual(await (await request('/?q=match&show=blocks&sort=key')).json(), {
+    assert.deepEqual(await (await request('/?q=match&show=blocks&sort=kind')).json(), {
       items: [],
-      args: ['t-1', { q: 'match', show: 'blocks', page: 1, pageSize: 25, sort: 'key', dir: 'asc' }]
+      args: ['t-1', { q: 'match', show: 'blocks', page: 1, pageSize: 25, sort: 'kind', dir: 'asc' }]
     });
     assert.equal((await request('/?show=nope')).status, 400);
     assert.deepEqual(await (await request('/nodes')).json(), { nodes: [{ key: 'demo.x' }] });
@@ -123,6 +124,13 @@ describe('graph route validation', () => {
       error: 'key: The std namespace is reserved',
       issues: ['key: The std namespace is reserved']
     });
+  });
+
+  it('update the name and description, never the key', async () => {
+    const put = (body: unknown) => request(`/${ID}`, { method: 'PUT', body: JSON.stringify(body) });
+    assert.equal((await put({ name: ' Payer Rules ', key: 'x.y' })).status, 200);
+    assert.deepEqual(calls.at(-1), [access, ID, { name: 'Payer Rules', description: '' }]);
+    assert.equal((await put({ name: ' ' })).status, 400);
   });
 
   it('override for the agency, rebase by mode and map removal conflicts', async () => {

@@ -81,6 +81,10 @@ const fakeClient = (over: Partial<WorkflowsClient> = {}) => {
       calls.push(['remove', id]);
       return { id };
     },
+    updateDetails: async (id: string, details: unknown) => {
+      calls.push(['updateDetails', id, details]);
+      return { id };
+    },
     rebase: async (id: string, mode: 'keep' | 'reset') => {
       calls.push(['rebase', id, mode]);
       return { version: 3 };
@@ -305,6 +309,21 @@ describe('EditorView', () => {
       await waitFor(() => assert.equal(window.location.pathname, '/workflows'));
       assert.deepEqual(calls, [['remove', 'g1']]);
       assert.deepEqual(toasts, [{ title: 'Workflow deleted', description: 'Flow is gone.' }]);
+    });
+
+    it('renames the workflow from its details and reloads it', async () => {
+      const { calls, toasts, events, user } = show(detail('agency', false));
+      await user.click(button('Details'));
+      const dialog = screen.getByRole('dialog', { name: 'Workflow Details' });
+      const name = within(dialog).getByRole('textbox', { name: 'Name' });
+      assert.equal((name as HTMLInputElement).value, 'Flow');
+      await user.clear(name);
+      await user.type(name, 'Payer Flow');
+      await user.click(within(dialog).getByRole('button', { name: 'Save Details' }));
+      await waitFor(() => assert.ok(!screen.queryByRole('dialog', { name: 'Workflow Details' })));
+      assert.deepEqual(calls, [['updateDetails', 'g1', { name: 'Payer Flow', description: '' }]]);
+      assert.deepEqual(toasts, [{ title: 'Details saved', description: 'Payer Flow is saved.' }]);
+      assert.deepEqual(events, ['saved']);
     });
 
     it('keeps the workflow when the deletion is not confirmed', async () => {

@@ -48,14 +48,12 @@ import { UserPage } from './features/users/user-page.tsx';
 import { INVITATIONS_PATH, USERS_PATH, UsersPage } from './features/users/users-page.tsx';
 import type { WorkflowsClient } from './features/workflows/client.ts';
 import { CustomizationMapPage } from './features/workflows/customization-map-page.tsx';
-import { graphKindOf, NewWorkflowPage } from './features/workflows/new-workflow-page.tsx';
 import { TablePage } from './features/workflows/table-page.tsx';
 import { TABLES_PATH, TablesPage, tableFilterOf } from './features/workflows/tables-page.tsx';
 import { parseTrail } from './features/workflows/trail.ts';
 import {
   CUSTOMIZED_PATH,
   graphFilterOf,
-  WORKFLOWS_PATH,
   WorkflowsPage
 } from './features/workflows/workflows-page.tsx';
 import type { AgenciesClient } from './shared/access.tsx';
@@ -119,16 +117,6 @@ const routes: readonly Route[] = [
     pattern: '/workflows',
     render: (_, q, c) => (
       <WorkflowsPage client={c.workflows} live={c.live} show={graphFilterOf(q)} />
-    )
-  },
-  {
-    pattern: `${WORKFLOWS_PATH}/new`,
-    render: (_, q, c) => (
-      <NewWorkflowPage
-        client={c.workflows}
-        kind={graphKindOf(q)}
-        back={backOf(q, WORKFLOWS_PATH)}
-      />
     )
   },
   {

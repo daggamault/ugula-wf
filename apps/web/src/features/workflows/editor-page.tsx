@@ -50,8 +50,8 @@ import { NodePicker } from './node-picker.tsx';
 import { diffGraphs } from './override-diff.ts';
 import { CopyBadge, RoleBadge, ScopeBadge, StaleBadge, scopeLabel } from './scope-badges.tsx';
 import { graphPath, type TrailStep, VERSION_PARAMS } from './trail.ts';
+import { kindLabel, WorkflowDetailsDialog } from './workflow-details.tsx';
 import { type VariableNode, WorkflowPanel } from './workflow-panel.tsx';
-import { kindLabel } from './workflows-page.tsx';
 
 type EditorPageProps = {
   client: WorkflowsClient;
@@ -156,6 +156,7 @@ export const EditorView = ({
   const [issues, setIssues] = useState<Issue[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [dialog, setDialog] = useState<EditorDialog | null>(null);
+  const [isEditingDetails, setEditingDetails] = useState(false);
   const [picker, setPicker] = useState<Picker | null>(null);
   const [history, setHistory] = useState(emptyHistory);
   const view = useRef<CanvasView>(null);
@@ -380,6 +381,20 @@ export const EditorView = ({
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
+      {isEditingDetails ? (
+        <WorkflowDetailsDialog
+          mode="edit"
+          kind={graph.kind}
+          initial={{ name: graph.name, description: graph.description }}
+          onClose={() => setEditingDetails(false)}
+          onSubmit={async (details) => {
+            await client.updateDetails(graph.id, details);
+            setEditingDetails(false);
+            notify({ title: 'Details saved', description: `${details.name} is saved.` });
+            onSaved();
+          }}
+        />
+      ) : null}
       <WorkspaceHeader
         backTo={
           parent ? graphPath(parent.graphId, parent.version, trail.slice(0, -1)) : '/workflows'
@@ -428,6 +443,7 @@ export const EditorView = ({
             onArrange={() => change(arranged(def, catalog))}
             onVersion={(v) => navigate(graphPath(graph.id, v, trail))}
             onOverride={override}
+            onDetails={graph.canEdit && isCustom ? () => setEditingDetails(true) : null}
             onRemove={() => setDialog('remove')}
             onSave={save}
             onPublish={publish}

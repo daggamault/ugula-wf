@@ -1,7 +1,7 @@
 import { RotateCcwIcon, Trash2Icon } from 'lucide-react';
 import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
 import type { GraphDetail } from './client.ts';
-import { kindLabel } from './workflows-page.tsx';
+import { kindLabel } from './workflow-details.tsx';
 
 export type EditorDialog = 'remove' | 'reset';
 

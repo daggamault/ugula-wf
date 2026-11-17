@@ -55,7 +55,6 @@ type GraphRow = {
 
 const GRAPH_ORDER = {
   name: sql`lower(g.name)`,
-  key: sql.ref('g.key'),
   kind: sql`(g.kind, lower(g.name))`,
   updated: sql.ref('g.updated_at')
 };
@@ -199,6 +198,17 @@ export const insertGraph = (
     })
     .returning('id')
     .executeTakeFirstOrThrow();
+
+export const updateGraphDetails = (
+  db: Db,
+  graphId: string,
+  details: { name: string; description: string }
+) =>
+  db
+    .updateTable('graphs')
+    .set({ name: details.name, description: details.description, updated_at: sql`now()` })
+    .where('id', '=', graphId)
+    .execute();
 
 export const insertDraft = (
   db: Db,

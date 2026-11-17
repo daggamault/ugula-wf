@@ -141,14 +141,14 @@ describe('searchGraphs', () => {
     await db.destroy();
   });
 
-  it('shows only the agency graphs, by key or update time', async () => {
+  it('shows only the agency graphs, by kind or update time', async () => {
     const { db, queries } = createRecordingDb();
-    await searchGraphs(db, S, { ...BASE, sort: 'key', show: 'mine' });
+    await searchGraphs(db, S, { ...BASE, sort: 'kind', show: 'mine' });
     await searchGraphs(db, S, { ...BASE, sort: 'updated', show: 'mine' });
-    const [byKey, byUpdate] = queries;
+    const [byKind, byUpdate] = queries;
     assert.equal(
-      tailOf(byKey?.sql),
-      `${LATERAL} where ${visibleTo('g', 5)} and "g"."agency_id" is not null order by "g"."key" asc nulls last, "g"."id" asc limit $6 offset $7`
+      tailOf(byKind?.sql),
+      `${LATERAL} where ${visibleTo('g', 5)} and "g"."agency_id" is not null order by (g.kind, lower(g.name)) asc nulls last, "g"."id" asc limit $6 offset $7`
     );
     assert.ok(
       flat(byUpdate?.sql).endsWith(

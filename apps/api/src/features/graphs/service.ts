@@ -41,6 +41,7 @@ import {
   setActive,
   touch
 } from '../../shared/scopes.ts';
+import { customKey } from './keys.ts';
 import {
   deleteGraph,
   findGraph,
@@ -54,17 +55,19 @@ import {
   listVersions,
   publishVersion,
   searchGraphs,
-  updateDraft
+  updateDraft,
+  updateGraphDetails
 } from './queries.ts';
 
 type GraphServiceDeps = {
   db: Db;
   nodes: NodeDef[];
   kinds: ValueKinds;
+  newKey?: () => string;
 };
 
 type NewGraph = {
-  key: string;
+  key?: string | undefined;
   name: string;
   kind: GraphKind;
   role?: GraphRole | undefined;
@@ -122,7 +125,7 @@ export const customizationMap = (graphs: readonly MapGraph[]) => {
 
 const TABLE_KINDS = { decide: 'decision', lookup: 'lookup' } as const;
 
-export const createGraphService = ({ db, nodes, kinds }: GraphServiceDeps) => {
+export const createGraphService = ({ db, nodes, kinds, newKey = customKey }: GraphServiceDeps) => {
   const primitives = new Set(nodes.map(refKey));
   const check = async (tx: Db, access: AgencyAccess, def: GraphDef) => {
     const refs = graphRefs(def)
@@ -218,7 +221,8 @@ export const createGraphService = ({ db, nodes, kinds }: GraphServiceDeps) => {
     create: async (access: AgencyAccess, input: NewGraph) => {
       const role = roleFor(input.kind, input.role);
       if (!canEditScope(access, 'agency', role)) return forbidden();
-      if (await findSystem(db, 'graphs', input.key)) {
+      const key = input.key ?? newKey();
+      if (await findSystem(db, 'graphs', key)) {
         return fail('conflict', 'A built-in graph uses that key; override it instead');
       }
       try {
@@ -226,7 +230,7 @@ export const createGraphService = ({ db, nodes, kinds }: GraphServiceDeps) => {
           await db.transaction().execute(async (tx) => {
             const { id } = await insertGraph(tx, {
               agencyId: access.agencyId,
-              key: input.key,
+              key,
               name: input.name,
               kind: input.kind,
               role,
@@ -316,6 +320,23 @@ export const createGraphService = ({ db, nodes, kinds }: GraphServiceDeps) => {
           });
         }
         await touch(tx, 'graphs', graphId);
+        return ok({ id: graphId });
+      }),
+    updateDetails: (
+      access: AgencyAccess,
+      graphId: string,
+      details: { name: string; description: string }
+    ) =>
+      db.transaction().execute(async (tx) => {
+        const graph = await editable(tx, access, graphId);
+        if (!graph.ok) return graph;
+        if (graph.value.overrides) {
+          return fail(
+            'conflict',
+            'A customized built-in keeps the name and description it was copied with'
+          );
+        }
+        await updateGraphDetails(tx, graphId, details);
         return ok({ id: graphId });
       }),
     remove: async (access: AgencyAccess, graphId: string) => {

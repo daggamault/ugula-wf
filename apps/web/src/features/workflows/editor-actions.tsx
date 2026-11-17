@@ -4,6 +4,7 @@ import {
   EyeIcon,
   EyeOffIcon,
   GitCompareArrowsIcon,
+  InfoIcon,
   NetworkIcon,
   PencilIcon,
   PlayIcon,
@@ -18,7 +19,7 @@ import { pendingActionMessage } from '../../shared/ui/disabled-reason.tsx';
 import { SelectControl } from '../../shared/ui/select.tsx';
 import type { GraphDetail } from './client.ts';
 import { scopeLabel } from './scope-badges.tsx';
-import { kindLabel } from './workflows-page.tsx';
+import { kindLabel } from './workflow-details.tsx';
 
 export type Busy = 'save' | 'publish' | 'override' | 'remove' | 'rebase';
 
@@ -32,6 +33,7 @@ type EditorActionsProps = {
   signatureHref: string | null;
   compareHref: string | null;
   removed: { href: string; shown: boolean } | null;
+  onDetails?: (() => void) | null | undefined;
   onAdd: () => void;
   onArrange: () => void;
   onVersion: (version: number) => void;
@@ -51,6 +53,7 @@ export const EditorActions = ({
   signatureHref,
   compareHref,
   removed,
+  onDetails,
   onAdd,
   onArrange,
   onVersion,
@@ -74,6 +77,12 @@ export const EditorActions = ({
         <Button variant="outline" onClick={onArrange}>
           <NetworkIcon aria-hidden="true" className="size-4" />
           Arrange Nodes
+        </Button>
+      ) : null}
+      {onDetails ? (
+        <Button variant="outline" onClick={onDetails}>
+          <InfoIcon aria-hidden="true" className="size-4" />
+          Details
         </Button>
       ) : null}
       {signatureHref ? (

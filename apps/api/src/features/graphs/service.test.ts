@@ -181,7 +181,11 @@ const createWorld = ({ graphs, versions = {}, fail, dependents = [], tables = []
   };
   const { db, queries } = createRecordingDb(rows);
   const find = (prefix: string) => queries.filter((q) => q.sql.startsWith(prefix));
-  return { service: createGraphService({ db, nodes, kinds: STD_KINDS }), queries, find };
+  return {
+    service: createGraphService({ db, nodes, kinds: STD_KINDS, newKey: () => 'custom.k7f3x9q2ab' }),
+    queries,
+    find
+  };
 };
 
 const system = (over: Partial<Graph> = {}): Graph => ({ id: 'g-sys', scope: 'system', ...over });
@@ -521,6 +525,17 @@ describe('graph service create', () => {
     ]);
   });
 
+  it('gives a graph created without a key an opaque one the name never changes', async () => {
+    const world = createWorld({ graphs: [] });
+    const { key: _, ...unkeyed } = input;
+    assert.deepEqual(await world.service.create(manager, unkeyed), {
+      ok: true,
+      value: { id: 'g-new' }
+    });
+    const [graph] = world.find('insert into "graphs"');
+    assert.equal(graph?.parameters[1], 'custom.k7f3x9q2ab');
+  });
+
   it('refuses users without permission, built-in keys and duplicate keys', async () => {
     const { service, queries } = createWorld({ graphs: [system({ key: 'acme.new' })] });
     assert.deepEqual(await service.create(reader, input), NO_PERMISSION);
@@ -542,6 +557,37 @@ describe('graph service create', () => {
       fail: { sql: 'insert into "graphs"', code: '57014' }
     });
     await assert.rejects(service.create(admin, input), { message: 'pg', code: '57014' });
+  });
+});
+
+describe('graph service details', () => {
+  const details = { name: 'Payer Rules', description: 'Reorders payers' };
+
+  it('renames an agency graph and keeps its key', async () => {
+    const { service, find } = createWorld({ graphs: [agency()] });
+    assert.deepEqual(await service.updateDetails(admin, 'g-agency', details), {
+      ok: true,
+      value: { id: 'g-agency' }
+    });
+    const [update] = find('update "graphs"');
+    assert.ok(update?.sql.startsWith('update "graphs" set "name" = $1, "description" = $2'));
+    assert.ok(!update?.sql.includes('"key"'));
+    assert.deepEqual(update?.parameters.slice(0, 2), ['Payer Rules', 'Reorders payers']);
+  });
+
+  it('refuses built-ins, customized built-ins and users without permission', async () => {
+    const world = createWorld({ graphs: [system(), agency({ overrides: 'g-sys' })] });
+    assert.deepEqual(
+      await world.service.updateDetails(admin, 'g-sys', details),
+      failure('forbidden', 'Built-in graphs are read-only')
+    );
+    assert.deepEqual(
+      await world.service.updateDetails(admin, 'g-agency', details),
+      failure('conflict', 'A customized built-in keeps the name and description it was copied with')
+    );
+    const own = createWorld({ graphs: [agency()] });
+    assert.deepEqual(await own.service.updateDetails(reader, 'g-agency', details), NO_PERMISSION);
+    assert.equal(own.find('update "graphs"').length, 0);
   });
 });
 

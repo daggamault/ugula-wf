@@ -98,6 +98,17 @@ describe('EditorActions', () => {
     assert.ok(!screen.queryByRole('link', { name: 'Run' }));
   });
 
+  it('opens the details only when they can be edited', async () => {
+    const { calls, user } = show(detail(true), { onDetails: () => void calls.push('details') });
+    await user.click(button('Details'));
+    assert.deepEqual(calls, ['details']);
+  });
+
+  it('offers no details for graphs whose name cannot change', () => {
+    show(detail(true));
+    assert.ok(!screen.queryByRole('button', { name: 'Details' }));
+  });
+
   it('asks to save before publishing', async () => {
     const { calls, user } = show(detail(false), { dirty: true });
     await user.click(button('Publish'));

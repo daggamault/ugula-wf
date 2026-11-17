@@ -1,7 +1,9 @@
 import { MapIcon, PlusIcon } from 'lucide-react';
+import { useState } from 'react';
 import { type Live, useReconnect } from '../../shared/live.ts';
+import { navigate } from '../../shared/router.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
-import { ButtonLink } from '../../shared/ui/button.tsx';
+import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { emptyValue } from '../../shared/ui/empty-state.tsx';
 import { FilterSelect } from '../../shared/ui/filter-select.tsx';
 import { Highlight } from '../../shared/ui/highlight.tsx';
@@ -9,15 +11,11 @@ import { EditLink, RowActions, RunLink } from '../../shared/ui/icon-button.tsx';
 import { Page } from '../../shared/ui/page.tsx';
 import { Search } from '../../shared/ui/search.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
-import {
-  type SearchView,
-  useFilterHref,
-  useSearchState,
-  withBack
-} from '../../shared/url-state.ts';
+import { type SearchView, useFilterHref, useSearchState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import type { GraphKind, GraphSummary, WorkflowsClient } from './client.ts';
 import { RoleBadge, ScopeBadge, StaleBadge } from './scope-badges.tsx';
+import { kindLabel, WorkflowDetailsDialog } from './workflow-details.tsx';
 
 type WorkflowsPageProps = {
   client: WorkflowsClient;
@@ -42,10 +40,8 @@ const GRAPH_FILTERS: readonly { value: GraphFilter; label: string }[] = [
 export const graphFilterOf = (query: URLSearchParams): GraphFilter =>
   GRAPH_FILTERS.find((f) => f.value === query.get('kind'))?.value ?? 'workflows';
 
-export const kindLabel = (kind: GraphKind) => (kind === 'workflow' ? 'Workflow' : 'Subworkflow');
-
 export const GRAPH_TABLE = {
-  sorts: { name: 'asc', key: 'asc', kind: 'desc', updated: 'desc' },
+  sorts: { name: 'asc', kind: 'desc', updated: 'desc' },
   sort: 'name'
 } as const;
 
@@ -63,7 +59,6 @@ export const WorkflowsTable = ({
     sorting={search}
     head={[
       { label: 'Name', sort: 'name' },
-      { label: 'Key', isSecondary: true, sort: 'key' },
       { label: 'Kind', sort: 'kind' },
       'Scope',
       'Published',
@@ -77,11 +72,6 @@ export const WorkflowsTable = ({
           <span className="font-medium">
             <Highlight text={g.name} query={search.q} />
           </span>
-        </TableCell>
-        <TableCell isMuted isSecondary>
-          <code className="font-mono text-xs">
-            <Highlight text={g.key} query={search.q} />
-          </code>
         </TableCell>
         <TableCell>
           <span className="flex flex-wrap items-center gap-2">
@@ -118,7 +108,7 @@ export const WorkflowsPage = ({ client, live, show }: WorkflowsPageProps) => {
   useReconnect(live, graphs.reload);
   const filterHref = useFilterHref(WORKFLOWS_PATH);
   const newKind: GraphKind = show === 'blocks' ? 'node' : 'workflow';
-  const add = withBack(`${WORKFLOWS_PATH}/new?kind=${newKind}`, search.href);
+  const [isCreating, setCreating] = useState(false);
   const addLabel = newKind === 'node' ? 'New Subworkflow' : 'New Workflow';
   return (
     <Page
@@ -129,13 +119,24 @@ export const WorkflowsPage = ({ client, live, show }: WorkflowsPageProps) => {
             <MapIcon aria-hidden="true" className="size-4" />
             Customization Map
           </ButtonLink>
-          <ButtonLink to={add}>
+          <Button onClick={() => setCreating(true)}>
             <PlusIcon aria-hidden="true" className="size-4" />
             {addLabel}
-          </ButtonLink>
+          </Button>
         </>
       }
     >
+      {isCreating ? (
+        <WorkflowDetailsDialog
+          mode="create"
+          kind={newKind}
+          onClose={() => setCreating(false)}
+          onSubmit={async (graph) => {
+            const { id } = await client.create(graph);
+            navigate(`${WORKFLOWS_PATH}/${id}`, { force: true });
+          }}
+        />
+      ) : null}
       <Search
         label={show === 'blocks' ? 'Subworkflows' : 'Workflows'}
         path={WORKFLOWS_PATH}

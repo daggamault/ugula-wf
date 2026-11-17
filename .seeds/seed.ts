@@ -14,7 +14,6 @@ import {
   buildUpsertDevProfile,
   upsertDevPayerAliases
 } from './dev-billing.ts';
-import { devGraphs } from './dev-graphs.ts';
 import { buildUpsertDefaultFees, devFees } from './fees.ts';
 import {
   GEONAMES_POSTAL_CODES_FILE,
@@ -34,7 +33,7 @@ import {
 } from './nemsis-dictionary.ts';
 import { publishTables } from './tables.ts';
 import { upsertMembership, upsertUser } from './users.ts';
-import { graphNodes, graphProblems, seedProblems } from './validate.ts';
+import { graphNodes, seedProblems } from './validate.ts';
 
 const DEV_AGENCIES = [
   { name: 'Development', slug: 'dev', sftp: true, submitterId: 'DEVEMS01' },
@@ -107,10 +106,6 @@ export const seedDev = async (db: Db, dev: DevSeedConfig) => {
     hashPassword(dev.DEV_USER_PASSWORD),
     hashPassword(dev.DEV_SFTP_PASSWORD)
   ]);
-  const nodes = graphNodes();
-  const problems = graphProblems(devGraphs, nodes);
-  if (problems.length) throw new Error(`Invalid dev graphs:\n${problems.join('\n')}`);
-
   await db.transaction().execute(async (tx) => {
     const organization = await upsertOrganization(tx, 'Development EMS');
     const user = await upsertUser(tx, {
@@ -145,8 +140,6 @@ export const seedDev = async (db: Db, dev: DevSeedConfig) => {
       await upsertDevPayerAliases(tx, agency.id);
       await buildUpsertDevFacilities(tx, agency.id).execute();
     }
-
-    await publishGraphs(tx, devGraphs, new Set(nodes.map(refKey)));
   });
 };
 

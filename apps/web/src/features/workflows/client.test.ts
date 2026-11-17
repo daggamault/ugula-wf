@@ -72,7 +72,7 @@ describe('createWorkflowsClient graphs', () => {
 
   it('creates a workflow and saves its draft definition', async () => {
     const { client, calls } = recording({ id: 'g1' });
-    const input = { key: 'a.b', name: 'A', kind: 'node' as const, description: '' };
+    const input = { name: 'A', kind: 'node' as const, description: '' };
     assert.deepEqual(await client.create(input), { id: 'g1' });
     await client.saveDraft('a/b', def);
     assert.deepEqual(calls, [
@@ -83,6 +83,15 @@ describe('createWorkflowsClient graphs', () => {
         body: { definition: def },
         signal: false
       }
+    ]);
+  });
+
+  it('saves the name and description of a workflow', async () => {
+    const { client, calls } = recording({ id: 'g1' });
+    const details = { name: 'Payer Rules', description: 'Reorders payers' };
+    assert.deepEqual(await client.updateDetails('a/b', details), { id: 'g1' });
+    assert.deepEqual(calls, [
+      { method: 'PUT', url: 'http://api.test/api/graphs/a%2Fb', body: details, signal: false }
     ]);
   });
 
