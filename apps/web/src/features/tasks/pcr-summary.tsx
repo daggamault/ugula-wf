@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
+import { type Coded, CodeLabel } from '../../shared/claims/code-text.tsx';
 import { formatDate, formatDateTime, formatMiles } from '../../shared/format.ts';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
 import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
-import type { PcrSummary } from './pcr-reader.ts';
+import type { FactValue, PcrSummary } from './pcr-reader.ts';
 
 type Facts = PcrSummary['patient'];
 
@@ -16,10 +17,28 @@ const Part = ({ title, children }: { title: string; children: ReactNode }) => (
   </section>
 );
 
+const CodedValue = ({ value }: { value: Coded | null }) =>
+  value ? <CodeLabel value={value} /> : emptyValue;
+
+const FactValueView = ({ value, isDay }: { value: FactValue; isDay?: boolean | undefined }) => {
+  if (value === null) return emptyValue;
+  if (typeof value === 'string') return isDay ? formatDate(value) : value;
+  if ('text' in value) return <CodeLabel value={value} />;
+  return (
+    <ul className="flex flex-col gap-1">
+      {value.map((v) => (
+        <li key={v.code ?? v.text}>
+          <CodeLabel value={v} isInline />
+        </li>
+      ))}
+    </ul>
+  );
+};
+
 const FactDetails = ({ facts }: { facts: Facts }) =>
   facts.map((f) => (
     <Detail key={f.label} label={f.label}>
-      {f.value === null ? emptyValue : f.isDay ? formatDate(f.value) : f.value}
+      <FactValueView value={f.value} isDay={f.isDay} />
     </Detail>
   ));
 
@@ -33,7 +52,9 @@ export const PcrSummaryView = ({ pcr }: { pcr: PcrSummary }) => (
     <Part title="Patient">
       <DetailList>
         <FactDetails facts={pcr.patient} />
-        <Detail label="Payment Method">{pcr.paymentMethod ?? emptyValue}</Detail>
+        <Detail label="Payment Method">
+          <CodedValue value={pcr.paymentMethod} />
+        </Detail>
       </DetailList>
       {pcr.insurances.length ? (
         <Table
@@ -43,10 +64,14 @@ export const PcrSummaryView = ({ pcr }: { pcr: PcrSummary }) => (
           {pcr.insurances.map((i, n) => (
             <TableRow key={`${n}:${i.payer}`}>
               <TableCell kind="wrap">{i.payer ?? emptyValue}</TableCell>
-              <TableCell>{i.priority ?? emptyValue}</TableCell>
+              <TableCell>
+                <CodedValue value={i.priority} />
+              </TableCell>
               <TableCell>{i.memberId ?? emptyValue}</TableCell>
               <TableCell>{i.groupId ?? emptyValue}</TableCell>
-              <TableCell>{i.relationship ?? emptyValue}</TableCell>
+              <TableCell>
+                <CodedValue value={i.relationship} />
+              </TableCell>
             </TableRow>
           ))}
         </Table>
@@ -122,11 +147,15 @@ export const PcrSummaryView = ({ pcr }: { pcr: PcrSummary }) => (
         <Table label="Medications given" head={['Medication', 'Given At', 'Route', 'Dose']}>
           {pcr.medications.map((m, n) => (
             <TableRow key={`${n}:${m.givenAt}`}>
-              <TableCell kind="wrap">{m.medication ?? emptyValue}</TableCell>
+              <TableCell kind="wrap">
+                <CodedValue value={m.medication} />
+              </TableCell>
               <TableCell kind="date">
                 <When at={m.givenAt} />
               </TableCell>
-              <TableCell>{m.route ?? emptyValue}</TableCell>
+              <TableCell>
+                <CodedValue value={m.route} />
+              </TableCell>
               <TableCell kind="numeric">{m.dose ?? emptyValue}</TableCell>
             </TableRow>
           ))}
@@ -140,7 +169,9 @@ export const PcrSummaryView = ({ pcr }: { pcr: PcrSummary }) => (
         <Table label="Procedures performed" head={['Procedure', 'Performed At']}>
           {pcr.procedures.map((p, n) => (
             <TableRow key={`${n}:${p.performedAt}`}>
-              <TableCell kind="wrap">{p.procedure ?? emptyValue}</TableCell>
+              <TableCell kind="wrap">
+                <CodedValue value={p.procedure} />
+              </TableCell>
               <TableCell kind="date">
                 <When at={p.performedAt} />
               </TableCell>

@@ -128,7 +128,7 @@ The goal is a clean, intuitive UI that just works and explains itself. When a ru
   - Page and form actions are text buttons with a leading icon (`Save`, `Add Fee`, `Run Report`). Icon-only buttons are reserved for table row actions and chrome that every app shares: close, dismiss, back, menu, theme, sign out and reorder arrows. Each one carries a tooltip.
   - Every element earns its place. Pages and sections have a title; add a sentence, hint or label only when it tells the user something the title, the data or the control does not already say. Never add text to fill a slot, and never show the same data twice on a page.
   - Labels are Title Case; sentences stay sentence case.
-  - A code always shows with its meaning as `Description (code)`, such as `Ambulance - Land (41)`; a bare code is shown only when no description is known.
+  - A code always shows with its meaning through `CodeLabel`: the description, then the code in muted `text-xs`, on its own line in detail lists and table cells and on the same line (`isInline`) in dropdowns and lists of several codes. Plain text that cannot be styled (CSV, the report CSV column, select search text) writes `Description (code)`, such as `Ambulance - Land (41)`. A bare code is shown only when no description is known.
   - Editing happens on its own page, never in a dialog, so all app state lives in the URL. Dialogs only confirm or choose, and destructive confirmations are danger themed.
   - Lists search, sort and page on the server, and keep every column left-aligned.
   - Reuse the existing shared components and patterns before writing new ones.

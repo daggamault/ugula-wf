@@ -2,6 +2,7 @@ import { CheckIcon, ChevronDownIcon, SearchIcon } from 'lucide-react';
 import {
   type FocusEvent,
   type KeyboardEvent,
+  type ReactNode,
   type ToggleEvent,
   useEffect,
   useId,
@@ -21,6 +22,7 @@ import { hidePopover, showPopover } from './popover.ts';
 export type SelectOption = {
   value: string;
   label: string;
+  code?: string | null | undefined;
 };
 
 const SEARCH_THRESHOLD = 7;
@@ -36,7 +38,7 @@ type ControlProps = {
   isSearchable?: boolean | undefined;
   onSearch?: ((query: string) => void) | undefined;
   emptyText?: string | undefined;
-  summary?: string | undefined;
+  summary?: ReactNode;
   title?: string | undefined;
   'aria-label'?: string | undefined;
   'aria-invalid'?: boolean | undefined;
@@ -84,7 +86,9 @@ export const summaryOf = (options: readonly SelectOption[], values: readonly str
 
 export const matchesOf = (options: readonly SelectOption[], query: string) => {
   const q = query.trim().toLowerCase();
-  return q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options;
+  return q
+    ? options.filter((o) => o.label.toLowerCase().includes(q) || o.code?.toLowerCase().includes(q))
+    : options;
 };
 
 export const typeaheadIndex = (options: readonly SelectOption[], typed: string, active: number) => {
@@ -303,7 +307,17 @@ export const SelectControl = (props: SelectControlProps) => {
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => choose(o)}
               >
-                <span className="min-w-0 flex-1 truncate">{o.label || ' '}</span>
+                <span className="min-w-0 flex-1 truncate">
+                  {o.label || ' '}
+                  {o.code ? (
+                    <>
+                      {' '}
+                      <span className="text-surface-fg-muted ml-1 text-xs tabular-nums">
+                        {o.code}
+                      </span>
+                    </>
+                  ) : null}
+                </span>
                 {isChosen ? <CheckIcon aria-hidden="true" className="size-4 shrink-0" /> : null}
               </button>
             );

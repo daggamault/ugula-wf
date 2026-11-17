@@ -4,7 +4,7 @@ import { Detail, DetailList } from '../ui/detail-list.tsx';
 import { emptyValue } from '../ui/empty-state.tsx';
 import { SectionPanel } from '../ui/section-panel.tsx';
 import type { ClaimDetail } from './claim-detail.ts';
-import { CodeText, codeText, described } from './code-text.tsx';
+import { CodeLabel, CodeText, coded } from './code-text.tsx';
 
 type Place = { name?: string | null } & Record<
   'addressLine' | 'city' | 'state' | 'postalCode',
@@ -20,9 +20,8 @@ export const addressText = (p: Place | null) =>
     .filter(Boolean)
     .join(', ') || null;
 
-export const modifierText = (code: string | null) =>
-  code &&
-  described(
+export const modifierCode = (code: string) =>
+  coded(
     Object.hasOwn(ORIGIN_DESTINATION_CODES, code)
       ? (ORIGIN_DESTINATION_CODES[code as keyof typeof ORIGIN_DESTINATION_CODES] ?? null)
       : null,
@@ -42,14 +41,16 @@ export const ClaimDataView = ({
     <DetailList>
       <Detail label="Date of Service">{formatDate(c.service_date)}</Detail>
       {placeOfService ? (
-        <Detail label="Place of Service">{codeText(codes, 'pos', placeOfService)}</Detail>
+        <Detail label="Place of Service">
+          <CodeText codes={codes} set="pos" code={placeOfService} />
+        </Detail>
       ) : null}
       <Detail label="Diagnosis Codes">
         {c.diagnoses.length ? (
           <ol className="flex flex-col gap-1">
             {c.diagnoses.map((d) => (
               <li key={d}>
-                <CodeText codes={codes} set="icd10cm" code={d} />
+                <CodeText codes={codes} set="icd10cm" code={d} isInline />
               </li>
             ))}
           </ol>
@@ -57,8 +58,12 @@ export const ClaimDataView = ({
           emptyValue
         )}
       </Detail>
-      <Detail label="Pickup Type">{modifierText(c.origin_code) ?? emptyValue}</Detail>
-      <Detail label="Destination Type">{modifierText(c.destination_code) ?? emptyValue}</Detail>
+      <Detail label="Pickup Type">
+        {c.origin_code ? <CodeLabel value={modifierCode(c.origin_code)} /> : emptyValue}
+      </Detail>
+      <Detail label="Destination Type">
+        {c.destination_code ? <CodeLabel value={modifierCode(c.destination_code)} /> : emptyValue}
+      </Detail>
       <Detail label="Patient Mailing Address">
         {addressText({
           addressLine: c.address_line,

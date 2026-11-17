@@ -112,10 +112,18 @@ describe('reasonsOf', () => {
         ]
       }),
       [
-        'Contractual obligation: Charge exceeds fee schedule. (CO-45) · $159.95',
-        'Patient responsibility: PR-999 · $1.00',
-        'Consult plan benefit documents. (N130)',
-        'MA01'
+        {
+          group: 'Contractual obligation',
+          value: { text: 'Charge exceeds fee schedule.', code: 'CO-45' },
+          amount: '$159.95'
+        },
+        { group: 'Patient responsibility', value: { text: 'PR-999', code: null }, amount: '$1.00' },
+        {
+          group: null,
+          value: { text: 'Consult plan benefit documents.', code: 'N130' },
+          amount: null
+        },
+        { group: null, value: { text: 'MA01', code: null }, amount: null }
       ]
     );
   });

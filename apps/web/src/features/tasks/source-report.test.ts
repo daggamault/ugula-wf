@@ -71,7 +71,7 @@ describe('SourceReportView', () => {
     const name = screen.getByText('Wilhelmina Thorncastle');
     const toggle = screen.getByText('Show XML');
     assert.ok(name.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING);
-    assert.ok(screen.getByText('Patient Treated, Transported by this EMS Unit (4212033)'));
+    assert.ok(screen.getAllByText('Patient Treated, Transported by this EMS Unit').length);
     assert.ok(screen.getByText('6.83 miles'));
   });
 

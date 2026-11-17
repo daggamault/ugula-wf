@@ -228,7 +228,7 @@ describe('TaskView tabs', () => {
       screen.getByRole('link', { name: 'Patient' }).getAttribute('href'),
       '/tasks/t1?tab=patient'
     );
-    screen.getByText('ALS1 emergency (A0427)');
+    assert.ok(screen.getAllByText('ALS1 emergency').length);
     assert.ok(!screen.queryByRole('region', { name: 'Workflow Details' }));
   });
 
@@ -242,7 +242,7 @@ describe('TaskView tabs', () => {
   it('shows the workflow context on its own tab', () => {
     showView(onClaim, { claim: record(), tab: 'workflow' });
     screen.getByRole('region', { name: 'Workflow Details' });
-    assert.ok(!screen.queryByText('ALS1 emergency (A0427)'));
+    assert.ok(!screen.queryByText('ALS1 emergency'));
   });
 
   it('shows the encounter and workflow tabs for a task from a report, opening the encounter', () => {

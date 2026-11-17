@@ -1,6 +1,6 @@
 import { ADJUSTMENT_GROUPS } from '@ugula/billing';
 import { DownloadIcon, FileTextIcon } from 'lucide-react';
-import { described } from '../../shared/claims/code-text.tsx';
+import { type Coded, CodeLabel, coded } from '../../shared/claims/code-text.tsx';
 import { formatCents, formatDate, formatDateTime } from '../../shared/format.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
@@ -23,12 +23,19 @@ export const paymentDetailsOf = (
     .filter(Boolean)
     .join(' · ');
 
-export const reasonsOf = (e: Pick<ClaimEvent, 'adjustments' | 'remarks'>) => [
-  ...(e.adjustments ?? []).map(
-    (a) =>
-      `${ADJUSTMENT_GROUPS[a.group]}: ${described(a.description, `${a.group}-${a.reason}`)} · ${formatCents(a.cents)}`
-  ),
-  ...(e.remarks ?? []).map((r) => described(r.description, r.code))
+type Reason = { group: string | null; value: Coded; amount: string | null };
+
+export const reasonsOf = (e: Pick<ClaimEvent, 'adjustments' | 'remarks'>): Reason[] => [
+  ...(e.adjustments ?? []).map((a) => ({
+    group: ADJUSTMENT_GROUPS[a.group],
+    value: coded(a.description, `${a.group}-${a.reason}`),
+    amount: formatCents(a.cents)
+  })),
+  ...(e.remarks ?? []).map((r) => ({
+    group: null,
+    value: coded(r.description, r.code),
+    amount: null
+  }))
 ];
 
 export const amountOf = (e: Pick<ClaimEvent, 'kind' | 'paid_cents' | 'adjusted_cents'>) =>
@@ -121,7 +128,11 @@ export const EventsTable = ({
             {reasonsOf(e).length ? (
               <ul className="text-surface-fg-muted flex flex-col gap-0.5 text-xs">
                 {reasonsOf(e).map((r) => (
-                  <li key={r}>{r}</li>
+                  <li key={`${r.group}:${r.value.code ?? r.value.text}`}>
+                    {r.group ? `${r.group}: ` : null}
+                    <CodeLabel value={r.value} isInline />
+                    {r.amount ? ` · ${r.amount}` : null}
+                  </li>
                 ))}
               </ul>
             ) : null}

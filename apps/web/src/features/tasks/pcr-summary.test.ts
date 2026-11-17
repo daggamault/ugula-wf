@@ -60,13 +60,13 @@ describe('PcrSummaryView', () => {
     assert.deepEqual(details('Patient'), [
       ['Name', 'Rosalind Quintero'],
       ['Date of Birth', formatDate('1961-02-19')],
-      ['Sex', 'Female (9919001)'],
-      ['Address', '330 Market St, Harrisburg (1215162), PA 17101'],
+      ['Sex', 'Female 9919001'],
+      ['Address', '330 Market St, Harrisburg, PA 17101'],
       ['Phone', '—'],
-      ['Payment Method', 'Insurance (2601001)']
+      ['Payment Method', 'Insurance 2601001']
     ]);
     assert.deepEqual(rows('Insurances on the report'), [
-      ['Blue Plan', 'Primary (2611003)', 'XGB110093422', 'GRP-10233', 'Self (2622001)']
+      ['Blue Plan', 'Primary 2611003', 'XGB110093422', 'GRP-10233', 'Self 2622001']
     ]);
   });
 
@@ -82,20 +82,20 @@ describe('PcrSummaryView', () => {
     showAls();
     assert.deepEqual(details('Scene / Pickup'), [
       ['Name', '—'],
-      ['Address', '2645 N 3rd St, Harrisburg (1215162), PA 17110'],
+      ['Address', '2645 N 3rd St, Harrisburg, PA 17110'],
       ['Location Type', 'ICD-10 Y92.531']
     ]);
     assert.deepEqual(details('Destination')[2], [
       'Destination Type',
-      'Hospital-Emergency Department (4221003)'
+      'Hospital-Emergency Department 4221003'
     ]);
     assert.deepEqual(details('Response and Disposition').at(-1), [
       'CMS Service Level',
-      'ALS, Level 1 Emergency (2650003)'
+      'ALS, Level 1 Emergency 2650003'
     ]);
     assert.deepEqual(details('Situation')[1], [
       'Primary Impression',
-      'Supraventricular tachycardia, unspecified (I47.10)'
+      'Supraventricular tachycardia, unspecified I47.10'
     ]);
   });
 
@@ -111,9 +111,9 @@ describe('PcrSummaryView', () => {
       '15'
     ]);
     assert.deepEqual(rows('Medications given')[0], [
-      'Adenosine (296)',
+      'Adenosine 296',
       formatDateTime('2026-09-06T10:20:00-04:00'),
-      'Intravenous (IV) (9927023)',
+      'Intravenous (IV) 9927023',
       '6 Milligrams (mg)'
     ]);
     assert.equal(rows('Medications given').length, 4);

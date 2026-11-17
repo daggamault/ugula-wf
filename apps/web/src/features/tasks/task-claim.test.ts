@@ -60,20 +60,20 @@ describe('TaskClaimView', () => {
     const [, line] = within(charges).getAllByRole('row');
     assert.ok(line);
     const [code, modifiers] = within(line).getAllByRole('cell');
-    assert.equal(code?.lastElementChild?.textContent, 'ALS1 emergency (A0427)');
+    assert.equal(code?.lastElementChild?.textContent, 'ALS1 emergency A0427');
     assert.deepEqual(
       within(modifiers as HTMLElement)
         .getAllByRole('listitem')
         .map((li) => li.textContent),
-      ['Residence to hospital (RH)', 'Item or service excluded (GY)']
+      ['Residence to hospital RH', 'Item or service excluded GY']
     );
   });
 
   it('describes the place of service and diagnoses', () => {
     show();
     const data = panel('Claim Data');
-    assert.ok(within(data).getByText('Ambulance - Land (41)'));
-    assert.ok(within(data).getByText('Chest pain, unspecified (R07.9)'));
+    assert.ok(within(data).getByText('Ambulance - Land'));
+    assert.ok(within(data).getByText('Chest pain, unspecified'));
   });
 
   it('is read only', () => {
@@ -86,7 +86,7 @@ describe('TaskClaimView', () => {
     const charges = panel('Charges');
     assert.ok(!within(charges).queryByText(/Modifiers as billed/));
     assert.ok(!within(charges).queryByRole('columnheader', { name: 'Modifiers' }));
-    assert.ok(!within(panel('Claim Data')).queryByText('Ambulance - Land (41)'));
+    assert.ok(!within(panel('Claim Data')).queryByText('Ambulance - Land'));
   });
 
   it('says when the claim has no charge lines yet', () => {

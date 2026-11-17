@@ -11,22 +11,22 @@ describe('readPcr', () => {
     assert.deepEqual(als().patient, [
       { label: 'Name', value: 'Rosalind Quintero' },
       { label: 'Date of Birth', value: '1961-02-19', isDay: true },
-      { label: 'Sex', value: 'Female (9919001)' },
-      { label: 'Address', value: '330 Market St, Harrisburg (1215162), PA 17101' },
+      { label: 'Sex', value: { text: 'Female', code: '9919001' } },
+      { label: 'Address', value: '330 Market St, Harrisburg, PA 17101' },
       { label: 'Phone', value: null }
     ]);
   });
 
   it('reads the payment method and insurance', () => {
     const pcr = als();
-    assert.equal(pcr.paymentMethod, 'Insurance (2601001)');
+    assert.deepEqual(pcr.paymentMethod, { text: 'Insurance', code: '2601001' });
     assert.deepEqual(pcr.insurances, [
       {
         payer: 'Blue Plan',
-        priority: 'Primary (2611003)',
+        priority: { text: 'Primary', code: '2611003' },
         memberId: 'XGB110093422',
         groupId: 'GRP-10233',
-        relationship: 'Self (2622001)'
+        relationship: { text: 'Self', code: '2622001' }
       }
     ]);
   });
@@ -47,45 +47,54 @@ describe('readPcr', () => {
     const pcr = als();
     assert.deepEqual(pcr.scene, [
       { label: 'Name', value: null },
-      { label: 'Address', value: '2645 N 3rd St, Harrisburg (1215162), PA 17110' },
-      { label: 'Location Type', value: 'ICD-10 Y92.531' }
+      { label: 'Address', value: '2645 N 3rd St, Harrisburg, PA 17110' },
+      { label: 'Location Type', value: { text: 'ICD-10 Y92.531', code: null } }
     ]);
-    assert.equal(pcr.medications[3]?.medication, 'RxNorm 703');
+    assert.deepEqual(pcr.medications[3]?.medication, { text: 'RxNorm 703', code: null });
   });
 
   it('reads the destination and why it was chosen', () => {
     assert.deepEqual(als().destination, [
       { label: 'Name', value: 'UPMC Harrisburg' },
-      { label: 'Address', value: '111 S Front St, Harrisburg (1215162), PA 17101' },
-      { label: 'Destination Type', value: 'Hospital-Emergency Department (4221003)' },
-      { label: 'Reason for Choosing', value: 'Closest Facility (4220001)' }
+      { label: 'Address', value: '111 S Front St, Harrisburg, PA 17101' },
+      {
+        label: 'Destination Type',
+        value: { text: 'Hospital-Emergency Department', code: '4221003' }
+      },
+      { label: 'Reason for Choosing', value: [{ text: 'Closest Facility', code: '4220001' }] }
     ]);
   });
 
   it('reads the NEMSIS 3.5 unit, care and transport dispositions', () => {
     assert.deepEqual(als().response, [
-      { label: 'Type of Service', value: 'Emergency Response (Primary Response Area) (2205001)' },
-      { label: 'Response Mode', value: 'Emergent (Immediate Response) (2223001)' },
-      { label: 'Level of Care', value: 'ALS - Paramedic (4232005)' },
-      { label: 'Unit Disposition', value: 'Patient Contact Made (4227001)' },
+      {
+        label: 'Type of Service',
+        value: { text: 'Emergency Response (Primary Response Area)', code: '2205001' }
+      },
+      { label: 'Response Mode', value: { text: 'Emergent (Immediate Response)', code: '2223001' } },
+      { label: 'Level of Care', value: { text: 'ALS - Paramedic', code: '4232005' } },
+      { label: 'Unit Disposition', value: { text: 'Patient Contact Made', code: '4227001' } },
       {
         label: 'Patient Evaluation and Care',
-        value: 'Patient Evaluated and Care Provided (4228001)'
+        value: { text: 'Patient Evaluated and Care Provided', code: '4228001' }
       },
       {
         label: 'Transport Disposition',
-        value: 'Transport by This EMS Unit (This Crew Only) (4230001)'
+        value: { text: 'Transport by This EMS Unit (This Crew Only)', code: '4230001' }
       },
-      { label: 'CMS Service Level', value: 'ALS, Level 1 Emergency (2650003)' }
+      { label: 'CMS Service Level', value: { text: 'ALS, Level 1 Emergency', code: '2650003' } }
     ]);
   });
 
   it('reads the complaint, impressions and symptoms', () => {
     assert.deepEqual(als().situation, [
       { label: 'Complaint', value: 'Palpitations' },
-      { label: 'Primary Impression', value: 'Supraventricular tachycardia, unspecified (I47.10)' },
+      {
+        label: 'Primary Impression',
+        value: { text: 'Supraventricular tachycardia, unspecified', code: 'I47.10' }
+      },
       { label: 'Secondary Impressions', value: null },
-      { label: 'Primary Symptom', value: 'Palpitations (R00.2)' },
+      { label: 'Primary Symptom', value: { text: 'Palpitations', code: 'R00.2' } },
       { label: 'Other Symptoms', value: null }
     ]);
   });
@@ -117,26 +126,26 @@ describe('readPcr', () => {
     assert.deepEqual(als().medications, [
       {
         givenAt: '2026-09-06T10:20:00-04:00',
-        medication: 'Adenosine (296)',
-        route: 'Intravenous (IV) (9927023)',
+        medication: { text: 'Adenosine', code: '296' },
+        route: { text: 'Intravenous (IV)', code: '9927023' },
         dose: '6 Milligrams (mg)'
       },
       {
         givenAt: '2026-09-06T10:23:00-04:00',
-        medication: 'Adenosine (296)',
-        route: 'Intravenous (IV) (9927023)',
+        medication: { text: 'Adenosine', code: '296' },
+        route: { text: 'Intravenous (IV)', code: '9927023' },
         dose: '12 Milligrams (mg)'
       },
       {
         givenAt: '2026-09-06T10:26:00-04:00',
-        medication: 'RxNorm 313002',
-        route: 'Intravenous (IV) (9927023)',
+        medication: { text: 'RxNorm 313002', code: null },
+        route: { text: 'Intravenous (IV)', code: '9927023' },
         dose: '20 3706025'
       },
       {
         givenAt: '2026-09-06T10:31:00-04:00',
-        medication: 'RxNorm 703',
-        route: '9927069',
+        medication: { text: 'RxNorm 703', code: null },
+        route: { text: '9927069', code: null },
         dose: '150 Milligrams (mg)'
       }
     ]);
@@ -155,21 +164,24 @@ describe('readPcr', () => {
 
   it('reads NEMSIS 3.4 gender as sex, dropping the deprecated mark', () => {
     const pcr = nemsis34();
-    assert.deepEqual(pcr.patient[2], { label: 'Sex', value: 'Female (9906001)' });
-    assert.equal(pcr.paymentMethod, 'Medicare (2601005)');
+    assert.deepEqual(pcr.patient[2], { label: 'Sex', value: { text: 'Female', code: '9906001' } });
+    assert.deepEqual(pcr.paymentMethod, { text: 'Medicare', code: '2601005' });
     assert.equal(pcr.insurances[0]?.groupId, null);
   });
 
   it('reads the single NEMSIS 3.4 incident disposition in place of the 3.5 ones', () => {
     assert.deepEqual(nemsis34().response, [
-      { label: 'Type of Service', value: 'Emergency Response (Primary Response Area) (2205001)' },
-      { label: 'Response Mode', value: 'Emergent (Immediate Response) (2223001)' },
+      {
+        label: 'Type of Service',
+        value: { text: 'Emergency Response (Primary Response Area)', code: '2205001' }
+      },
+      { label: 'Response Mode', value: { text: 'Emergent (Immediate Response)', code: '2223001' } },
       { label: 'Level of Care', value: null },
       {
         label: 'Incident Disposition',
-        value: 'Patient Treated, Transported by this EMS Unit (4212033)'
+        value: { text: 'Patient Treated, Transported by this EMS Unit', code: '4212033' }
       },
-      { label: 'CMS Service Level', value: 'ALS, Level 1 Emergency (2650003)' }
+      { label: 'CMS Service Level', value: { text: 'ALS, Level 1 Emergency', code: '2650003' } }
     ]);
   });
 
@@ -198,10 +210,16 @@ describe('readPcr', () => {
     assert.deepEqual(pcr.scene[0], { label: 'Name', value: 'Riverside Manor' });
     assert.deepEqual(pcr.situation[4], {
       label: 'Other Symptoms',
-      value: 'Shortness of breath (R06.02); ICD-10 R07.9'
+      value: [
+        { text: 'Shortness of breath', code: 'R06.02' },
+        { text: 'ICD-10 R07.9', code: null }
+      ]
     });
     assert.deepEqual(pcr.procedures, [
-      { performedAt: '2026-09-06T10:20:00-04:00', procedure: 'SNOMED CT 392230005' }
+      {
+        performedAt: '2026-09-06T10:20:00-04:00',
+        procedure: { text: 'SNOMED CT 392230005', code: null }
+      }
     ]);
   });
 

@@ -2,7 +2,7 @@ import type { CodeDescriptions, PricedLine } from '@ugula/billing';
 import { formatCents } from '../format.ts';
 import { emptyValue } from '../ui/empty-state.tsx';
 import { Table, TableCell, TableRow } from '../ui/table.tsx';
-import { CodeText, codeText } from './code-text.tsx';
+import { CodeText } from './code-text.tsx';
 
 export const ChargeLines = ({
   lines,
@@ -33,7 +33,9 @@ export const ChargeLines = ({
             {modifiers[i]?.length ? (
               <ul className="flex flex-col gap-0.5">
                 {modifiers[i]?.map((m) => (
-                  <li key={m}>{codeText(codes, 'modifier', m)}</li>
+                  <li key={m}>
+                    <CodeText codes={codes} set="modifier" code={m} isInline />
+                  </li>
                 ))}
               </ul>
             ) : (

@@ -49,20 +49,23 @@ describe('codeLabel', () => {
   const labels = labelsOf(KNOWN);
 
   it('shows a code with its meaning, dotting ICD-10 codes', () => {
-    assert.equal(codeLabel('icd10cm', labels, 'R079'), 'Chest pain, unspecified (R07.9)');
+    assert.deepEqual(codeLabel('icd10cm', labels, 'R079'), {
+      text: 'Chest pain, unspecified',
+      code: 'R07.9'
+    });
   });
 
   it('shows the code alone before its meaning is known', () => {
-    assert.equal(codeLabel('icd10cm', labels, 'Z999'), 'Z99.9');
-    assert.equal(codeLabel('hcpcs', {}, 'A0427'), 'A0427');
+    assert.deepEqual(codeLabel('icd10cm', labels, 'Z999'), { text: 'Z99.9', code: null });
+    assert.deepEqual(codeLabel('hcpcs', {}, 'A0427'), { text: 'A0427', code: null });
   });
 });
 
 describe('codeOptions', () => {
   it('offers each code once, labelled with its meaning', () => {
     assert.deepEqual(codeOptions('icd10cm', ['R079', 'Z999', 'R079'], labelsOf(KNOWN)), [
-      { value: 'R079', label: 'Chest pain, unspecified (R07.9)' },
-      { value: 'Z999', label: 'Z99.9' }
+      { value: 'R079', label: 'Chest pain, unspecified', code: 'R07.9' },
+      { value: 'Z999', label: 'Z99.9', code: null }
     ]);
   });
 });
@@ -140,7 +143,7 @@ describe('CodeField choosing one code', () => {
   it('shows the chosen code with the meaning it looks up', async () => {
     const { codes, described } = fakeCodes();
     show('R079', { isMultiple: false, codes });
-    await waitFor(() => assert.equal(trigger().textContent, 'Chest pain, unspecified (R07.9)'));
+    await waitFor(() => assert.equal(trigger().textContent, 'Chest pain, unspecified R07.9'));
     assert.deepEqual(described[0], ['icd10cm', ['R079']]);
     assert.ok(!screen.queryByRole('list', { name: 'Diagnoses in order' }));
   });
@@ -155,12 +158,12 @@ describe('CodeField choosing one code', () => {
     const { changes, user } = show(null, { isMultiple: false, codes });
     await user.type(screen.getByRole('combobox', { name: 'Search Diagnoses' }), 'chest');
     await waitFor(() =>
-      assert.deepEqual(options(), ['Chest pain, unspecified (R07.9)', 'Other chest pain (R07.89)'])
+      assert.deepEqual(options(), ['Chest pain, unspecified R07.9', 'Other chest pain R07.89'])
     );
     assert.deepEqual(searches, [['icd10cm', 'chest', null]]);
-    await user.click(screen.getByRole('option', { name: 'Other chest pain (R07.89)' }));
+    await user.click(screen.getByRole('option', { name: 'Other chest pain R07.89' }));
     assert.deepEqual(changes, ['R0789']);
-    assert.equal(trigger().textContent, 'Other chest pain (R07.89)');
+    assert.equal(trigger().textContent, 'Other chest pain R07.89');
   });
 
   it('prompts for a search and looks nothing up before one', async () => {
@@ -181,9 +184,9 @@ describe('CodeField choosing one code', () => {
     show('I10', { isMultiple: false, codeList: 'impression', codes });
     await waitFor(() =>
       assert.deepEqual(options(), [
-        'Essential hypertension (I10)',
-        'Chest pain, unspecified (R07.9)',
-        'Other chest pain (R07.89)'
+        'Essential hypertension I10',
+        'Chest pain, unspecified R07.9',
+        'Other chest pain R07.89'
       ])
     );
     assert.deepEqual(searches, [['icd10cm', '', 'impression']]);
@@ -194,10 +197,7 @@ describe('CodeField choosing several codes', () => {
   it('lists the chosen codes in billing order with their meanings', async () => {
     show(['R079', 'I10']);
     await waitFor(() =>
-      assert.deepEqual(ordered(), [
-        'Chest pain, unspecified (R07.9)',
-        'Essential hypertension (I10)'
-      ])
+      assert.deepEqual(ordered(), ['Chest pain, unspecified R07.9', 'Essential hypertension I10'])
     );
     assert.equal(trigger().textContent, 'Add a code');
   });
@@ -205,12 +205,9 @@ describe('CodeField choosing several codes', () => {
   it('adds a code found by searching to the end of the order', async () => {
     const { changes, user } = show(['R079']);
     await user.type(screen.getByRole('combobox', { name: 'Search Diagnoses' }), 'hyper');
-    await user.click(await screen.findByRole('option', { name: 'Essential hypertension (I10)' }));
+    await user.click(await screen.findByRole('option', { name: 'Essential hypertension I10' }));
     assert.deepEqual(changes, [['R079', 'I10']]);
-    assert.deepEqual(ordered(), [
-      'Chest pain, unspecified (R07.9)',
-      'Essential hypertension (I10)'
-    ]);
+    assert.deepEqual(ordered(), ['Chest pain, unspecified R07.9', 'Essential hypertension I10']);
   });
 
   it('moves a code down the order, says so and keeps focus on the moved code', async () => {
@@ -218,10 +215,7 @@ describe('CodeField choosing several codes', () => {
     await user.click(screen.getByRole('button', { name: 'Move R07.9 down' }));
     assert.deepEqual(changes, [['I10', 'R079']]);
     await waitFor(() =>
-      assert.deepEqual(ordered(), [
-        'Essential hypertension (I10)',
-        'Chest pain, unspecified (R07.9)'
-      ])
+      assert.deepEqual(ordered(), ['Essential hypertension I10', 'Chest pain, unspecified R07.9'])
     );
     assert.equal(screen.getByText('R07.9 moved to 2').getAttribute('role'), 'status');
     assert.ok(document.activeElement === screen.getByRole('button', { name: 'Move R07.9 down' }));

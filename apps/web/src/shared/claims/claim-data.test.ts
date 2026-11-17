@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { render, screen, within } from '../testing-dom.ts';
-import { addressText, ClaimDataView, modifierText } from './claim-data.tsx';
+import { addressText, ClaimDataView, modifierCode } from './claim-data.tsx';
 import type { ClaimDetail } from './claim-detail.ts';
 import { claimDetail } from './testing.ts';
 
@@ -52,17 +52,13 @@ describe('addressText', () => {
   });
 });
 
-describe('modifierText', () => {
+describe('modifierCode', () => {
   it('names an origin or destination code', () => {
-    assert.equal(modifierText('R'), 'Residence (R)');
+    assert.deepEqual(modifierCode('R'), { text: 'Residence', code: 'R' });
   });
 
   it('shows an unknown code bare', () => {
-    assert.equal(modifierText('Q'), 'Q');
-  });
-
-  it('is null without a code', () => {
-    assert.equal(modifierText(null), null);
+    assert.deepEqual(modifierCode('Q'), { text: 'Q', code: null });
   });
 });
 
@@ -94,10 +90,10 @@ describe('ClaimDataView', () => {
     show({ origin_code: 'R', destination_code: 'H', destination_city: 'Springfield' }, '41');
     assert.deepEqual(details(), [
       ['Date of Service', 'Oct 1, 2026'],
-      ['Place of Service', 'Ambulance - Land (41)'],
-      ['Diagnosis Codes', 'Chest pain (R07.9)I10'],
-      ['Pickup Type', 'Residence (R)'],
-      ['Destination Type', 'Hospital (H)'],
+      ['Place of Service', 'Ambulance - Land 41'],
+      ['Diagnosis Codes', 'Chest pain R07.9I10'],
+      ['Pickup Type', 'Residence R'],
+      ['Destination Type', 'Hospital H'],
       ['Patient Mailing Address', '1 Main St, Springfield, IL 62704'],
       ['Pickup', '9 Elm St, IL 62704'],
       ['Destination', 'St. Mary, Springfield']
@@ -110,7 +106,7 @@ describe('ClaimDataView', () => {
       within(screen.getByRole('list'))
         .getAllByRole('listitem')
         .map((li) => li.textContent),
-      ['Chest pain (R07.9)', 'I10']
+      ['Chest pain R07.9', 'I10']
     );
   });
 

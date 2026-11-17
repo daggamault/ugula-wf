@@ -1,5 +1,5 @@
 import { ADJUSTMENT_GROUPS, CLAIM_FILING_CODES } from '@ugula/billing';
-import { described } from '../../shared/claims/code-text.tsx';
+import { type Coded, coded, codedText } from '../../shared/claims/code-text.tsx';
 import {
   formatCents,
   formatDate,
@@ -31,6 +31,7 @@ export type ReportColumn<R> = {
   label: string;
   isNumeric?: boolean;
   text: (row: R, totals: Totals) => string;
+  code?: (row: R) => string | null;
   csv: (row: R, totals: Totals) => CsvCell;
   total?: (totals: Totals) => string;
 };
@@ -134,6 +135,16 @@ const text = <R>(label: string, show: (row: R) => string | null): ReportColumn<R
   label,
   text: (r) => show(r) ?? emptyValue,
   csv: (r) => show(r)
+});
+
+const codeColumn = <R>(label: string, show: (row: R) => Coded | null): ReportColumn<R> => ({
+  label,
+  text: (r) => show(r)?.text ?? emptyValue,
+  code: (r) => show(r)?.code ?? null,
+  csv: (r) => {
+    const c = show(r);
+    return c ? codedText(c) : null;
+  }
 });
 
 export const filingLabel = (code: string | null) => {
@@ -268,7 +279,9 @@ export const PAYMENT_COLUMNS: readonly ReportColumn<PaymentRow>[] = [
 
 export const denialColumns = (group: string | null): ReportColumn<DenialRow>[] => [
   ...(group === 'reason' ? [] : [text<DenialRow>('Payer', (r) => r.payer ?? PATIENT)]),
-  text('Reason', (r) => (r.code === null ? 'No Reason Given' : described(r.description, r.code))),
+  codeColumn('Reason', (r) =>
+    r.code === null ? { text: 'No Reason Given', code: null } : coded(r.description, r.code)
+  ),
   text('Group', (r) => (r.code === null ? null : adjustmentGroupLabel(r.code))),
   count('Denials', 'denials', false),
   count('Claims', 'claims', false),
@@ -334,7 +347,7 @@ export const payerColumns = (group: string | null): ReportColumn<PayerRow>[] => 
 ];
 
 export const HCPCS_COLUMNS: readonly ReportColumn<HcpcsRow>[] = [
-  text('Service', (r) => described(r.description, r.code)),
+  codeColumn('Service', (r) => coded(r.description, r.code)),
   count('Claims', 'claims', false),
   derived('Units', (read) => read('units'), AS_DECIMAL, false),
   average('Average Price', 'charges_cents', 'units', AS_MONEY_AVERAGE, false),

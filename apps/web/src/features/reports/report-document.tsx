@@ -49,6 +49,12 @@ export const ReportDocument = <R,>({
               {columns.map((c) => (
                 <td key={c.label} className={cellClasses(c.isNumeric)}>
                   {c.text(r, totals)}
+                  {c.code?.(r) ? (
+                    <>
+                      {' '}
+                      <span className="block text-xs text-gray-500 tabular-nums">{c.code(r)}</span>
+                    </>
+                  ) : null}
                 </td>
               ))}
             </tr>

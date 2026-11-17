@@ -53,7 +53,7 @@ describe('ChargeLines', () => {
     );
     assert.deepEqual(
       rows().map((r) => r[0]),
-      ['ALS1 emergency (A0427)', 'A0425']
+      ['ALS1 emergency A0427', 'A0425']
     );
   });
 
@@ -72,8 +72,8 @@ describe('ChargeLines', () => {
       })
     );
     assert.deepEqual(modifiersOf(0), [
-      'Residence to hospital (RH)',
-      'Multiple patients on one ambulance trip (GM)',
+      'Residence to hospital RH',
+      'Multiple patients on one ambulance trip GM',
       'QM'
     ]);
   });
@@ -82,7 +82,7 @@ describe('ChargeLines', () => {
     render(createElement(ChargeLines, { lines: [als, mileage, als], modifiers: [['RH'], []] }));
     assert.deepEqual(
       rows().map((r) => r[1]),
-      ['Residence to hospital (RH)', '—', '—']
+      ['Residence to hospital RH', '—', '—']
     );
     assert.deepEqual(modifiersOf(1), []);
   });

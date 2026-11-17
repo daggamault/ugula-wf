@@ -394,14 +394,7 @@ describe('denial columns', () => {
   it('groups denials by payer', () => {
     assert.deepEqual(
       denialColumns('payer').map((c) => c.text(row, {})),
-      [
-        'Patient',
-        'Charge exceeds fee schedule. (CO-45)',
-        'Contractual obligation',
-        '1',
-        '2',
-        '$120.00'
-      ]
+      ['Patient', 'Charge exceeds fee schedule.', 'Contractual obligation', '1', '2', '$120.00']
     );
   });
 
@@ -592,9 +585,14 @@ describe('HCPCS columns', () => {
     const totals = { charges_cents: 380_000 };
     assert.deepEqual(
       HCPCS_COLUMNS.map((c) => c.text(row, totals)),
-      ['ALS1, emergency transport (A0427)', '2', '2', '$950.00', '$1,900.00', '50%']
+      ['ALS1, emergency transport', '2', '2', '$950.00', '$1,900.00', '50%']
     );
     assert.deepEqual(totalsOf(HCPCS_COLUMNS, totals), ['Total', '', '', '', '$3,800.00', '100%']);
+  });
+
+  it('shows the code under the description on screen and both in the CSV', () => {
+    assert.equal(HCPCS_COLUMNS[0]?.code?.(row), 'A0427');
+    assert.equal(HCPCS_COLUMNS[0]?.csv(row, {}), 'ALS1, emergency transport (A0427)');
   });
 
   it('rounds fractional units and average prices', () => {

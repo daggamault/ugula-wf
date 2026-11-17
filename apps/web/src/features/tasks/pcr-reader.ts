@@ -1,15 +1,17 @@
 import { isRecord, type Json } from '@ugula/graph';
 import { codeSystemOf, describeCode, type ReportDictionary, toPcr } from '@ugula/nemsis';
-import { described } from '../../shared/claims/code-text.tsx';
+import { type Coded, coded } from '../../shared/claims/code-text.tsx';
 
-type Fact = { label: string; value: string | null; isDay?: boolean };
+export type FactValue = string | Coded | readonly Coded[] | null;
+
+type Fact = { label: string; value: FactValue; isDay?: boolean };
 
 type Insurance = {
   payer: string | null;
-  priority: string | null;
+  priority: Coded | null;
   memberId: string | null;
   groupId: string | null;
-  relationship: string | null;
+  relationship: Coded | null;
 };
 
 type Vital = {
@@ -24,16 +26,16 @@ type Vital = {
 
 type Medication = {
   givenAt: string | null;
-  medication: string | null;
-  route: string | null;
+  medication: Coded | null;
+  route: Coded | null;
   dose: string | null;
 };
 
-type Procedure = { performedAt: string | null; procedure: string | null };
+type Procedure = { performedAt: string | null; procedure: Coded | null };
 
 export type PcrSummary = {
   patient: Fact[];
-  paymentMethod: string | null;
+  paymentMethod: Coded | null;
   insurances: Insurance[];
   times: { label: string; at: string | null }[];
   scene: Fact[];
@@ -77,23 +79,22 @@ const createDecoder = (dictionary: ReportDictionary) => {
     const value = textOf(code);
     return value === null ? null : (meaningOf(list, value) ?? value);
   };
-  const decode = (list: string, code: Json | undefined) => {
+  const decode = (list: string, code: Json | undefined): Coded | null => {
     const value = textOf(code);
     if (value === null) return null;
     const meaning = meaningOf(list, value);
     const system = SYSTEM_NAMES[codeSystemOf(list) ?? ''];
-    if (meaning === null) return system ? `${system} ${value}` : value;
-    return described(meaning, value);
+    if (meaning === null) return { text: system ? `${system} ${value}` : value, code: null };
+    return coded(meaning, value);
   };
-  const decodeAll = (list: string, codes: Json | undefined) =>
-    joined(
-      textsOf(codes).map((c) => decode(list, c)),
-      '; '
-    );
+  const decodeAll = (list: string, codes: Json | undefined) => {
+    const all = textsOf(codes).flatMap((c) => decode(list, c) ?? []);
+    return all.length ? all : null;
+  };
   return { name, decode, decodeAll };
 };
 
-const fact = (label: string, value: string | null): Fact => ({ label, value });
+const fact = (label: string, value: FactValue): Fact => ({ label, value });
 
 export const roundMiles = (miles: number) => Math.round(miles * 100) / 100;
 
@@ -110,7 +111,7 @@ export const readPcr = (data: Json, dictionary: ReportDictionary): PcrSummary =>
   const place = (s: Record<string, Json>, lists: { city: string; state: string }) =>
     joined([
       textOf(s.addressLine),
-      decode(lists.city, s.city),
+      name(lists.city, s.city),
       joined([name(lists.state, s.state), textOf(s.postalCode)], ' ')
     ]);
   const sceneOdometer = numberOf(response.sceneOdometer);

@@ -6,7 +6,7 @@ import { MoveButtons, RemoveButton } from '../ui/icon-button.tsx';
 import { Select, type SelectOption } from '../ui/select.tsx';
 import { useResource } from '../use-resource.ts';
 import { useSearch } from '../use-search.ts';
-import { described, shownCode } from './code-text.tsx';
+import { CodeLabel, coded, shownCode } from './code-text.tsx';
 
 type Labels = Readonly<Record<string, string>>;
 
@@ -23,12 +23,13 @@ export const labelsOf = (codes: readonly Code[]): Labels =>
   Object.fromEntries(codes.map((c) => [c.code, c.description]));
 
 export const codeLabel = (set: CodeSet, labels: Labels, code: string) =>
-  described(labels[code] ?? null, shownCode(set, code));
+  coded(labels[code] ?? null, shownCode(set, code));
 
 export const codeOptions = (set: CodeSet, codes: readonly string[], labels: Labels) =>
-  [...new Set(codes)].map(
-    (code): SelectOption => ({ value: code, label: codeLabel(set, labels, code) })
-  );
+  [...new Set(codes)].map((code): SelectOption => {
+    const { text, code: shown } = codeLabel(set, labels, code);
+    return { value: code, label: text, code: shown };
+  });
 
 export const moveCode = (codes: readonly string[], index: number, by: -1 | 1) => {
   const to = index + by;
@@ -111,7 +112,7 @@ export const CodeField = ({
       <Select
         {...common}
         placeholder="Choose…"
-        summary={code ? codeLabel(codeSet, labels, code) : ''}
+        summary={code ? <CodeLabel value={codeLabel(codeSet, labels, code)} isInline /> : ''}
         options={codeOptions(codeSet, search.q ? found : [...chosen, ...found], labels)}
         value={code ?? ''}
         onChange={(v) => onChange(v || null)}
@@ -141,7 +142,9 @@ export const CodeField = ({
             return (
               <li key={code} className="flex items-center gap-2 text-sm">
                 <span className="text-surface-fg-muted w-5 shrink-0 tabular-nums">{i + 1}.</span>
-                <span className="min-w-0 flex-1 truncate">{codeLabel(codeSet, labels, code)}</span>
+                <span className="min-w-0 flex-1 truncate">
+                  <CodeLabel value={codeLabel(codeSet, labels, code)} isInline />
+                </span>
                 <MoveButtons
                   name={shown}
                   index={i}
