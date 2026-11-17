@@ -45,6 +45,20 @@ describe('registry', () => {
     assert.equal(registry.node({ type: 'std.math.add', version: 2 }), undefined);
   });
 
+  it('works a node out again in another graph, as an edited one', () => {
+    const entry = { id: 'entry', type: 'std.graph.entry', version: 1 };
+    const before = { ...owner, signature: { ...owner.signature, execIn: ['exec'] } };
+    const after = {
+      ...before,
+      signature: { ...before.signature, inputs: [{ name: 'claimId', type: 'string' as const }] }
+    };
+    assert.deepEqual(registry.signature(entry, before).outputs, []);
+    assert.deepEqual(
+      registry.signature(entry, after).outputs.map((p) => p.name),
+      ['claimId']
+    );
+  });
+
   it('asks each graph source in order until one knows the graph', () => {
     const def = (label: string): GraphDef => ({
       ...owner,

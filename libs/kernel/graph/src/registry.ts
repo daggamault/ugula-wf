@@ -45,7 +45,7 @@ export const createRegistry = (
     byKey.set(key, def);
   }
   const configs = new WeakMap<NodeInstance, unknown>();
-  const signatures = new WeakMap<NodeInstance, Signature>();
+  const signatures = new WeakMap<NodeInstance, WeakMap<GraphDef, Signature>>();
 
   const node = (ref: NodeRef) => byKey.get(refKey(ref));
   const graph = (ref: NodeRef) => {
@@ -66,7 +66,8 @@ export const createRegistry = (
   const signatureOf = (ref: NodeRef) => graph(ref)?.def.signature;
 
   const signature = (inst: NodeInstance, owner: GraphDef) => {
-    const hit = signatures.get(inst);
+    const byOwner = signatures.get(inst) ?? new WeakMap<GraphDef, Signature>();
+    const hit = byOwner.get(owner);
     if (hit) return hit;
     const def = node(inst);
     const sig = def
@@ -75,7 +76,8 @@ export const createRegistry = (
         : def.signature
       : graph(inst)?.def.signature;
     if (!sig) throw new Error(`Unknown node type ${refKey(inst)}`);
-    signatures.set(inst, sig);
+    byOwner.set(owner, sig);
+    signatures.set(inst, byOwner);
     return sig;
   };
 
