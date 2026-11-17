@@ -1,4 +1,4 @@
-import type { GraphDef } from '@ugula/graph';
+import type { GraphDef, ValueType } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import { graph, p } from './glossary.ts';
 import {
@@ -6,22 +6,27 @@ import {
   asRule,
   asStage,
   asWorkflow,
+  type Builder,
   d,
-  expr,
   field,
   is,
-  named,
   oneOf,
   P,
   rule,
   shared,
-  subject,
-  summarize,
+  summary,
   T,
-  table
+  table,
+  template
 } from './shared.ts';
 
 const { blob: BLOB } = T;
+
+const textRecord = (g: Builder, id: string, label: string, fields: string[]) =>
+  g.add(id, 'std.object.make', {
+    label,
+    config: { fields: fields.map((name) => ({ name, type: 'string' })) }
+  });
 
 const receiveNemsisFile = (): GraphDef => {
   const g = graph({
@@ -51,26 +56,6 @@ const receiveNemsisFile = (): GraphDef => {
   return g.def;
 };
 
-const LINE_CONTEXT = `{
-  claimNumber: reference,
-  outcome: outcome,
-  problem: message,
-  fileName: fileName
-}`;
-
-const LINE_SUMMARY = `${named('message', "'The clearinghouse sent a line that could not be applied on its own'")} +
-  (claimId == null
-    ? '; ' + (${named('reference', 'null')} != null ? 'no claim has the number ' + reference : 'it names no claim') + ', so check it with the clearinghouse and post it with a Post Payment task on the right claim'
-    : '; post it with a Post Payment task or fix the claim with Correct Claim Data, then mark it resolved')`;
-
-const UNREADABLE_SUMMARY = `'Nothing was applied from ' + ${named('fileName', "'this file'")} +
-  (${named('reason', 'null')} != null ? ' (' + reason + ')' : ', as it is not a file the app reads') +
-  '; check it with the clearinghouse'`;
-
-const SETUP_SUMMARY = `'The clearinghouse rejected the envelope of ' + ${named('fileName', "'a file'")} +
-  (${named('envelopeRejection', 'null')} != null ? ' (' + envelopeRejection + ')' : '') +
-  '; fix the clearinghouse setup in Settings, then mark it fixed'`;
-
 const reviewPayerFileLine = (): GraphDef => {
   const g = graph({
     execIn: ['exec'],
@@ -87,8 +72,12 @@ const reviewPayerFileLine = (): GraphDef => {
   g.add('unmatched', 'std.logic.is-null', { label: 'No Claim Matched' });
   g.add('matched', 'std.flow.branch', { label: 'Matched a Claim?' });
   g.add('follow', 'billing.follow-claim', { label: 'Show on the Claim' });
-  g.add('subject', 'std.expr', subject('fileName', 'reference'));
-  g.add('context', 'std.expr', expr('Line Context', LINE_CONTEXT));
+  g.add('subjectParts', 'std.list.make', {
+    label: 'File and Claim Number',
+    config: { count: 2, type: 'string' }
+  });
+  g.add('subject', 'std.text.join', { label: 'Task Subject', values: { separator: ' · ' } });
+  textRecord(g, 'context', 'Line Context', ['claimNumber', 'outcome', 'problem', 'fileName']);
   g.add('review', 'std.human.task', {
     label: 'Review Payer File Line',
     config: {
@@ -103,24 +92,52 @@ const reviewPayerFileLine = (): GraphDef => {
       }
     }
   });
+  g.add('problem', 'std.logic.choose', {
+    label: 'Message, Else Unapplied Line',
+    config: { mode: 'first', type: 'string', count: 2 },
+    values: { option2: 'The clearinghouse sent a line that could not be applied on its own' }
+  });
+  template(g, 'numberNamed', 'No Claim Has the Number', '[no claim has the number {reference}]', {
+    reference: 'entry.reference'
+  });
+  g.add('which', 'std.logic.choose', {
+    label: 'Claim Number, Else None Named',
+    config: { mode: 'first', type: 'string', count: 2 },
+    values: { option2: 'it names no claim' }
+  });
+  template(
+    g,
+    'unmatchedSummary',
+    'Check With the Clearinghouse',
+    '{problem}; {which}, so check it with the clearinghouse and post it with a Post Payment task on the right claim',
+    { problem: 'problem.value', which: 'which.value' }
+  );
+  template(
+    g,
+    'matchedSummary',
+    'Post or Correct the Claim',
+    '{problem}; post it with a Post Payment task or fix the claim with Correct Claim Data, then mark it resolved',
+    { problem: 'problem.value' }
+  );
+  g.add('reviewSummary', 'std.logic.select', { label: 'Task Summary' });
   g.ret('done');
   g.wire('entry.exec', 'matched.exec');
   g.wire('entry.claimId', 'unmatched.value', 'follow.claimId');
-  g.wire('unmatched.result', 'matched.condition');
+  g.wire('unmatched.result', 'matched.condition', 'reviewSummary.condition');
   g.wire('matched.false', 'follow.exec');
   g.wire('matched.true', 'review.exec');
   g.wire('follow.then', 'review.exec');
-  g.wire('entry.fileName', 'subject.fileName', 'context.fileName');
-  g.wire('entry.reference', 'subject.reference', 'context.reference');
+  g.wire('entry.fileName', 'subjectParts.item1', 'context.fileName');
+  g.wire('entry.reference', 'subjectParts.item2', 'context.claimNumber');
+  g.wire('subjectParts.list', 'subject.items');
   g.wire('entry.outcome', 'context.outcome');
-  g.wire('entry.message', 'context.message');
-  g.wire('subject.result', 'review.subject');
-  g.wire('context.result', 'review.context');
-  summarize(g, 'review', LINE_SUMMARY, {
-    message: 'entry.message',
-    claimId: 'entry.claimId',
-    reference: 'entry.reference'
-  });
+  g.wire('entry.message', 'context.problem', 'problem.option1');
+  g.wire('subject.text', 'review.subject');
+  g.wire('context.object', 'review.context');
+  g.wire('numberNamed.text', 'which.option1');
+  g.wire('unmatchedSummary.text', 'reviewSummary.whenTrue');
+  g.wire('matchedSummary.text', 'reviewSummary.whenFalse');
+  g.wire('reviewSummary.result', 'review.summary');
   g.wire('review.resolved', 'done.exec');
   return g.def;
 };
@@ -149,7 +166,7 @@ const checkEligibility = (): GraphDef => {
       ]
     }
   });
-  g.add('shared', 'std.expr', expr('Same for Every Line', '{ fileName: fileName }'));
+  textRecord(g, 'shared', 'Same for Every Line', ['fileName']);
   g.add('spawn', 'std.flow.spawn-workflows', {
     label: 'Ask a Biller About Each Line',
     config: { workflow: 'billing.review-payer-file-line', version: 1 }
@@ -161,7 +178,7 @@ const checkEligibility = (): GraphDef => {
   g.wire('entry.force', 'send.force');
   g.wire('send.answered', 'spawn.exec');
   g.wire('send.fileName', 'shared.fileName');
-  g.wire('shared.result', 'lines.shared');
+  g.wire('shared.object', 'lines.shared');
   g.wire('send.reviews', 'lines.list', 'count.list');
   g.wire('lines.list', 'spawn.items');
   g.wire('spawn.then', 'return.exec');
@@ -211,47 +228,53 @@ const PAYER_GROUPS = ['CO', 'PI', 'OA'];
 const reasonRows = (reasons: string[], value: string) =>
   reasons.flatMap((reason) => PAYER_GROUPS.map((group) => ({ key: `${group}-${reason}`, value })));
 
-const classifyAdjustments = (): GraphDef => {
+const ADJUSTMENT_TYPE = (T.adjustments as { list: ValueType }).list;
+
+const CLASSIFIED: ValueType = {
+  object: { code: 'string', class: 'string', cents: 'integer' }
+};
+
+const LOWERS_BALANCE = ['contractual', 'other'];
+
+const classifyAdjustment = (): GraphDef => {
   const g = rule(
     [
-      ADJUSTMENTS_IN,
       d(
-        'denied',
-        'boolean',
-        'Denied',
-        'Whether the payer reported the claim denied (CLP02 4).',
-        true
-      ),
-      d('paidCents', 'integer', 'Paid (Cents)', 'What the payer paid on the claim.', true)
-    ],
-    [
-      d(
-        'classes',
-        { list: 'string' },
-        'Classes',
-        'The class of each adjustment: contractual, patientResponsibility, denial, priorPayer, other or unknown.'
-      ),
-      d(
-        'adjustedCents',
-        'integer',
-        'Adjusted (Cents)',
-        'What the contractual and other adjustments take off the balance.'
+        'adjustment',
+        ADJUSTMENT_TYPE,
+        'Adjustment',
+        'One 835 adjustment: group code, reason code and amount.'
       ),
       d(
         'deniedClaim',
         'boolean',
         'Denied Claim',
-        'Whether the claim is denied: reported denied, or nothing paid with a denial reason.'
+        'Whether the claim is denied, which makes every adjustment a denial.',
+        true
+      )
+    ],
+    [
+      d('code', 'string', 'Group and Reason Code', 'The group and reason code, such as CO-45.'),
+      d(
+        'class',
+        'string',
+        'Class',
+        'contractual, patientResponsibility, denial, priorPayer, other or unknown.'
       ),
-      P.reasons('each adjustment lowers the balance or not')
+      d(
+        'classified',
+        CLASSIFIED,
+        'Classified Adjustment',
+        'The code, class and amount of the adjustment.'
+      ),
+      d('reason', 'string', 'Reason', 'The code and its class, such as CO-45: contractual.')
     ]
   );
-  g.add('groups', 'std.list.pluck', { label: 'Group Codes', values: { field: 'group' } });
-  g.add(
-    'codes',
-    'std.expr',
-    expr('Group and Reason Codes', 'map(adjustments, a => a.group + "-" + a.reason)')
-  );
+  g.add('adjustment', 'billing.adjustment.break', { label: 'Adjustment' });
+  template(g, 'code', 'Group and Reason Code', '{group}-{reason}', {
+    group: 'adjustment.group',
+    reason: 'adjustment.reason'
+  });
   g.add('byCode', 'std.table.lookup', {
     label: 'Adjustment Reasons',
     config: shared.lookup(
@@ -286,53 +309,152 @@ const classifyAdjustments = (): GraphDef => {
       }
     )
   });
-  g.add(
-    'byReason',
-    'std.expr',
-    expr('By Reason, Else by Group', 'map(byGroup, (x, n) => byCode[n] != "" ? byCode[n] : x)')
-  );
-  g.add(
-    'denied',
-    'std.expr',
-    expr('Denied Claim', 'denied == true || ((paidCents ?? 0) == 0 && contains(classes, "denial"))')
-  );
-  g.add(
-    'classes',
-    'std.expr',
-    expr('Denied, Else by Reason', 'denied ? map(classes, x => "denial") : classes')
-  );
-  g.add(
-    'adjusted',
-    'std.expr',
-    expr(
-      'Adjustments That Lower the Balance',
-      'sum(map(adjustments, (a, n) => contains(["contractual", "other"], classes[n]) ? a.cents : 0))'
-    )
-  );
-  g.add(
-    'reasons',
-    'std.expr',
-    expr('Why', 'map(adjustments, (a, n) => a.group + "-" + a.reason + ": " + classes[n])')
-  );
+  g.add('byReason', 'std.logic.choose', {
+    label: 'By Reason, Else by Group',
+    config: { mode: 'first', type: 'string', count: 2 }
+  });
+  g.add('class', 'std.logic.choose', {
+    label: 'Denied, Else by Reason',
+    config: { mode: 'byCase', type: 'string', cases: [{ when: 'true' }] },
+    values: { case1: 'denial' }
+  });
+  g.add('classified', 'std.object.make', {
+    label: 'Classified Adjustment',
+    config: {
+      fields: [
+        { name: 'code', type: 'string' },
+        { name: 'class', type: 'string' },
+        { name: 'cents', type: 'integer' }
+      ]
+    }
+  });
+  template(g, 'reason', 'Code and Class', '{code}: {class}', {
+    code: 'code.text',
+    class: 'class.value'
+  });
   g.ret('return');
-  g.wire(
-    'entry.adjustments',
-    'groups.list',
-    'codes.adjustments',
-    'adjusted.adjustments',
-    'reasons.adjustments'
+  g.wire('entry.adjustment', 'adjustment.adjustment');
+  g.wire('adjustment.group', 'byGroup.key');
+  g.wire('code.text', 'byCode.key', 'classified.code', 'return.code');
+  g.wire('byCode.value', 'byReason.option1');
+  g.wire('byGroup.value', 'byReason.option2');
+  g.wire('entry.deniedClaim', 'class.key');
+  g.wire('byReason.value', 'class.otherwise');
+  g.wire('class.value', 'classified.class', 'return.class');
+  g.wire('adjustment.cents', 'classified.cents');
+  g.wire('classified.object', 'return.classified');
+  g.wire('reason.text', 'return.reason');
+  return g.def;
+};
+
+const classifyAdjustments = (): GraphDef => {
+  const g = rule(
+    [
+      ADJUSTMENTS_IN,
+      d(
+        'denied',
+        'boolean',
+        'Denied',
+        'Whether the payer reported the claim denied (CLP02 4).',
+        true
+      ),
+      d('paidCents', 'integer', 'Paid (Cents)', 'What the payer paid on the claim.', true)
+    ],
+    [
+      d(
+        'classes',
+        { list: 'string' },
+        'Classes',
+        'The class of each adjustment: contractual, patientResponsibility, denial, priorPayer, other or unknown.'
+      ),
+      d(
+        'codes',
+        { list: 'string' },
+        'Group and Reason Codes',
+        'The group and reason code of each adjustment, such as CO-45.'
+      ),
+      d(
+        'adjustedCents',
+        'integer',
+        'Adjusted (Cents)',
+        'What the contractual and other adjustments take off the balance.'
+      ),
+      d(
+        'deniedClaim',
+        'boolean',
+        'Denied Claim',
+        'Whether the claim is denied: reported denied, or nothing paid with a denial reason.'
+      ),
+      P.reasons('each adjustment lowers the balance or not')
+    ]
   );
-  g.wire('groups.list', 'byGroup.keys');
-  g.wire('codes.result', 'byCode.keys');
-  g.wire('byCode.values', 'byReason.byCode');
-  g.wire('byGroup.values', 'byReason.byGroup');
-  g.wire('byReason.result', 'denied.classes', 'classes.classes');
+  g.add('byCode', 'std.list.map-rule', {
+    label: 'Classify Each by Code',
+    config: { rule: 'billing.classify-adjustment', version: 1, item: 'adjustment' }
+  });
+  g.add('nothingPaid', 'std.logic.condition', {
+    label: 'Nothing Paid',
+    config: {
+      match: 'any',
+      inputs: [{ name: 'paidCents', type: 'integer' }],
+      rules: [
+        { field: 'paidCents', op: 'empty' },
+        { field: 'paidCents', op: 'is', value: 0 }
+      ]
+    }
+  });
+  g.add('unpaidDenial', 'std.logic.condition', {
+    label: 'Nothing Paid With a Denial Reason',
+    config: {
+      inputs: [
+        { name: 'nothingPaid', type: 'boolean' },
+        { name: 'classes', type: { list: 'string' } }
+      ],
+      rules: [
+        { field: 'nothingPaid', op: 'is', value: true },
+        { field: 'classes', op: 'is', value: 'denial' }
+      ]
+    }
+  });
+  g.add('denied', 'std.logic.condition', {
+    label: 'Denied Claim',
+    config: {
+      match: 'any',
+      inputs: [
+        { name: 'denied', type: 'boolean' },
+        { name: 'unpaidDenial', type: 'boolean' }
+      ],
+      rules: [
+        { field: 'denied', op: 'is', value: true },
+        { field: 'unpaidDenial', op: 'is', value: true }
+      ]
+    }
+  });
+  g.add('each', 'std.list.map-rule', {
+    label: 'Classify Each Adjustment',
+    config: { rule: 'billing.classify-adjustment', version: 1, item: 'adjustment' }
+  });
+  g.add('lowers', 'std.list.where', {
+    label: 'Lower the Balance',
+    config: { field: 'class', op: 'oneOf', value: LOWERS_BALANCE }
+  });
+  g.add('amounts', 'std.list.pluck', { label: 'Their Amounts', values: { field: 'cents' } });
+  g.add('adjusted', 'std.math.sum', { label: 'Adjustments That Lower the Balance' });
+  g.ret('return');
+  g.wire('entry.adjustments', 'byCode.list', 'each.list');
+  g.wire('entry.paidCents', 'nothingPaid.paidCents');
+  g.wire('nothingPaid.result', 'unpaidDenial.nothingPaid');
+  g.wire('byCode.class', 'unpaidDenial.classes');
   g.wire('entry.denied', 'denied.denied');
-  g.wire('entry.paidCents', 'denied.paidCents');
-  g.wire('denied.result', 'classes.denied', 'return.deniedClaim');
-  g.wire('classes.result', 'adjusted.classes', 'reasons.classes', 'return.classes');
+  g.wire('unpaidDenial.result', 'denied.unpaidDenial');
+  g.wire('denied.result', 'each.deniedClaim', 'return.deniedClaim');
+  g.wire('each.class', 'return.classes');
+  g.wire('each.code', 'return.codes');
+  g.wire('each.classified', 'lowers.list');
+  g.wire('lowers.list', 'amounts.list');
+  g.wire('amounts.list', 'adjusted.values');
   g.wire('adjusted.result', 'return.adjustedCents');
-  g.wire('reasons.result', 'return.reasons');
+  g.wire('each.reason', 'return.reasons');
   return g.def;
 };
 
@@ -365,11 +487,13 @@ const crossoverExpected = (): GraphDef => {
       P.reasons('the claim was or was not crossed over')
     ]
   );
-  g.add(
-    'named',
-    'std.expr',
-    expr('Crossover Payer Named', 'crossoverPayer != null && crossoverPayer != ""')
-  );
+  g.add('named', 'std.logic.condition', {
+    label: 'Crossover Payer Named',
+    config: {
+      inputs: [{ name: 'crossoverPayer', type: 'string' }],
+      rules: [{ field: 'crossoverPayer', op: 'present' }]
+    }
+  });
   g.add('decide', 'std.table.decide', {
     label: 'Crossover Signals',
     config: shared.decision(
@@ -424,13 +548,20 @@ const routeRemittance = (): GraphDef => {
   g.add('line', 'billing.remittance-line.break');
   g.add('classify', 'billing.classify-adjustments', { label: 'Classify Adjustments' });
   g.add('reasonCount', 'std.list.length', { label: 'Reason Codes' });
-  g.add('matched', 'std.expr', expr('Claim Matched', 'claimId != null'));
-  g.add('payerOnClaim', 'std.expr', expr('Payer on the Claim', 'coverageId != null'));
-  g.add(
-    'codes',
-    'std.expr',
-    expr('Reason Codes', 'map(adjustments, a => a.group + "-" + a.reason)')
-  );
+  g.add('matched', 'std.logic.condition', {
+    label: 'Claim Matched',
+    config: {
+      inputs: [{ name: 'claimId', type: { id: 'claim' } }],
+      rules: [{ field: 'claimId', op: 'present' }]
+    }
+  });
+  g.add('payerOnClaim', 'std.logic.condition', {
+    label: 'Payer on the Claim',
+    config: {
+      inputs: [{ name: 'coverageId', type: { id: 'coverage' } }],
+      rules: [{ field: 'coverageId', op: 'present' }]
+    }
+  });
   g.add('route', 'std.table.decide', {
     label: 'Remittance Routing',
     config: shared.decision(
@@ -525,20 +656,28 @@ const routeRemittance = (): GraphDef => {
       )
     )
   });
-  g.add(
-    'message',
-    'std.expr',
-    expr(
-      'Message With Names',
-      'replace(replace(message ?? "", "{payer}", payerName ?? "The payer"), "{reference}", reference)'
-    )
-  );
+  g.add('routeMessage', 'std.logic.coalesce', {
+    label: 'Message, Else Nothing',
+    values: { fallback: '' }
+  });
+  g.add('payerName', 'std.logic.coalesce', {
+    label: 'Payer Name, Else The Payer',
+    values: { fallback: 'The payer' }
+  });
+  g.add('withPayer', 'std.text.replace', {
+    label: 'Message With the Payer',
+    values: { find: '{payer}' }
+  });
+  g.add('message', 'std.text.replace', {
+    label: 'Message With Names',
+    values: { find: '{reference}' }
+  });
   g.add('crossover', 'billing.crossover-expected', { label: 'Crossover Expected' });
-  g.add('reasons', 'std.expr', expr('Why', 'concat(rules, classified, crossedOver)'));
+  g.add('reasons', 'std.list.join', { label: 'Why', config: { count: 3, type: 'string' } });
   g.add('posting', 'billing.remittance-posting.make');
   g.ret('return');
   g.wire('entry.line', 'line.line');
-  g.wire('line.adjustments', 'classify.adjustments', 'reasonCount.list', 'codes.adjustments');
+  g.wire('line.adjustments', 'classify.adjustments', 'reasonCount.list');
   g.wire('line.denied', 'classify.denied');
   g.wire('line.paidCents', 'classify.paidCents');
   g.wire('classify.deniedClaim', 'route.denied');
@@ -550,23 +689,26 @@ const routeRemittance = (): GraphDef => {
   g.wire('line.reversesPosted', 'route.reversesPosted');
   g.wire('line.takeback', 'route.takeback');
   g.wire('reasonCount.length', 'route.reasonCount');
-  g.wire('codes.result', 'route.codes');
+  g.wire('classify.codes', 'route.codes');
   g.wire('classify.classes', 'route.classes');
-  g.wire('route.message', 'message.message');
-  g.wire('line.payerName', 'message.payerName');
-  g.wire('line.reference', 'message.reference');
-  g.wire('route.rules', 'reasons.rules');
-  g.wire('classify.reasons', 'reasons.classified');
+  g.wire('route.message', 'routeMessage.value');
+  g.wire('routeMessage.result', 'withPayer.text');
+  g.wire('line.payerName', 'payerName.value');
+  g.wire('payerName.result', 'withPayer.replacement');
+  g.wire('withPayer.result', 'message.text');
+  g.wire('line.reference', 'message.replacement');
+  g.wire('route.rules', 'reasons.list1');
+  g.wire('classify.reasons', 'reasons.list2');
   g.wire('line.status', 'crossover.status');
   g.wire('line.remarks', 'crossover.remarks');
   g.wire('line.crossoverPayer', 'crossover.crossoverPayer');
-  g.wire('crossover.reasons', 'reasons.crossedOver');
+  g.wire('crossover.reasons', 'reasons.list3');
   g.wire('crossover.crossover', 'posting.crossover');
   g.wire('line.position', 'posting.position');
   g.wire('route.route', 'posting.route');
   g.wire('message.result', 'posting.message');
   g.wire('classify.adjustedCents', 'posting.adjustedCents');
-  g.wire('reasons.result', 'posting.reasons');
+  g.wire('reasons.list', 'posting.reasons');
   g.wire('posting.posting', 'return.posting');
   return g.def;
 };
@@ -627,7 +769,7 @@ const receivePayerFile = (): GraphDef => {
     config: { workflow: 'billing.review-payer-file-line', version: 1 }
   });
   g.add('count', 'std.list.length', { label: 'Lines to Review' });
-  g.add('shared', 'std.expr', expr('Same for Every Line', '{ fileName: fileName }'));
+  textRecord(g, 'shared', 'Same for Every Line', ['fileName']);
   g.add('unreadable', 'std.human.task', {
     label: 'Unreadable Clearinghouse File',
     config: {
@@ -639,7 +781,34 @@ const receivePayerFile = (): GraphDef => {
       hints: { resolved: 'Closes the task; nothing from the file is applied.' }
     }
   });
-  g.add('why', 'std.expr', expr('File Context', '{ fileName: fileName, problem: reason }'));
+  textRecord(g, 'why', 'File Context', ['fileName', 'problem']);
+  g.add('unreadableFile', 'std.logic.choose', {
+    label: 'File Name, Else This File',
+    config: { mode: 'first', type: 'string', count: 2 },
+    values: { option2: 'this file' }
+  });
+  g.add('reasonGiven', 'std.logic.condition', {
+    label: 'Reason Given',
+    config: {
+      inputs: [{ name: 'reason', type: 'string' }],
+      rules: [{ field: 'reason', op: 'present' }]
+    }
+  });
+  template(
+    g,
+    'withReason',
+    'Not Applied, With the Reason',
+    'Nothing was applied from {fileName} ({reason}); check it with the clearinghouse',
+    { fileName: 'unreadableFile.value', reason: 'read.reason' }
+  );
+  template(
+    g,
+    'notRead',
+    'Not Applied, Not Read',
+    'Nothing was applied from {fileName}, as it is not a file the app reads; check it with the clearinghouse',
+    { fileName: 'unreadableFile.value' }
+  );
+  g.add('unreadableSummary', 'std.logic.select', { label: 'Task Summary' });
   g.add('accepted', 'std.logic.is-null', { label: 'Envelope Accepted' });
   g.add('envelope', 'std.flow.branch', { label: 'Envelope Rejected?' });
   g.add('setup', 'std.human.task', {
@@ -655,11 +824,12 @@ const receivePayerFile = (): GraphDef => {
       }
     }
   });
-  g.add(
-    'setupContext',
-    'std.expr',
-    expr('Envelope Context', '{ fileName: fileName, problem: envelopeRejection }')
-  );
+  textRecord(g, 'setupContext', 'Envelope Context', ['fileName', 'problem']);
+  g.add('setupFile', 'std.logic.choose', {
+    label: 'File Name, Else A File',
+    config: { mode: 'first', type: 'string', count: 2 },
+    values: { option2: 'a file' }
+  });
   g.ret('return');
   g.ret('readBefore');
   g.ret('appliedBefore');
@@ -674,23 +844,27 @@ const receivePayerFile = (): GraphDef => {
     'unreadable.subject',
     'shared.fileName',
     'setup.subject',
-    'setupContext.fileName'
+    'setupContext.fileName',
+    'setupFile.option1',
+    'unreadableFile.option1'
   );
   g.wire('read.read', 'route.exec');
   g.wire('read.lines', 'route.lines');
   g.wire('route.then', 'apply.exec');
   g.wire('route.postings', 'apply.postings');
-  g.wire('shared.result', 'lines.shared');
+  g.wire('shared.object', 'lines.shared');
   g.wire('apply.applied', 'envelope.exec');
-  g.wire('apply.envelopeRejection', 'accepted.value', 'setupContext.envelopeRejection');
+  g.wire('apply.envelopeRejection', 'accepted.value', 'setupContext.problem');
   g.wire('accepted.result', 'envelope.condition');
   g.wire('envelope.true', 'spawn.exec');
   g.wire('envelope.false', 'setup.exec');
-  g.wire('setupContext.result', 'setup.context');
-  summarize(g, 'setup', SETUP_SUMMARY, {
-    fileName: 'entry.fileName',
-    envelopeRejection: 'apply.envelopeRejection'
-  });
+  g.wire('setupContext.object', 'setup.context');
+  summary(
+    g,
+    'setup',
+    'The clearinghouse rejected the envelope of {fileName}[ ({envelopeRejection})]; fix the clearinghouse setup in Settings, then mark it fixed',
+    { fileName: 'setupFile.value', envelopeRejection: 'apply.envelopeRejection' }
+  );
   g.wire('setup.fixed', 'spawn.exec');
   g.wire('apply.reviews', 'lines.list', 'count.list');
   g.wire('lines.list', 'spawn.items');
@@ -703,17 +877,23 @@ const receivePayerFile = (): GraphDef => {
   g.wire('apply.duplicate', 'appliedBefore.exec');
   g.wire('apply.fileId', 'appliedBefore.fileId');
   g.wire('read.unreadable', 'unreadable.exec');
-  g.wire('read.reason', 'why.reason');
-  g.wire('why.result', 'unreadable.context');
-  summarize(g, 'unreadable', UNREADABLE_SUMMARY, {
-    fileName: 'entry.fileName',
-    reason: 'read.reason'
-  });
+  g.wire('read.reason', 'why.problem', 'reasonGiven.reason');
+  g.wire('why.object', 'unreadable.context');
+  g.wire('reasonGiven.result', 'unreadableSummary.condition');
+  g.wire('withReason.text', 'unreadableSummary.whenTrue');
+  g.wire('notRead.text', 'unreadableSummary.whenFalse');
+  g.wire('unreadableSummary.result', 'unreadable.summary');
   g.wire('unreadable.resolved', 'notApplied.exec');
   return g.def;
 };
 
 export const payerFileGraphs: SeedGraph[] = [
+  asRule(
+    'billing.classify-adjustment',
+    'Classify Adjustment',
+    'Classifies one 835 adjustment by its group and reason code (Adjustment Reasons table), else its group code (Adjustment Classes table), or as a denial when the claim is denied.',
+    classifyAdjustment()
+  ),
   asRule(
     'billing.classify-adjustments',
     'Classify Adjustments',
