@@ -20,7 +20,12 @@ describe('sendJson', () => {
 
 describe('corsHeaders', () => {
   it('allows credentialed requests only from configured origins', () => {
-    assert.equal(corsHeaders('http://a', ['http://a'])['access-control-allow-origin'], 'http://a');
+    assert.deepEqual(corsHeaders('http://b', ['http://a', 'http://b']), {
+      'access-control-allow-origin': 'http://b',
+      'access-control-allow-credentials': 'true',
+      vary: 'Origin'
+    });
+    assert.deepEqual(corsHeaders('', ['']), {});
     assert.deepEqual(corsHeaders('http://evil', ['http://a']), {});
     assert.deepEqual(corsHeaders(undefined, ['http://a']), {});
   });

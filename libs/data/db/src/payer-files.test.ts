@@ -12,7 +12,13 @@ import {
 } from '@ugula/billing/testing';
 import type { RunQueueClient } from '@ugula/run-queue';
 import type { FileItem } from './payer-file-items.ts';
-import { applyPayerFile, readPayerFile, readRemittanceLines } from './payer-files.ts';
+import {
+  applyPayerFile,
+  findImported,
+  findReviewLines,
+  readPayerFile,
+  readRemittanceLines
+} from './payer-files.ts';
 import { createRecordingDb } from './testing.ts';
 
 const createdAt = new Date('2026-10-31T09:00:00Z');
@@ -83,7 +89,13 @@ const apply = async (text: string, postings: RemittancePosting[] = []) => {
     postings
   });
   const events = queries.filter((q) => q.sql.startsWith('insert into "claim_events"'));
-  return { out, queries, events, digest: read.value.digest };
+  return {
+    out,
+    queries,
+    events,
+    digest: read.value.digest,
+    controlNumber: read.value.controlNumber
+  };
 };
 
 const outcomes = (items: readonly FileItem[]) =>
@@ -103,14 +115,71 @@ describe('readPayerFile', () => {
       ok: false,
       failure: { code: 'invalid', message: 'The file is empty' }
     });
-    const garbage = readPayerFile(bytes('hello'));
-    assert.match(garbage.ok ? '' : garbage.failure.message, /is not a remittance \(835\)/);
+    assert.deepEqual(readPayerFile(bytes('hello')), {
+      ok: false,
+      failure: {
+        code: 'invalid',
+        message:
+          'This is not a remittance (835), acknowledgment (TA1, 999 or 277CA), claim status (277) or eligibility (271) file'
+      }
+    });
+  });
+});
+
+describe('findImported and findReviewLines', () => {
+  it('finds a file the agency already imported by its digest', async () => {
+    const row = {
+      id: 'f1',
+      kind: '835',
+      run_id: null,
+      source_key: null,
+      envelope_rejection: null,
+      created_at: createdAt
+    };
+    const { db, queries } = createRecordingDb(() => [row]);
+    assert.deepEqual(await findImported(db, 't1', 'abc'), row);
+    assert.equal(
+      queries[0]?.sql,
+      'select "id", "kind", "run_id", "source_key", "envelope_rejection", "created_at" from "payer_files" where "agency_id" = $1 and "digest" = $2'
+    );
+    assert.deepEqual(queries[0]?.parameters, ['t1', 'abc']);
+    assert.equal(await findImported(createRecordingDb().db, 't1', 'abc'), undefined);
+  });
+
+  it('lists only the lines of a file a person has to look at, in file order', async () => {
+    const lines = [{ reference: '1001', claimId: null, outcome: 'unmatched', message: 'No claim' }];
+    const { db, queries } = createRecordingDb(() => lines);
+    assert.deepEqual(await findReviewLines(db, 'f1'), lines);
+    assert.equal(
+      queries[0]?.sql,
+      'select "reference", "claim_id" as "claimId", "outcome", "message" from "payer_file_items" where "file_id" = $1 and "outcome" in ($2, $3) order by "position"'
+    );
+    assert.deepEqual(queries[0]?.parameters, ['f1', 'unmatched', 'review']);
   });
 });
 
 describe('applyPayerFile', () => {
+  it('records a file with no lines without inserting any', async () => {
+    const { out, queries } = await apply(build835([{ claims: [] }], { createdAt }));
+    assert.deepEqual(out, {
+      id: 'f1',
+      kind: '835',
+      items: [],
+      problems: 0,
+      envelopeRejection: null
+    });
+    assert.deepEqual(
+      queries.map((q) => [q.sql.split(' ').slice(0, 3).join(' '), q.parameters.at(-1)]),
+      [
+        ['insert into "payer_files"', 'r1:apply'],
+        ['update "payer_files" set', 'f1']
+      ]
+    );
+    assert.deepEqual(queries[1]?.parameters, [0, 0, null, 'f1']);
+  });
+
   it('posts remittances to matched claims and leaves unknown claims unmatched', async () => {
-    const { out, queries, events, digest } = await apply(
+    const { out, queries, events, digest, controlNumber } = await apply(
       build835(
         [
           {
@@ -145,13 +214,65 @@ describe('applyPayerFile', () => {
     ]);
     assert.deepEqual([out.items[0]?.paidCents, out.items[0]?.adjustedCents], [60_000, 40_000]);
     assert.deepEqual([out.id, out.kind, out.problems], ['f1', '835', 1]);
-    assert.equal(events.length, 1);
-    for (const value of [`${digest}:1`, 'ICN-1', 'CHK-1', 60_000, 40_000]) {
-      assert.ok(events[0]?.parameters.includes(value), String(value));
-    }
-    assert.deepEqual(queries.at(-1)?.parameters, [2, 1, null, 'f1']);
+    assert.deepEqual(
+      events.map((e) => e.parameters),
+      [
+        [
+          't1',
+          'c1',
+          'response',
+          'cov1',
+          60_000,
+          40_000,
+          'ICN-1',
+          '2026-10-31',
+          'CHK-1',
+          'Remittance from MEDICARE in in.x12',
+          'u1',
+          `${digest}:1`
+        ]
+      ]
+    );
     const file = queries.find((q) => q.sql.startsWith('insert into "payer_files"'));
-    assert.ok(file?.parameters.includes('r1') && file.parameters.includes('r1:apply'));
+    assert.deepEqual(
+      [file?.sql, file?.parameters],
+      [
+        'insert into "payer_files" ("agency_id", "kind", "file_name", "digest", "document", "control_number", "uploaded_by_id", "run_id", "source_key") values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning "id"',
+        ['t1', '835', 'in.x12', digest, '{"key":"k"}', controlNumber, 'u1', 'r1', 'r1:apply']
+      ]
+    );
+    assert.deepEqual(
+      queries.slice(-2).map((q) => [q.sql, q.parameters]),
+      [
+        [
+          'insert into "payer_file_items" ("agency_id", "file_id", "position", "reference", "claim_id", "outcome", "message", "paid_cents", "adjusted_cents") values ($1, $2, $3, $4, $5, $6, $7, $8, $9), ($10, $11, $12, $13, $14, $15, $16, $17, $18)',
+          [
+            't1',
+            'f1',
+            1,
+            '20261105-1001',
+            'c1',
+            'posted',
+            '',
+            60_000,
+            40_000,
+            't1',
+            'f1',
+            2,
+            '20261105-2002',
+            null,
+            'unmatched',
+            'No claim has number 20261105-2002',
+            null,
+            null
+          ]
+        ],
+        [
+          'update "payer_files" set "item_count" = $1, "problem_count" = $2, "envelope_rejection" = $3 where "id" = $4',
+          [2, 1, null, 'f1']
+        ]
+      ]
+    );
   });
 
   it('stores how the payer adjudicated each claim line, matched by its line number', async () => {
@@ -209,7 +330,10 @@ describe('applyPayerFile', () => {
         ['PLB L6 CHK-9', null, 'review']
       ]
     );
-    assert.match(out.items[1]?.message ?? '', /provider-level adjustment \(PLB WO\) of \$125\.50/);
+    assert.equal(
+      out.items[1]?.message,
+      'MEDICARE made a provider-level adjustment (PLB WO) of $125.50 on this payment, such as a recoupment of an earlier payment; post it on the claim it belongs to by hand'
+    );
   });
 
   it('posts a reversal of a posted payment before its corrected claim, as a pair', async () => {
@@ -236,8 +360,6 @@ describe('applyPayerFile', () => {
       ],
       { createdAt }
     );
-    const read = readPayerFile(bytes(text));
-    assert.ok(read.ok);
     const lines = await readRemittanceLines(fileDb().db, 't1', text);
     assert.deepEqual(
       lines.map((l) => [l.reversal, l.reversesPosted, l.takeback]),
@@ -290,13 +412,15 @@ describe('applyPayerFile', () => {
       { position: 1, route: 'reconcile', message: '', adjustedCents: 40_000, crossover: true }
     ]);
     assert.equal(events.length, 2);
-    for (const value of ['crossed_over', 'cov2', `${digest}:1:crossed_over`]) {
-      assert.ok(events[1]?.parameters.includes(value), value);
-    }
-    assert.match(
-      String(events[1]?.parameters.find((p) => String(p).includes('forwarded'))),
-      /to MEDIGAP PLAN/
-    );
+    assert.deepEqual(events[1]?.parameters, [
+      't1',
+      'c1',
+      'crossed_over',
+      'cov2',
+      'MEDICARE forwarded the claim to MEDIGAP PLAN; wait for its payment before billing it',
+      'u1',
+      `${digest}:1:crossed_over`
+    ]);
     const plain = await apply(text, [
       { position: 1, route: 'reconcile', message: '', adjustedCents: 40_000, crossover: false }
     ]);
@@ -364,14 +488,16 @@ describe('applyPayerFile', () => {
     ]);
     assert.deepEqual(outcomes(out.items), [['20261105-1001', 'c1', 'posted', 'Denied']]);
     assert.equal(events.length, 2);
-    for (const value of [
+    assert.deepEqual(events[1]?.parameters, [
+      't1',
+      'c1',
       'denied',
+      'cov1',
       'appeal',
       'Medicare denied medical necessity',
+      'u1',
       `${digest}:1:denied`
-    ]) {
-      assert.ok(events[1]?.parameters.includes(value), value);
-    }
+    ]);
   });
 
   it('leaves a payment the rules routed to review unposted, and faults without a decision', async () => {
@@ -432,7 +558,7 @@ describe('applyPayerFile', () => {
   });
 
   it('acknowledges every submitted claim in an 837P batch the clearinghouse answered', async () => {
-    const { out, events } = await apply(
+    const { out, events, digest } = await apply(
       build999(
         { groupControlNumber: '55', transactions: [{ controlNumber: '0001', accepted: false }] },
         { createdAt }
@@ -442,8 +568,21 @@ describe('applyPayerFile', () => {
       ['20261105-1001', 'c1', 'rejected', 'The clearinghouse rejected 837P file 55']
     ]);
     assert.equal(out.problems, 1);
-    assert.equal(events.length, 1);
-    assert.ok(events[0]?.parameters.includes('rejected'));
+    assert.deepEqual(
+      events.map((e) => e.parameters),
+      [
+        [
+          't1',
+          'c1',
+          'rejected',
+          'cov1',
+          'The clearinghouse rejected 837P file 55',
+          null,
+          'u1',
+          `${digest}:55:c1`
+        ]
+      ]
+    );
     const unknown = await apply(
       build999({ groupControlNumber: '77', transactions: [] }, { createdAt })
     );
@@ -464,18 +603,29 @@ describe('applyPayerFile', () => {
         { createdAt }
       )
     );
-    assert.equal(out.items[0]?.outcome, 'accepted');
-    assert.match(out.items[0]?.message ?? '', /^Accepted \(/);
-    assert.deepEqual(outcomes(out.items.slice(1)), [
+    assert.deepEqual(outcomes(out.items), [
+      ['20261105-1001', 'c1', 'accepted', 'Accepted (A2): Accepted into adjudication'],
       ['20261105-2002', null, 'unmatched', 'No claim has number 20261105-2002']
     ]);
-    for (const value of ['accepted', 'cov1', 'PCN-1', `${digest}:1`]) {
-      assert.ok(events[0]?.parameters.includes(value), value);
-    }
+    assert.deepEqual(
+      events.map((e) => e.parameters),
+      [
+        [
+          't1',
+          'c1',
+          'accepted',
+          'cov1',
+          'Accepted (A2): Accepted into adjudication',
+          'PCN-1',
+          'u1',
+          `${digest}:1`
+        ]
+      ]
+    );
   });
 
   it('keeps no payer claim number from a 277CA rejection, so a resubmission is a new claim', async () => {
-    const { events } = await apply(
+    const { events, digest } = await apply(
       build277(
         {
           claims: [
@@ -489,8 +639,21 @@ describe('applyPayerFile', () => {
         { createdAt }
       )
     );
-    assert.ok(events[0]?.parameters.includes('rejected'));
-    assert.ok(!events[0]?.parameters.includes('PCN-9'));
+    assert.deepEqual(
+      events.map((e) => e.parameters),
+      [
+        [
+          't1',
+          'c1',
+          'rejected',
+          'cov1',
+          'Rejected (A7): Invalid member ID',
+          null,
+          'u1',
+          `${digest}:1`
+        ]
+      ]
+    );
   });
 
   it('saves eligibility for traced coverages and nudges their claims', async () => {
@@ -503,9 +666,21 @@ describe('applyPayerFile', () => {
     );
     assert.equal(active.out.problems, 0);
     const saved = active.queries.find((q) => q.sql.startsWith('update "claim_coverages"'));
-    assert.equal(saved?.parameters[0], 'active');
-    assert.ok(saved?.parameters.includes(createdAt));
-    assert.ok(active.queries.some((q) => q.sql.startsWith('insert into "signals"')));
+    assert.deepEqual(saved?.parameters, [
+      'active',
+      'MEDICARE PART B',
+      createdAt,
+      null,
+      null,
+      null,
+      TRACE
+    ]);
+    assert.deepEqual(
+      active.queries
+        .filter((q) => q.sql.startsWith('insert into "signals"'))
+        .map((q) => q.parameters),
+      [['t1', 'claim:c1', 1]]
+    );
     const inactive = await apply(build271({ trace: TRACE, active: false }, { createdAt }));
     assert.equal(inactive.out.items[0]?.outcome, 'ineligible');
     assert.equal(inactive.out.problems, 1);
@@ -523,14 +698,12 @@ describe('applyPayerFile', () => {
   });
 
   it('logs each eligibility answer on the claim history', async () => {
-    const { events } = await apply(build271({ trace: TRACE, active: false }, { createdAt }));
-    assert.equal(events.length, 1);
-    assert.ok(events[0]?.parameters.includes('eligibility'));
-    assert.ok(events[0]?.parameters.includes(TRACE));
-    assert.ok(
-      events[0]?.parameters.some(
-        (p) => typeof p === 'string' && p.startsWith('Coverage not active')
-      )
+    const { events, digest } = await apply(
+      build271({ trace: TRACE, active: false }, { createdAt })
+    );
+    assert.deepEqual(
+      events.map((e) => e.parameters),
+      [['t1', 'c1', 'eligibility', TRACE, 'Coverage not active', null, 'u1', `${digest}:1`]]
     );
   });
 
@@ -562,11 +735,9 @@ describe('applyPayerFile', () => {
       now: createdAt,
       postings: []
     });
-    assert.equal(out.items[0]?.outcome, 'review');
-    assert.match(
-      out.items[0]?.message ?? '',
-      /^Bill the Medicare Advantage plan instead: SUNSHINE/
-    );
+    assert.deepEqual(outcomes(out.items), [
+      [TRACE, 'c1', 'review', 'Bill the Medicare Advantage plan instead: SUNSHINE; MEDICARE PART B']
+    ]);
   });
 
   it('rejects the 837P batch a TA1 rejects, sending its claims back to review', async () => {
@@ -575,7 +746,7 @@ describe('applyPayerFile', () => {
       '008',
       createdAt
     );
-    const { out, events } = await apply(ta1);
+    const { out, events, digest } = await apply(ta1);
     assert.equal(out.kind, 'TA1');
     assert.equal(
       out.envelopeRejection,
@@ -589,7 +760,21 @@ describe('applyPayerFile', () => {
         'The clearinghouse rejected the file envelope of 837P file 55: Invalid interchange receiver ID (TA1 note 008)'
       ]
     ]);
-    assert.ok(events[0]?.parameters.includes('rejected'));
+    assert.deepEqual(
+      events.map((e) => e.parameters),
+      [
+        [
+          't1',
+          'c1',
+          'rejected',
+          'cov1',
+          'The clearinghouse rejected the file envelope of 837P file 55: Invalid interchange receiver ID (TA1 note 008)',
+          null,
+          'u1',
+          `${digest}:000000055:c1`
+        ]
+      ]
+    );
     const unknown = await apply(
       buildTA1(
         { sender: 'S', receiver: 'X', controlNumber: '77', production: false },
@@ -597,12 +782,17 @@ describe('applyPayerFile', () => {
         createdAt
       )
     );
-    assert.equal(unknown.out.items[0]?.outcome, 'unmatched');
-    assert.ok(unknown.out.envelopeRejection);
+    assert.deepEqual(outcomes(unknown.out.items), [
+      ['000000077', null, 'unmatched', 'No 837P file has control number 000000077']
+    ]);
+    assert.equal(
+      unknown.out.envelopeRejection,
+      'The clearinghouse rejected the file envelope: interchange 77: Invalid interchange receiver ID (TA1 note 008)'
+    );
   });
 
   it('logs payer claim status answers on the claim they name', async () => {
-    const { out, events } = await apply(
+    const { out, events, digest } = await apply(
       build277Status([
         {
           trace: '20261105-1001',
@@ -620,8 +810,20 @@ describe('applyPayerFile', () => {
       ['20261105-2002', null, 'unmatched', 'No claim has number 20261105-2002']
     ]);
     assert.equal(out.envelopeRejection, null);
-    for (const value of ['claim_status', 'cov1', 'P9']) {
-      assert.ok(events[0]?.parameters.includes(value), value);
-    }
+    assert.deepEqual(
+      events.map((e) => e.parameters),
+      [
+        [
+          't1',
+          'c1',
+          'claim_status',
+          'cov1',
+          'Paid (F1:65): Finalized: payment: Claim has been paid',
+          'P9',
+          'u1',
+          `${digest}:1`
+        ]
+      ]
+    );
   });
 });

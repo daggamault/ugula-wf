@@ -8,7 +8,7 @@ import { createStdNodes } from './index.ts';
 
 const harness = (type: string): GraphDef => {
   const target = stdGraphSource({ type, version: 1 });
-  if (!target) throw new Error(type);
+  assert.ok(target, type);
   return {
     signature: { ...target.signature, execIn: ['exec'], execOut: [] },
     variables: [],
@@ -40,26 +40,54 @@ const evaluate = async (type: string, inputs: Record<string, number | number[]>)
   return state.fault?.error.message ?? state.result?.outputs.result;
 };
 
-describe('std composites', () => {
-  it('are registered by type and version', () => {
+describe('stdGraphSource', () => {
+  it('finds each standard composite by type and version 1', () => {
     assert.equal(stdGraphSource({ type: 'std.math.clamp', version: 1 }), clampGraph);
     assert.equal(stdGraphSource({ type: 'std.math.average', version: 1 }), averageGraph);
-    assert.equal(stdGraphSource({ type: 'std.math.clamp', version: 2 }), undefined);
   });
 
-  it('compute through their inner graphs', async () => {
-    assert.equal(await evaluate('std.math.clamp', { value: 15, min: 0, max: 10 }), 10);
+  it('finds nothing for other versions or types', () => {
+    assert.equal(stdGraphSource({ type: 'std.math.clamp', version: 2 }), undefined);
+    assert.equal(stdGraphSource({ type: 'std.math.median', version: 1 }), undefined);
+  });
+});
+
+describe('clamp', () => {
+  it('raises a value below the minimum to it', async () => {
     assert.equal(await evaluate('std.math.clamp', { value: -5, min: 0, max: 10 }), 0);
+  });
+
+  it('lowers a value above the maximum to it', async () => {
+    assert.equal(await evaluate('std.math.clamp', { value: 15, min: 0, max: 10 }), 10);
+  });
+
+  it('keeps a value in range', async () => {
     assert.equal(await evaluate('std.math.clamp', { value: 5, min: 0, max: 10 }), 5);
+  });
+});
+
+describe('average', () => {
+  it('divides the sum of the values by their count', async () => {
     assert.equal(await evaluate('std.math.average', { values: [2, 4, 9] }), 5);
-    assert.match(String(await evaluate('std.math.average', { values: [] })), /division by zero/);
+  });
+
+  it('faults on an empty list', async () => {
+    assert.equal(await evaluate('std.math.average', { values: [] }), 'Divide: division by zero');
   });
 });
 
 describe('stdGraphInfo', () => {
   it('names and describes every standard composite', () => {
-    assert.deepEqual(Object.keys(stdGraphInfo), Object.keys(stdGraphs));
-    for (const info of Object.values(stdGraphInfo))
-      assert.ok(info.title && info.description.endsWith('.'));
+    assert.deepEqual(Object.keys(stdGraphs), ['std.math.clamp@1', 'std.math.average@1']);
+    assert.deepEqual(stdGraphInfo, {
+      'std.math.clamp@1': {
+        title: 'Clamp',
+        description: 'Keeps a number between a minimum and a maximum.'
+      },
+      'std.math.average@1': {
+        title: 'Average',
+        description: 'Adds up a list of numbers and divides by how many there are.'
+      }
+    });
   });
 });

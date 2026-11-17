@@ -8,6 +8,7 @@ import {
   findVisibleTableKinds,
   insertDraft,
   insertGraph,
+  listDependents,
   listEffectiveGraphs,
   listPublishedNodes,
   listVersions,
@@ -19,172 +20,287 @@ import { templateFor } from './service.ts';
 
 const BASE = { page: 1, pageSize: 25, sort: 'name', dir: 'asc' } as const;
 const S = { agencyId: 'a-1' };
-const flat = (sql = '') => sql.replace(/\s+/g, ' ');
-const visibleTo = (alias: string) =>
-  new RegExp(
-    `\\( "${alias}"\\."agency_id" is null or \\("${alias}"\\."is_active" and "${alias}"\\."agency_id" = \\$\\d+::uuid\\) \\)`
-  );
+const flat = (sql = '') => sql.replace(/\s+/g, ' ').trim();
+const visibleTo = (alias: string, n: number) =>
+  `( "${alias}"."agency_id" is null or ("${alias}"."is_active" and "${alias}"."agency_id" = $${n}::uuid) )`;
+const LATERAL =
+  'from "graphs" as "g" left join lateral (select max(gv.version) filter (where gv.published_at is not null) as "published", max(gv.version) filter (where gv.published_at is null) as "draft" from "graph_versions" as "gv" where "gv"."graph_id" = "g"."id") as "v" on true';
+/** The search query after its select list: the joins, filters, order and page. */
+const tailOf = (sql = '') => flat(sql).slice(flat(sql).indexOf(LATERAL));
 
-const scopedTo = (parameters: readonly unknown[] = [], ...others: unknown[]) =>
-  parameters.every((p) => p === 'a-1' || others.includes(p));
+const row = {
+  id: 'g1',
+  key: 'demo.x',
+  name: 'X',
+  kind: 'node',
+  role: 'rule',
+  description: '',
+  scope: 'agency',
+  updated_at: new Date(0),
+  published: 2,
+  draft: 3,
+  overrides: 'g-sys',
+  overridden_by: 'g-agency',
+  is_stale: true,
+  total: '1'
+};
 
-describe('customization queries', () => {
-  it('shows customized graphs, the effective graph and table per key, and known table keys', async () => {
-    const { db, queries } = createRecordingDb(() => []);
-    await searchGraphs(db, S, { ...BASE, show: 'customized' });
-    assert.ok(flat(queries[0]?.sql).includes('is not null or ( select o.id from "graphs" o'));
-    await listEffectiveGraphs(db, S);
-    const graphs = flat(queries[1]?.sql);
-    assert.ok(graphs.includes('from (select distinct k.key from graphs k where'));
+describe('searchGraphs', () => {
+  it('maps a page of graphs with versions, override links and staleness', async () => {
+    const { db } = createRecordingDb(() => [row]);
+    assert.deepEqual(await searchGraphs(db, S, { ...BASE, show: 'all' }), {
+      items: [
+        {
+          id: 'g1',
+          key: 'demo.x',
+          name: 'X',
+          kind: 'node',
+          role: 'rule',
+          description: '',
+          scope: 'agency',
+          isSystem: false,
+          overrides: 'g-sys',
+          overriddenBy: 'g-agency',
+          isStale: true,
+          publishedVersion: 2,
+          draftVersion: 3,
+          updatedAt: new Date(0)
+        }
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 25
+    });
+    await db.destroy();
+  });
+
+  it('marks system graphs', async () => {
+    const { db } = createRecordingDb(() => [{ ...row, scope: 'system', overrides: null }]);
+    const page = await searchGraphs(db, S, { ...BASE, show: 'all' });
+    assert.equal(page.items[0]?.isSystem, true);
+    await db.destroy();
+  });
+
+  it('shows every visible graph by name with its scope, links and staleness', async () => {
+    const { db, queries } = createRecordingDb();
+    await searchGraphs(db, S, { ...BASE, show: 'all' });
+    const sql = flat(queries[0]?.sql);
     assert.ok(
-      graphs.includes('join graph_versions v on v.id = r.id join graphs g on g.id = v.graph_id')
+      sql.startsWith(
+        `select "g"."id", "g"."key", "g"."name", "g"."kind", "g"."role", "g"."description", case when "g"."agency_id" is not null then 'agency' else 'system' end as "scope", "g"."updated_at", "v"."published", "v"."draft", ( select o.id from "graphs" o where o.id = (`
+      )
     );
-    assert.deepEqual(await findVisibleTableKinds(db, S, []), []);
-    assert.equal(queries.length, 2);
-    await findVisibleTableKinds(db, S, ['billing.base-rate']);
-    assert.ok(queries[2]?.sql.includes('from "data_tables" as "t"'));
+    assert.ok(
+      sql.includes(
+        'and case when "o"."agency_id" is not null then 0 else 1 end < case when "g"."agency_id" is not null then 0 else 1 end ) as "overridden_by"'
+      )
+    );
+    assert.ok(
+      sql.includes(
+        `( select o.id from "graphs" o where o.key = "g"."key" and ${visibleTo('o', 4)} and case when "o"."agency_id" is not null then 0 else 1 end > case when "g"."agency_id" is not null then 0 else 1 end order by case when "o"."agency_id" is not null then 0 else 1 end limit 1 ) as "overrides"`
+      )
+    );
+    assert.ok(
+      sql.includes(
+        '"g"."agency_id" is not null and exists ( select 1 from "graphs" sg join lateral ( select sv.contract from "graph_versions" sv where sv."graph_id" = sg.id and sv.published_at is not null order by sv.version desc limit 1 ) base on true where sg.key = "g"."key" and sg.agency_id is null and not exists ( select 1 from "graph_versions" mv where mv."graph_id" = "g"."id" and mv.published_at is not null and mv.contract = base.contract ) ) as "is_stale", count(*) over () as "total"'
+      )
+    );
+    assert.equal(
+      tailOf(queries[0]?.sql),
+      `${LATERAL} where ${visibleTo('g', 5)} order by lower(g.name) asc nulls last, "g"."id" asc limit $6 offset $7`
+    );
+    assert.deepEqual(queries[0]?.parameters, ['a-1', 'a-1', 'a-1', 'a-1', 'a-1', 25, 0]);
+    await db.destroy();
+  });
+
+  it('shows only workflows', async () => {
+    const { db, queries } = createRecordingDb();
+    await searchGraphs(db, S, { ...BASE, show: 'workflows' });
+    assert.equal(
+      tailOf(queries[0]?.sql),
+      `${LATERAL} where ${visibleTo('g', 5)} and "g"."kind" = $6 order by lower(g.name) asc nulls last, "g"."id" asc limit $7 offset $8`
+    );
+    assert.deepEqual(queries[0]?.parameters.slice(5), ['workflow', 25, 0]);
+    await db.destroy();
+  });
+
+  it('shows blocks matching a trimmed, escaped search of names and keys, sorted by kind', async () => {
+    const { db, queries } = createRecordingDb();
+    await searchGraphs(db, S, { ...BASE, sort: 'kind', dir: 'desc', show: 'blocks', q: ' Ma_ch ' });
+    assert.equal(
+      tailOf(queries[0]?.sql),
+      `${LATERAL} where ${visibleTo('g', 5)} and "g"."kind" != $6 and (lower(g.name) like $7 or lower(g.key) like $8) order by (g.kind, lower(g.name)) desc nulls last, "g"."id" desc limit $9 offset $10`
+    );
+    assert.deepEqual(queries[0]?.parameters.slice(5), [
+      'workflow',
+      '%ma\\_ch%',
+      '%ma\\_ch%',
+      25,
+      0
+    ]);
+    await db.destroy();
+  });
+
+  it('shows only the agency graphs, by key or update time', async () => {
+    const { db, queries } = createRecordingDb();
+    await searchGraphs(db, S, { ...BASE, sort: 'key', show: 'mine' });
+    await searchGraphs(db, S, { ...BASE, sort: 'updated', show: 'mine' });
+    const [byKey, byUpdate] = queries;
+    assert.equal(
+      tailOf(byKey?.sql),
+      `${LATERAL} where ${visibleTo('g', 5)} and "g"."agency_id" is not null order by "g"."key" asc nulls last, "g"."id" asc limit $6 offset $7`
+    );
+    assert.ok(
+      flat(byUpdate?.sql).endsWith(
+        'order by "g"."updated_at" asc nulls last, "g"."id" asc limit $6 offset $7'
+      )
+    );
+    await db.destroy();
+  });
+
+  it('shows only graphs that override or are overridden', async () => {
+    const { db, queries } = createRecordingDb();
+    await searchGraphs(db, S, { ...BASE, show: 'customized' });
+    const tail = tailOf(queries[0]?.sql);
+    assert.ok(tail.startsWith(`${LATERAL} where ${visibleTo('g', 5)} and (( select o.id from`));
+    assert.ok(tail.includes(') is not null or ( select o.id from "graphs" o where o.key'));
+    assert.ok(
+      tail.endsWith(
+        ') is not null) order by lower(g.name) asc nulls last, "g"."id" asc limit $10 offset $11'
+      )
+    );
+    assert.deepEqual(queries[0]?.parameters, [...Array(9).fill('a-1'), 25, 0]);
+    await db.destroy();
+  });
+
+  it('counts the matches separately when a later page is empty', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.startsWith('select count') ? [{ total: '30' }] : []
+    );
+    assert.deepEqual(await searchGraphs(db, S, { ...BASE, page: 3, show: 'workflows' }), {
+      items: [],
+      total: 30,
+      page: 3,
+      pageSize: 25
+    });
+    assert.equal(
+      flat(queries[1]?.sql),
+      `select count(*) as "total" ${LATERAL} where ${visibleTo('g', 1)} and "g"."kind" = $2`
+    );
+    assert.deepEqual(queries[1]?.parameters, ['a-1', 'workflow']);
     await db.destroy();
   });
 });
 
-describe('graph queries', () => {
-  it('pages graphs of every scope with versions, override links and staleness', async () => {
-    const { db, queries } = createRecordingDb(() => [
-      {
-        id: 'g1',
-        key: 'demo.x',
-        name: 'X',
-        kind: 'node',
-        role: 'rule',
-        description: '',
-        scope: 'agency',
-        updated_at: new Date(0),
-        published: 2,
-        draft: 3,
-        overrides: 'g-sys',
-        overridden_by: 'g-agency',
-        is_stale: true,
-        total: '1'
-      }
-    ]);
-    const page = await searchGraphs(db, S, { ...BASE, show: 'all' });
-    assert.equal(page.total, 1);
-    assert.deepEqual(page.items, [
-      {
-        id: 'g1',
-        key: 'demo.x',
-        name: 'X',
-        kind: 'node',
-        role: 'rule',
-        description: '',
-        scope: 'agency',
-        isSystem: false,
-        overrides: 'g-sys',
-        overriddenBy: 'g-agency',
-        isStale: true,
-        publishedVersion: 2,
-        draftVersion: 3,
-        updatedAt: new Date(0)
-      }
-    ]);
-    const sql = flat(queries[0]?.sql);
-    assert.ok(
-      sql.includes(
-        'left join lateral (select max(gv.version) filter (where gv.published_at is not null)'
-      )
-    );
-    assert.match(sql, visibleTo('g'));
-    assert.ok(sql.includes(') as "overridden_by"'));
-    assert.ok(sql.includes(') as "overrides"'));
-    assert.ok(sql.includes('sg.agency_id is null and not exists'));
-    assert.ok(sql.includes('mv.contract = base.contract'));
-    assert.ok(sql.includes('order by lower(g.name) asc nulls last'));
-    assert.ok(queries[0]?.parameters.includes('a-1'));
-    await db.destroy();
-  });
-
-  it('marks system graphs and scopes graphs by agency, then system', async () => {
-    const { db, queries } = createRecordingDb(() => [
-      { id: 'g', scope: 'system', updated_at: new Date(0), is_stale: false, total: '1' }
-    ]);
-    const page = await searchGraphs(db, S, { ...BASE, show: 'all' });
-    assert.equal(page.items[0]?.isSystem, true);
-    const sql = flat(queries[0]?.sql);
-    assert.ok(
-      sql.includes(
-        `case when "g"."agency_id" is not null then 'agency' else 'system' end as "scope"`
-      )
-    );
-    assert.ok(
-      sql.includes(
-        'case when "o"."agency_id" is not null then 0 else 1 end < case when "g"."agency_id"'
-      )
-    );
-    assert.ok(sql.includes('end > case when "g"."agency_id"'));
-    await db.destroy();
-  });
-
-  it('searches names and keys of the kind shown', async () => {
-    const { db, queries } = createRecordingDb(() => []);
-    const base = { ...BASE, sort: 'kind', dir: 'desc' } as const;
-    await searchGraphs(db, S, { ...base, show: 'blocks', q: 'Match' });
-    await searchGraphs(db, S, { ...base, show: 'mine' });
-    await searchGraphs(db, S, { ...base, show: 'workflows' });
-    const [blocks, mine, workflows] = queries;
-    assert.ok(blocks?.sql.includes('"g"."kind" != $'));
-    assert.ok(blocks?.sql.includes('lower(g.name) like $'));
-    assert.ok(blocks?.sql.includes('lower(g.key) like $'));
-    assert.ok(blocks?.parameters.includes('%match%'));
-    assert.ok(blocks?.sql.includes('order by (g.kind, lower(g.name)) desc nulls last'));
-    assert.ok(mine?.sql.includes('and "g"."agency_id" is not null order by'));
-    assert.ok(workflows?.sql.includes('"g"."kind" = $'));
-    await db.destroy();
-  });
-
-  it('finds a visible graph', async () => {
+describe('graph reads', () => {
+  it('finds a visible graph by id', async () => {
     const { db, queries } = createRecordingDb();
-    await findGraph(db, S, 'g1');
-    const [graph] = queries;
-    assert.match(flat(graph?.sql), /where "g"\."id" = \$\d+ and /);
-    assert.match(flat(graph?.sql), visibleTo('g'));
-    assert.ok(scopedTo(graph?.parameters, 'g1'));
-    assert.deepEqual(graph?.parameters.slice(-2), ['g1', 'a-1']);
+    assert.equal(await findGraph(db, S, 'g1'), undefined);
+    const sql = flat(queries[0]?.sql);
+    assert.ok(
+      sql.startsWith(
+        `select "g"."id", "g"."agency_id", "g"."key", "g"."name", "g"."kind", "g"."role", "g"."description", case when "g"."agency_id" is not null then 'agency' else 'system' end as "scope", (`
+      )
+    );
+    assert.ok(sql.includes(') as "overridden_by", ( select o.id'));
+    assert.ok(sql.includes(') as "overrides", "g"."agency_id" is not null and exists ('));
+    assert.ok(
+      sql.endsWith(
+        `) as "is_stale" from "graphs" as "g" where "g"."id" = $5 and ${visibleTo('g', 6)}`
+      )
+    );
+    assert.deepEqual(queries[0]?.parameters, ['a-1', 'a-1', 'a-1', 'a-1', 'g1', 'a-1']);
     await db.destroy();
   });
 
-  it('lists built-in nodes and custom nodes that override nothing visible', async () => {
+  it('reads versions newest first with the version they were copied from', async () => {
+    const { db, queries } = createRecordingDb();
+    await listVersions(db, 'g1');
+    assert.equal(
+      queries[0]?.sql,
+      'select "v"."id", "v"."version", "v"."published_at", "v"."created_at", "v"."updated_at", "b"."version" as "base_version", "bg"."id" as "base_graph_id" from "graph_versions" as "v" left join "graph_versions" as "b" on "b"."id" = "v"."base_version_id" left join "graphs" as "bg" on "bg"."id" = "b"."graph_id" where "v"."graph_id" = $1 order by "v"."version" desc'
+    );
+    assert.deepEqual(queries[0]?.parameters, ['g1']);
+    await db.destroy();
+  });
+
+  it('lists published built-in nodes and custom nodes that override nothing visible', async () => {
     const { db, queries } = createRecordingDb();
     await listPublishedNodes(db, S);
     const sql = flat(queries[0]?.sql);
-    assert.ok(sql.includes(`gv.definition -> 'signature'`));
     assert.ok(
-      sql.includes(
-        '("g"."agency_id" is null or not exists (select "b"."id" from "graphs" as "b" where "b"."key" = "g"."key"'
+      sql.startsWith(
+        `select "g"."id" as "graph_id", "g"."key", "g"."name", "g"."kind", "g"."role", "g"."description", "gv"."version", gv.definition -> 'signature' as "signature", ( select o.id from "graphs" o`
       )
     );
-    assert.match(sql, visibleTo('b'));
-    assert.ok(sql.includes('is not null as "overridden"'));
-    assert.ok(scopedTo(queries[0]?.parameters));
+    assert.ok(
+      sql.endsWith(
+        `) is not null as "overridden" from "graph_versions" as "gv" inner join "graphs" as "g" on "g"."id" = "gv"."graph_id" where "gv"."published_at" is not null and ${visibleTo('g', 4)} and ("g"."agency_id" is null or not exists (select "b"."id" from "graphs" as "b" where "b"."key" = "g"."key" and case when "b"."agency_id" is not null then 0 else 1 end > case when "g"."agency_id" is not null then 0 else 1 end and ${visibleTo('b', 5)})) order by "g"."key", "gv"."version" desc`
+      )
+    );
+    assert.deepEqual(queries[0]?.parameters, ['a-1', 'a-1', 'a-1', 'a-1', 'a-1']);
     await db.destroy();
   });
 
-  it('reads versions with the version they were copied from', async () => {
-    const { db, queries } = createRecordingDb();
-    await listVersions(db, 'g1');
-    const [list] = queries;
-    assert.ok(
-      list?.sql.includes('left join "graph_versions" as "b" on "b"."id" = "v"."base_version_id"')
+  it('lists the other active agency graphs whose newest version depends on a key', async () => {
+    const { db, queries } = createRecordingDb(() => [{ name: 'Flow' }]);
+    assert.deepEqual(await listDependents(db, S, 'acme.x', 'g1'), [{ name: 'Flow' }]);
+    assert.equal(
+      flat(queries[0]?.sql),
+      `select distinct g.name from graphs g join lateral ( select v.dependencies from graph_versions v where v.graph_id = g.id and v.published_at is not null order by v.version desc limit 1 ) newest on true where g.id <> $1::uuid and g.is_active and g.agency_id = $2::uuid and exists ( select 1 from unnest(newest.dependencies) d where split_part(d, '@', 1) = $3 ) order by g.name`
     );
-    assert.ok(list?.sql.includes('"bg"."id" as "base_graph_id"'));
+    assert.deepEqual(queries[0]?.parameters, ['g1', 'a-1', 'acme.x']);
+    await db.destroy();
+  });
+
+  it('finds the kinds of visible tables by key', async () => {
+    const { db, queries } = createRecordingDb(() => [{ key: 'k1', kind: 'decide' }]);
+    assert.deepEqual(await findVisibleTableKinds(db, S, ['k1', 'k2']), [
+      { key: 'k1', kind: 'decide' }
+    ]);
+    assert.equal(
+      flat(queries[0]?.sql),
+      `select distinct "t"."key", "t"."kind" from "data_tables" as "t" where "t"."key" in ($1, $2) and ${visibleTo('t', 3)}`
+    );
+    assert.deepEqual(queries[0]?.parameters, ['k1', 'k2', 'a-1']);
+    await db.destroy();
+  });
+
+  it('finds no table kinds without asking when there are no keys', async () => {
+    const { db, queries } = createRecordingDb();
+    assert.deepEqual(await findVisibleTableKinds(db, S, []), []);
+    assert.equal(queries.length, 0);
+    await db.destroy();
+  });
+
+  it('resolves the effective graph of every visible key', async () => {
+    const graph = { id: 'g1', key: 'a.b', name: 'B', kind: 'node', role: 'rule', scope: 'system' };
+    const { db, queries } = createRecordingDb(() => [graph]);
+    assert.deepEqual(await listEffectiveGraphs(db, S), [graph]);
+    const sql = flat(queries[0]?.sql);
+    assert.ok(
+      sql.startsWith(
+        `select g.id, g.key, g.name, g.kind, g.role, case when "g"."agency_id" is not null then 'agency' else 'system' end as scope, v.definition from (select distinct k.key from graphs k where ${visibleTo('k', 1)}) keys cross join lateral (select ( select v.id from graphs g`
+      )
+    );
+    assert.ok(
+      sql.endsWith(
+        'as id) r join graph_versions v on v.id = r.id join graphs g on g.id = v.graph_id order by g.key'
+      )
+    );
+    assert.deepEqual(queries[0]?.parameters, ['a-1', 'a-1', 'a-1', 'a-1']);
     await db.destroy();
   });
 });
 
 describe('graph writes', () => {
-  it('publishes drafts only once', async () => {
+  it('publishes a draft once with its dependencies', async () => {
     const { db, queries } = createRecordingDb();
     await publishVersion(db, 'v1', ['d1']);
-    assert.ok(queries[0]?.sql.includes('"published_at" is null'));
+    assert.equal(
+      queries[0]?.sql,
+      'update "graph_versions" set "published_at" = now(), "dependencies" = $1, "updated_at" = now() where "id" = $2 and "published_at" is null'
+    );
     assert.deepEqual(queries[0]?.parameters, [['d1'], 'v1']);
     await db.destroy();
   });
@@ -193,19 +309,36 @@ describe('graph writes', () => {
     const { db, queries } = createRecordingDb();
     const def = templateFor('node');
     await updateDraft(db, 'v1', def);
-    await updateDraft(db, 'v1', def, 'base');
-    const [update, rebased] = queries;
-    assert.ok(update?.sql.endsWith('where "id" = $3 and "published_at" is null'));
-    assert.deepEqual(update?.parameters, [JSON.stringify(def), contractOf(def.signature), 'v1']);
-    assert.ok(rebased?.sql.includes('"base_version_id" = $3'));
-    assert.deepEqual(rebased?.parameters.slice(2), ['base', 'v1']);
+    assert.equal(
+      queries[0]?.sql,
+      'update "graph_versions" set "definition" = $1, "contract" = $2, "updated_at" = now() where "id" = $3 and "published_at" is null'
+    );
+    assert.deepEqual(queries[0]?.parameters, [
+      JSON.stringify(def),
+      contractOf(def.signature),
+      'v1'
+    ]);
     await db.destroy();
   });
 
-  it('inserts graphs for an owner and drafts with their contract and base', async () => {
-    const { db, queries } = createRecordingDb(() => [{ id: 'x', version: 1 }]);
-    const def = templateFor('workflow');
-    await insertGraph(db, {
+  it('moves a draft onto a new base or clears it', async () => {
+    const { db, queries } = createRecordingDb();
+    const def = templateFor('node');
+    await updateDraft(db, 'v1', def, 'base');
+    await updateDraft(db, 'v1', def, null);
+    const [rebased, cleared] = queries;
+    assert.equal(
+      rebased?.sql,
+      'update "graph_versions" set "definition" = $1, "contract" = $2, "base_version_id" = $3, "updated_at" = now() where "id" = $4 and "published_at" is null'
+    );
+    assert.deepEqual(rebased?.parameters.slice(2), ['base', 'v1']);
+    assert.deepEqual(cleared?.parameters.slice(2), [null, 'v1']);
+    await db.destroy();
+  });
+
+  it('inserts a graph for its agency', async () => {
+    const { db, queries } = createRecordingDb(() => [{ id: 'g1' }]);
+    const created = await insertGraph(db, {
       agencyId: 'a-1',
       key: 'acme.flow',
       name: 'Flow',
@@ -213,16 +346,38 @@ describe('graph writes', () => {
       role: 'workflow',
       description: ''
     });
-    await insertDraft(db, {
+    assert.deepEqual(created, { id: 'g1' });
+    assert.equal(
+      queries[0]?.sql,
+      'insert into "graphs" ("agency_id", "key", "name", "kind", "role", "description") values ($1, $2, $3, $4, $5, $6) returning "id"'
+    );
+    assert.deepEqual(queries[0]?.parameters, [
+      'a-1',
+      'acme.flow',
+      'Flow',
+      'workflow',
+      'workflow',
+      ''
+    ]);
+    await db.destroy();
+  });
+
+  it('inserts a draft with its contract, base and author', async () => {
+    const { db, queries } = createRecordingDb(() => [{ id: 'v1', version: 1 }]);
+    const def = templateFor('workflow');
+    const draft = await insertDraft(db, {
       graphId: 'g1',
       version: 1,
       definition: def,
       baseVersionId: 'b1',
       userId: 'u-1'
     });
-    const [graph, draft] = queries;
-    assert.deepEqual(graph?.parameters, ['a-1', 'acme.flow', 'Flow', 'workflow', 'workflow', '']);
-    assert.deepEqual(draft?.parameters, [
+    assert.deepEqual(draft, { id: 'v1', version: 1 });
+    assert.equal(
+      queries[0]?.sql,
+      'insert into "graph_versions" ("graph_id", "version", "definition", "contract", "base_version_id", "created_by_id") values ($1, $2, $3, $4, $5, $6) returning "id", "version"'
+    );
+    assert.deepEqual(queries[0]?.parameters, [
       'g1',
       1,
       JSON.stringify(def),
@@ -235,8 +390,12 @@ describe('graph writes', () => {
 
   it('deletes custom graphs only', async () => {
     const { db, queries } = createRecordingDb();
-    await deleteGraph(db, 'g1');
-    assert.ok(queries[0]?.sql.includes('where "id" = $1 and "agency_id" is not null'));
+    assert.equal(await deleteGraph(db, 'g1'), undefined);
+    assert.equal(
+      queries[0]?.sql,
+      'delete from "graphs" where "id" = $1 and "agency_id" is not null returning "id"'
+    );
+    assert.deepEqual(queries[0]?.parameters, ['g1']);
     await db.destroy();
   });
 });

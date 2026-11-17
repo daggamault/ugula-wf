@@ -69,7 +69,10 @@ describe('denialFactsOf', () => {
       correctionMethod: null,
       appealDays: null
     });
-    assert.throws(() => denialFactsOf(ledger([]), 'gone'), /not on the claim/);
+    assert.throws(
+      () => denialFactsOf(ledger([]), 'gone'),
+      /^Error: Payer gone is not on the claim$/
+    );
   });
 
   it('defaults to a plain denial with no codes or date before the payer answers', () => {
@@ -108,7 +111,10 @@ describe('payerFactsOf', () => {
   it('names any payer on the claim, not only the one billed, or the patient', () => {
     assert.deepEqual(payerFactsOf(ledger([]), 'blue'), { payer: 'Blue Plan', payerKind: 'BL' });
     assert.deepEqual(payerFactsOf(ledger([]), null), { payer: null, payerKind: 'patient' });
-    assert.throws(() => payerFactsOf(ledger([]), 'gone'), /not on the claim/);
+    assert.throws(
+      () => payerFactsOf(ledger([]), 'gone'),
+      /^Error: Payer gone is not on the claim$/
+    );
   });
 });
 
@@ -127,6 +133,26 @@ describe('appealOutcomeOf', () => {
       balanceCents: 40_000
     });
     assert.equal(appealOutcomeOf(ledger(denial), 'mcr').decided, false);
+  });
+
+  it('knows a payer denied the appeal, ignoring what other payers sent meanwhile', () => {
+    const outcome = appealOutcomeOf(
+      ledger([
+        ...denial,
+        event({ kind: 'appealed' }),
+        event({ kind: 'response', coverageId: 'blue', paidCents: 5_000 }),
+        event({ kind: 'denied', coverageId: 'blue' }),
+        event({ kind: 'response' }),
+        event({ kind: 'denied' })
+      ]),
+      'mcr'
+    );
+    assert.deepEqual(outcome, {
+      decided: true,
+      paidCents: 0,
+      deniedAgain: true,
+      balanceCents: 95_000
+    });
   });
 });
 
@@ -262,6 +288,6 @@ describe('responseFactsOf', () => {
       ]
     });
     assert.deepEqual(responseFactsOf(ledger([]), 'blue'), { paidCents: 0, adjustments: [] });
-    assert.throws(() => responseFactsOf(paid, 'nope'), /not on the claim/);
+    assert.throws(() => responseFactsOf(paid, 'nope'), /^Error: Payer nope is not on the claim$/);
   });
 });

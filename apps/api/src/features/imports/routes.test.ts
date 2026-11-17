@@ -82,6 +82,10 @@ describe('import routes', () => {
   it('accepts a multipart file for the session agency', async () => {
     const res = await request('/', form({ file: new File(['<x/>'], 'pcrs.xml') }));
     assert.equal(res.status, 201);
+    assert.deepEqual(await res.json(), {
+      runId: 'r1',
+      file: { bucket: 'b', key: 'k', size: 4, contentType: 'x' }
+    });
     assert.deepEqual(calls.at(-1), [
       't-1',
       'u-1',
@@ -90,14 +94,19 @@ describe('import routes', () => {
       '<x/>'
     ]);
     const missing = form({ file: new File(['<x/>'], 'a.xml'), workflow: 'billing.missing' });
-    assert.equal((await request('/', missing)).status, 404);
+    const unpublished = await request('/', missing);
+    assert.deepEqual([unpublished.status, await unpublished.json()], [404, { error: 'nope' }]);
   });
 
   it('starts workflows other than the NEMSIS ingest only for users who may create runs', async () => {
     const biller = withSession(createImportRoutes(service), testAccess(['imports:create']));
     const before = calls.length;
     const other = form({ file: new File(['<x/>'], 'a.xml'), workflow: 'billing.watch-deadlines' });
-    assert.equal((await biller('/', other)).status, 403);
+    const refused = await biller('/', other);
+    assert.equal(refused.status, 403);
+    assert.deepEqual(await refused.json(), {
+      error: 'Importing into another workflow needs the runs:create permission'
+    });
     assert.equal(calls.length, before);
     const ingest = form({
       file: new File(['<x/>'], 'a.xml'),
@@ -132,6 +141,12 @@ describe('SFTP hook routes', () => {
       401
     );
     assert.equal((await post('/auth', { username: 'a', password: 'good' }, 'short')).status, 401);
+    const unsigned = await hooks.request('/upload', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'upload' })
+    });
+    assert.deepEqual([unsigned.status, await unsigned.json()], [401, { error: 'Unauthorized' }]);
   });
 
   it('answers SFTPGo auth with a user or a denial and accepts upload events', async () => {
@@ -153,13 +168,17 @@ describe('SFTP hook routes', () => {
 
 describe('import report XML downloads', () => {
   const id = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
+  const unnumbered = '01a16617-7704-7ba6-b9b5-9c79fa44f966';
   const download = withSession(
     createImportRoutes({
       ...service,
       report: async (agencyId: string, reportId: string) => {
         calls.push(['report', agencyId, reportId]);
-        return reportId === id
-          ? ok({ report: { id, pcr_number: 'PCR 1/2"' }, data: {}, xml: '<x/>' })
+        if (reportId === id) {
+          return ok({ report: { id, pcr_number: 'PCR 1/2"' }, data: {}, xml: '<x/>' });
+        }
+        return reportId === unnumbered
+          ? ok({ report: { id: unnumbered, pcr_number: null }, data: {}, xml: '<y/>' })
           : fail('not_found', 'Report not found');
       }
     } as unknown as ImportService)
@@ -176,6 +195,15 @@ describe('import report XML downloads', () => {
     );
     assert.equal(res.headers.get('cache-control'), 'private, no-store');
     assert.deepEqual(calls.at(-1), ['report', 't-1', id]);
+  });
+
+  it('names the XML of a report without a PCR number after the report id', async () => {
+    const res = await download(`/reports/${unnumbered}/xml`);
+    assert.equal(
+      res.headers.get('content-disposition'),
+      `attachment; filename="encounter-${unnumbered}.xml"`
+    );
+    assert.equal(await res.text(), '<y/>');
   });
 
   it('maps missing reports and bad ids', async () => {

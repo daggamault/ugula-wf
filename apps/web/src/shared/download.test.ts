@@ -14,30 +14,45 @@ afterEach(() => {
   URL.revokeObjectURL = original.revoke;
 });
 
-describe('downloadText', () => {
-  it('saves text as a named file and releases its object URL', async () => {
-    const clicked: { href: string; download: string }[] = [];
-    const revoked: string[] = [];
-    let blob: Blob | null = null;
-    URL.createObjectURL = (b: Blob) => {
-      blob = b;
-      return 'blob:1';
-    };
-    URL.revokeObjectURL = (url: string) => void revoked.push(url);
-    Object.assign(globalThis, {
-      document: {
-        createElement: () => {
-          const link = { href: '', download: '', click: () => clicked.push({ ...link }) };
-          return link;
-        }
+const fakeBrowser = () => {
+  const steps: string[] = [];
+  const blobs: Blob[] = [];
+  const tags: string[] = [];
+  URL.createObjectURL = (blob: Blob) => {
+    blobs.push(blob);
+    steps.push('create blob:1');
+    return 'blob:1';
+  };
+  URL.revokeObjectURL = (url: string) => void steps.push(`revoke ${url}`);
+  Object.assign(globalThis, {
+    document: {
+      createElement: (tag: string) => {
+        tags.push(tag);
+        const link = {
+          href: '',
+          download: '',
+          click: () => steps.push(`click ${link.href} ${link.download}`)
+        };
+        return link;
       }
-    });
+    }
+  });
+  return { blobs, steps, tags };
+};
+
+describe('downloadText', () => {
+  it('clicks a link to the text saved under the file name, then releases the URL', () => {
+    const { steps, tags } = fakeBrowser();
     downloadText('elig.x12', 'ISA*', 'application/edi-x12');
-    assert.deepEqual(
-      clicked.map(({ href, download }) => [href, download]),
-      [['blob:1', 'elig.x12']]
-    );
-    assert.deepEqual(revoked, ['blob:1']);
-    assert.equal(await (blob as unknown as Blob).text(), 'ISA*');
+    assert.deepEqual(tags, ['a']);
+    assert.deepEqual(steps, ['create blob:1', 'click blob:1 elig.x12', 'revoke blob:1']);
+  });
+
+  it('saves the text with the content type it is given', async () => {
+    const { blobs } = fakeBrowser();
+    downloadText('claims.csv', 'id,total\nc1,100', 'text/csv');
+    assert.equal(blobs.length, 1);
+    assert.equal(blobs[0]?.type, 'text/csv');
+    assert.equal(await blobs[0]?.text(), 'id,total\nc1,100');
   });
 });

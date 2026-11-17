@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   isCompleteAddress,
+  isSamePerson,
   matchPatient,
   type Patient,
   readDemographics,
@@ -108,11 +109,16 @@ describe('matchPatient', () => {
       candidates: [jane]
     });
     const brother = { ...janet, gender: 'M' as const };
-    assert.equal(matchPatient(d, [brother]).kind, 'review');
-    assert.equal(
-      matchPatient(readDemographics({ ...report, gender: 'U' }), [janet]).kind,
-      'matched'
-    );
+    assert.deepEqual(matchPatient(d, [brother]), {
+      kind: 'review',
+      reason: 'Similar patients found',
+      candidates: [brother]
+    });
+    assert.deepEqual(matchPatient(readDemographics({ ...report, gender: 'U' }), [janet]), {
+      kind: 'matched',
+      patient: janet
+    });
+    assert.equal(isSamePerson(d, { ...janet, gender: null }), true);
   });
 
   it('reviews several exact matches together', () => {
@@ -147,15 +153,35 @@ describe('matchPatient', () => {
       transposed,
       misspelled
     ]);
-    assert.equal(decision.kind, 'review');
-    assert.deepEqual(decision.kind === 'review' && decision.candidates.map((c) => c.id), [
-      's',
-      'm',
-      'w',
-      'g',
-      't',
-      'b'
-    ]);
+    assert.deepEqual(decision, {
+      kind: 'review',
+      reason: 'Similar patients found',
+      candidates: [misspelled, married, swapped, digit, transposed, both]
+    });
+  });
+
+  it('reviews a sibling sharing a last name and birth date', () => {
+    const mary = { ...jane, id: 'p2', firstName: 'Mary' };
+    assert.deepEqual(matchPatient(d, [mary]), {
+      kind: 'review',
+      reason: 'Similar patients found',
+      candidates: [mary]
+    });
+  });
+
+  it('needs close names when the birth date is a typo, and a close first name too', () => {
+    const typo = { ...janet, birthDate: '1980-02-28' };
+    const cousin = { ...typo, firstName: 'Mary' };
+    assert.deepEqual(matchPatient(d, [cousin]), { kind: 'unmatched' });
+  });
+
+  it('flags a report missing its birth date or last name as incomplete', () => {
+    for (const missing of [{ birthDate: null }, { lastName: null }, { firstName: null }]) {
+      assert.deepEqual(matchPatient(readDemographics({ ...report, ...missing }), [jane]), {
+        kind: 'incomplete'
+      });
+    }
+    assert.equal(isSamePerson(readDemographics({ ...report, lastName: null }), janet), false);
   });
 
   it('creates when nothing is close and flags incomplete reports', () => {
@@ -173,9 +199,23 @@ describe('addresses', () => {
   const home = { addressLine: '2 Elm St', city: 'Springfield', state: 'IL', postalCode: '62701' };
 
   it('knows a complete mailing address, and the same one written differently', () => {
-    assert.ok(isCompleteAddress(home));
-    assert.ok(!isCompleteAddress({ ...home, state: null }));
-    assert.ok(sameAddress(home, { ...home, addressLine: '2 ELM ST.', postalCode: '627011234' }));
-    assert.ok(!sameAddress(home, { ...home, addressLine: '3 Elm St' }));
+    assert.deepEqual(
+      [
+        home,
+        { ...home, addressLine: null },
+        { ...home, city: null },
+        { ...home, state: null },
+        { ...home, postalCode: null }
+      ].map(isCompleteAddress),
+      [true, false, false, false, false]
+    );
+    assert.equal(
+      sameAddress(home, { ...home, addressLine: '2 ELM ST.', postalCode: '627011234' }),
+      true
+    );
+    assert.equal(sameAddress(home, { ...home, addressLine: '3 Elm St' }), false);
+    assert.equal(sameAddress(home, { ...home, postalCode: null }), false);
+    const blank = { addressLine: null, city: null, state: null, postalCode: null };
+    assert.equal(sameAddress(blank, { ...blank }), true);
   });
 });

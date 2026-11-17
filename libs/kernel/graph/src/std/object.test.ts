@@ -36,7 +36,11 @@ describe('object nodes', () => {
       id: 'p1',
       age: null
     });
-    await assert.rejects(() => run('std.object.make', {}, { fields: [...fields, ...fields] }));
+    assert.deepEqual(await out('std.object.break', {}, { fields }), { id: null, age: null });
+    await assert.rejects(
+      () => run('std.object.make', {}, { fields: [...fields, ...fields] }),
+      /unique/
+    );
   });
 
   it('labels field pins and leaves every made field optional', async () => {

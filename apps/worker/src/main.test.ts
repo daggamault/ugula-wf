@@ -64,8 +64,11 @@ describe('stopWorker', () => {
       'redis'
     ]);
   });
+});
 
-  it('sizes the pool for every connection a slot can hold at once', () => {
+describe('poolSize', () => {
+  it('holds three connections per run slot plus four spare', () => {
+    assert.equal(poolSize(1), 7);
     assert.equal(poolSize(8), 28);
   });
 });

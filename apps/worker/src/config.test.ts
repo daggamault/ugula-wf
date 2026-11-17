@@ -87,7 +87,10 @@ describe('worker parseConfig', () => {
     );
     assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_REALTIME_URL: 'nope' }));
     assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_SECRET_KEY: 'short' }));
-    assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_SFTP_HOST: 'sftp.example.com' }));
+    assert.throws(
+      () => parseConfig({ ...rawEnv, CLEARINGHOUSE_SFTP_HOST: 'sftp.example.com' }),
+      /are required with CLEARINGHOUSE_SFTP_HOST/
+    );
     const unpinned = {
       ...rawEnv,
       CLEARINGHOUSE_SFTP_HOST: 'sftp.example.com',
@@ -99,5 +102,88 @@ describe('worker parseConfig', () => {
     assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_DOWNLOAD_PATHS: 'outbound' }));
     assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_CLAIM_EXTENSION: 'xtxt' }));
     assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_POLL_MINUTES: '60' }));
+  });
+
+  const sftp = {
+    ...rawEnv,
+    CLEARINGHOUSE_SFTP_HOST: ' sftp.example.com ',
+    CLEARINGHOUSE_SFTP_PORT: '2222',
+    CLEARINGHOUSE_SFTP_USERNAME: 'agency',
+    CLEARINGHOUSE_SFTP_PASSWORD: 'secret',
+    CLEARINGHOUSE_SFTP_HOST_KEY: ` ${HOST_KEY} `
+  };
+
+  it('defaults a connection to the root folders, .txt files, deleting downloads and no realtime URL', () => {
+    assert.deepEqual(clearinghouseOf(parseConfig(sftp)), {
+      host: 'sftp.example.com',
+      port: 2222,
+      username: 'agency',
+      password: 'secret',
+      hostKey: HOST_KEY,
+      uploadPath: '/',
+      downloadPaths: ['/'],
+      extensions: { claims: '.txt', eligibility: '.txt', claimStatus: '.txt' },
+      afterDownload: 'delete',
+      realtimeUrl: null
+    });
+  });
+
+  it('reads the upload folder, kept downloads and the status extension, trimming paths', () => {
+    const on = clearinghouseOf(
+      parseConfig({
+        ...sftp,
+        CLEARINGHOUSE_UPLOAD_PATH: ' /inbound ',
+        CLEARINGHOUSE_DOWNLOAD_PATHS: '/outbound,,',
+        CLEARINGHOUSE_STATUS_EXTENSION: '.277',
+        CLEARINGHOUSE_AFTER_DOWNLOAD: 'keep'
+      })
+    );
+    assert.deepEqual(
+      [on?.uploadPath, on?.downloadPaths, on?.extensions.claimStatus, on?.afterDownload],
+      ['/inbound', ['/outbound'], '.277', 'keep']
+    );
+  });
+
+  it('leaves the connection off for a blank host and needs every credential for a set one', () => {
+    assert.equal(clearinghouseOf(parseConfig({ ...rawEnv, CLEARINGHOUSE_SFTP_HOST: '  ' })), null);
+    for (const missing of ['CLEARINGHOUSE_SFTP_USERNAME', 'CLEARINGHOUSE_SFTP_PASSWORD']) {
+      assert.throws(
+        () => parseConfig({ ...sftp, [missing]: '' }),
+        /CLEARINGHOUSE_SFTP_USERNAME, CLEARINGHOUSE_SFTP_PASSWORD and CLEARINGHOUSE_SFTP_HOST_KEY are required with CLEARINGHOUSE_SFTP_HOST/
+      );
+    }
+  });
+
+  it('rejects out-of-range ports, timeouts, utilization and folders, and accepts the bounds', () => {
+    for (const bad of [
+      { CLEARINGHOUSE_SFTP_PORT: '0' },
+      { CLEARINGHOUSE_SFTP_PORT: '65536' },
+      { CLEARINGHOUSE_REALTIME_TIMEOUT_SECONDS: '301' },
+      { CLEARINGHOUSE_POLL_MINUTES: '0' },
+      { CLEARINGHOUSE_UPLOAD_PATH: 'inbound' },
+      { CLEARINGHOUSE_DOWNLOAD_PATHS: ' , ' },
+      { CLEARINGHOUSE_AFTER_DOWNLOAD: 'archive' },
+      { WORKER_MAX_EVENT_LOOP_UTILIZATION: '0.05' }
+    ]) {
+      assert.throws(
+        () => parseConfig({ ...sftp, ...bad }),
+        { name: 'ValiError' },
+        JSON.stringify(bad)
+      );
+    }
+    const edge = parseConfig({
+      ...sftp,
+      CLEARINGHOUSE_REALTIME_TIMEOUT_SECONDS: '300',
+      CLEARINGHOUSE_POLL_MINUTES: '59',
+      WORKER_MAX_EVENT_LOOP_UTILIZATION: '0.1'
+    });
+    assert.deepEqual(
+      [
+        edge.CLEARINGHOUSE_REALTIME_TIMEOUT_SECONDS,
+        edge.CLEARINGHOUSE_POLL_MINUTES,
+        edge.WORKER_MAX_EVENT_LOOP_UTILIZATION
+      ],
+      [300, 59, 0.1]
+    );
   });
 });

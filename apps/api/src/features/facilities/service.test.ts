@@ -15,41 +15,56 @@ const input = {
   contractNote: null
 };
 
+const failing = (code: string) =>
+  createFacilityService({
+    db: createRecordingDb(() => {
+      throw Object.assign(new Error('pg'), { code });
+    }).db
+  });
+
+const NOT_FOUND = { ok: false, failure: { code: 'not_found', message: 'Facility not found' } };
+
+const TAKEN = {
+  ok: false,
+  failure: { code: 'conflict', message: 'A facility named Sunrise SNF already exists' }
+};
+
 describe('facility service', () => {
-  it('creates, finds, updates and deletes facilities, refusing duplicate names', async () => {
-    const found = createRecordingDb(() => [{ id: 'f1' }]);
-    const service = createFacilityService({ db: found.db });
-    assert.deepEqual(await service.create('t', input), { ok: true, value: { id: 'f1' } });
-    assert.deepEqual(await service.find('t', 'f1'), {
+  it('searches, creates, finds, updates and deletes agency facilities', async () => {
+    const { db, queries } = createRecordingDb(() => [{ id: 'f1', total: '1' }]);
+    const service = createFacilityService({ db });
+    assert.deepEqual(
+      await service.search('t-1', { page: 1, pageSize: 25, sort: 'name', dir: 'asc' }),
+      {
+        ok: true,
+        value: { items: [{ id: 'f1' }], total: 1, page: 1, pageSize: 25 }
+      }
+    );
+    assert.deepEqual(await service.create('t-1', input), { ok: true, value: { id: 'f1' } });
+    assert.deepEqual(await service.find('t-1', 'f1'), {
       ok: true,
-      value: { facility: { id: 'f1' } }
+      value: { facility: { id: 'f1', total: '1' } }
     });
-    assert.deepEqual(await service.update('t', 'f1', input), { ok: true, value: { id: 'f1' } });
-    assert.deepEqual(await service.remove('t', 'f1'), { ok: true, value: { id: 'f1' } });
-    const none = createFacilityService({ db: createRecordingDb(() => []).db });
-    assert.deepEqual(await none.create('t', input), {
-      ok: false,
-      failure: { code: 'conflict', message: 'A facility named Sunrise SNF already exists' }
-    });
-    for (const res of [
-      await none.find('t', 'f1'),
-      await none.update('t', 'f1', input),
-      await none.remove('t', 'f1')
-    ]) {
-      assert.equal(res.ok ? 'ok' : res.failure.code, 'not_found');
-    }
-    const clash = createFacilityService({
-      db: createRecordingDb(() => {
-        throw Object.assign(new Error('duplicate'), { code: '23505' });
-      }).db
-    });
-    assert.equal((await clash.update('t', 'f1', input)).ok, false);
-    const used = createFacilityService({
-      db: createRecordingDb(() => {
-        throw Object.assign(new Error('still referenced'), { code: '23503' });
-      }).db
-    });
-    assert.deepEqual(await used.remove('t', 'f1'), {
+    assert.deepEqual(await service.update('t-1', 'f1', input), { ok: true, value: { id: 'f1' } });
+    assert.deepEqual(await service.remove('t-1', 'f1'), { ok: true, value: { id: 'f1' } });
+    assert.ok(queries.every((q) => q.parameters.includes('t-1')));
+  });
+
+  it('reports facilities outside the agency as not found', async () => {
+    const service = createFacilityService({ db: createRecordingDb(() => []).db });
+    assert.deepEqual(await service.find('t-1', 'f1'), NOT_FOUND);
+    assert.deepEqual(await service.update('t-1', 'f1', input), NOT_FOUND);
+    assert.deepEqual(await service.remove('t-1', 'f1'), NOT_FOUND);
+  });
+
+  it('refuses a name another agency facility already has', async () => {
+    const service = createFacilityService({ db: createRecordingDb(() => []).db });
+    assert.deepEqual(await service.create('t-1', input), TAKEN);
+    assert.deepEqual(await failing('23505').update('t-1', 'f1', input), TAKEN);
+  });
+
+  it('keeps a facility that claims or invoices still point to', async () => {
+    assert.deepEqual(await failing('23503').remove('t-1', 'f1'), {
       ok: false,
       failure: {
         code: 'conflict',
@@ -57,10 +72,12 @@ describe('facility service', () => {
           'This facility is responsible for claims or has been invoiced, so it cannot be deleted'
       }
     });
-    assert.equal(
-      (await none.search('t', { page: 1, pageSize: 25, sort: 'name', dir: 'asc' })).ok,
-      true
-    );
+  });
+
+  it('lets other database errors surface', async () => {
+    const broken = failing('57014');
+    await assert.rejects(broken.update('t-1', 'f1', input), { code: '57014' });
+    await assert.rejects(broken.remove('t-1', 'f1'), { code: '57014' });
   });
 });
 

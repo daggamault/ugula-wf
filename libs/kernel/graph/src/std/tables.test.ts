@@ -79,9 +79,19 @@ describe('table nodes', () => {
       (await run('std.table.lookup', { keys: ['2223001', 'x', null] }, config)).outputs.values,
       ['Emergent', 'Unknown', 'Unknown']
     );
-    await assert.rejects(() =>
-      run('std.table.lookup', {}, { rows: [...config.rows, ...config.rows] })
+    await assert.rejects(
+      () => run('std.table.lookup', {}, { rows: [...config.rows, ...config.rows] }),
+      /Each key can appear once/
     );
+  });
+
+  it('gives the value a listed key holds even when it is empty', async () => {
+    const config = { rows: [{ key: 'a', value: null }], fallback: 'F' };
+    assert.deepEqual((await run('std.table.lookup', { key: 'a' }, config)).outputs, {
+      value: null,
+      found: true,
+      values: []
+    });
   });
 
   it('outputs the first matching rule, every rule that held, or otherwise', async () => {
@@ -122,14 +132,18 @@ describe('table nodes', () => {
   });
 
   it('rejects rules on undeclared inputs or outputs', async () => {
-    await assert.rejects(() =>
-      run(
-        'std.table.decide',
-        {},
-        { ...LEVELS, rules: [{ label: 'x', when: { nope: { op: 'empty' } } }] }
-      )
+    const undeclared = /may only test the inputs and set the outputs the table declares/;
+    for (const config of [
+      { ...LEVELS, rules: [{ label: 'x', when: { nope: { op: 'empty' } } }] },
+      { ...LEVELS, rules: [{ label: 'x', when: {}, set: { nope: 1 } }] },
+      { ...LEVELS, otherwise: { nope: 1 } }
+    ]) {
+      await assert.rejects(() => run('std.table.decide', {}, config), undeclared);
+    }
+    await assert.rejects(
+      () => run('std.table.decide', {}, { ...LEVELS, rules: [{ label: ' ', when: {} }] }),
+      /Invalid length/
     );
-    await assert.rejects(() => run('std.table.decide', {}, { ...LEVELS, otherwise: { nope: 1 } }));
     await assert.rejects(
       () => run('std.table.decide', {}, { ...LEVELS, outputs: [{ name: 'rule', type: 'string' }] }),
       /do not name outputs rule/
@@ -192,7 +206,10 @@ describe('shared tables', () => {
       run('std.table.lookup', {}, { table: { key: 'billing.codes' } }),
       /billing\.codes/
     );
-    await assert.rejects(run('std.table.lookup', {}, { table: { key: 'Bad Key' } }));
+    await assert.rejects(
+      run('std.table.lookup', {}, { table: { key: 'Bad Key' } }),
+      /Use a dotted lowercase table key/
+    );
   });
 
   it('lists the tables a graph references and fingerprints their fields', () => {
@@ -216,6 +233,38 @@ describe('shared tables', () => {
     assert.equal(
       tableFits(node('std.list.where', { table: { key: 'k' } }), { type: 'integer', rows: [] }),
       true
+    );
+    assert.equal(tableFits(node('std.table.lookup', null), { rows: [] }), false);
+    assert.equal(
+      tableFits(node('std.table.lookup', { table: { key: 'k' } }), { type: 'string', rows: [] }),
+      true
+    );
+    assert.equal(
+      tableFits(node('std.table.lookup', { type: 'integer', table: { key: 'k' } }), { rows: [] }),
+      false
+    );
+    assert.equal(tableRefOf(node('std.table.lookup', { table: 'billing.codes' })), null);
+    assert.deepEqual(tableRefOf(node('std.list.where', { table: { key: 'billing.codes' } })), {
+      kind: 'lookup',
+      key: 'billing.codes'
+    });
+  });
+
+  it('keeps a reference when the table resolved is of another kind', () => {
+    const inlined = inlineTables(graph, () => ({ kind: 'lookup', definition: LEVELS }));
+    assert.equal(inlined.nodes[0], graph.nodes[0]);
+    const bare = inlineTables(graph, (key) =>
+      key === 'billing.level'
+        ? { kind: 'decide', definition: { inputs: LEVELS.inputs, outputs: LEVELS.outputs } }
+        : { kind: 'lookup', definition: { type: 'string' } }
+    );
+    assert.deepEqual(
+      bare.nodes.map((n) => n.config),
+      [
+        { inputs: LEVELS.inputs, outputs: LEVELS.outputs, rules: [] },
+        { type: 'string', rows: [] },
+        { rows: [] }
+      ]
     );
   });
 

@@ -26,9 +26,11 @@ const setup = (row: Record<string, unknown> | undefined, updated = true) => {
   const boss: RunQueueClient = { insert: async (_n, batch) => void jobs.push(...batch) };
   const { publish, events: publishAfter } = recordAnnouncements();
   const stored: string[] = [];
+  const contentTypes: string[] = [];
   const blobs = {
     putBytes: async (key: string, body: Uint8Array, contentType: string) => {
       stored.push(key);
+      contentTypes.push(contentType);
       return { bucket: 'ugula', key, size: body.byteLength, contentType };
     }
   };
@@ -37,12 +39,13 @@ const setup = (row: Record<string, unknown> | undefined, updated = true) => {
     jobs,
     queries,
     publishAfter,
-    stored
+    stored,
+    contentTypes
   };
 };
 
 describe('task service', () => {
-  it('refuses to claim, release or complete a task another user is working', async () => {
+  it('refuses to claim, release or complete tasks that are gone, closed or worked by another user', async () => {
     const theirs = setup(task({ assignee_id: 'u2' }), false);
     const refused = {
       ok: false,
@@ -62,7 +65,20 @@ describe('task service', () => {
     );
     assert.equal(theirs.jobs.length, 0);
     const gone = setup(undefined, false);
-    assert.equal((await gone.service.release('t', 't1', 'u1')).ok, false);
+    assert.deepEqual(await gone.service.release('t', 't1', 'u1'), {
+      ok: false,
+      failure: { code: 'not_found', message: 'Task not found' }
+    });
+    assert.deepEqual(gone.publishAfter, []);
+    const raced = setup(task(), false);
+    assert.deepEqual(await raced.service.release('t', 't1', 'u1'), {
+      ok: false,
+      failure: { code: 'conflict', message: 'Task is already closed' }
+    });
+    assert.deepEqual(await setup(undefined).service.claim('t', 't1', 'u1', []), {
+      ok: false,
+      failure: { code: 'not_found', message: 'Task not found' }
+    });
     const done = setup(task({ status: 'completed' }), false);
     assert.deepEqual(await done.service.claim('t', 't1', 'u1', []), {
       ok: false,
@@ -105,6 +121,13 @@ describe('task service', () => {
       { type: 'skip', pin: 'then', outputs: { x: 1 } }
     );
     assert.deepEqual(
+      jobFor({ ...base, kind: 'fault' }, 'u1', {
+        outcome: 'skip',
+        values: { pin: 3, outputs: 'x' }
+      }).command,
+      { type: 'skip', pin: null, outputs: {} }
+    );
+    assert.deepEqual(
       jobFor({ ...base, kind: 'fault' }, 'u1', { outcome: 'cancel', values: {} }).command,
       { type: 'cancel' }
     );
@@ -143,10 +166,39 @@ describe('task service', () => {
       await service.complete('t', 'u1', 't1', { outcome: 'approve', values: { note: 'ok' } }, []),
       { ok: true, value: { status: 'completed' } }
     );
-    assert.equal(jobs.length, 1);
+    assert.deepEqual(
+      jobs.map((j) => (j as { data: unknown }).data),
+      [
+        {
+          runId: 'r1',
+          command: {
+            type: 'resume',
+            suspensionId: '7',
+            payload: { outcome: 'approve', values: { note: 'ok' }, userId: 'u1' }
+          }
+        }
+      ]
+    );
     assert.deepEqual(publishAfter, [
       { agencyId: 't', event: { kind: 'task', id: 't1', runId: null } }
     ]);
+  });
+
+  it('names each invalid field and enqueues nothing', async () => {
+    const { service, jobs, publishAfter } = setup(task());
+    assert.deepEqual(
+      await service.complete('t', 'u1', 't1', { outcome: 'approve', values: { note: 3 } }, []),
+      {
+        ok: false,
+        failure: {
+          code: 'invalid',
+          message: 'Some fields are invalid',
+          details: { fields: { note: 'expected string, got number' } }
+        }
+      }
+    );
+    assert.deepEqual(jobs, []);
+    assert.deepEqual(publishAfter, []);
   });
 
   it('rejects unknown, closed, invalid and raced completions', async () => {
@@ -168,7 +220,6 @@ describe('task service', () => {
     assert.equal(await status(undefined), 'not_found');
     assert.equal(await status(task({ status: 'completed' })), 'conflict');
     assert.equal(await status(task(), 'maybe'), 'invalid');
-    assert.equal(await status(task(), 'approve', { note: 3 }), 'invalid');
     assert.equal(
       await status(
         task({ kind: 'fault', fields: [{ name: 'pin', type: 'string' }] }),
@@ -195,7 +246,10 @@ describe('task service', () => {
         message: 'Completing this task needs the claims:approve permission'
       }
     });
-    assert.equal((await approve(['claims:approve'])).ok, true);
+    assert.deepEqual(await approve(['claims:approve']), {
+      ok: true,
+      value: { status: 'completed' }
+    });
     const rejected = setup(undefined);
     await rejected.service.complete('t', 'u1', 't1', { outcome: 'approve', values: {} }, []);
     assert.deepEqual(rejected.publishAfter, []);
@@ -211,7 +265,10 @@ describe('task service', () => {
       }
     });
     assert.ok(!approval.queries.some((q) => q.sql.startsWith('update "tasks"')));
-    assert.equal((await approval.service.claim('t', 't1', 'u1', ['claims:approve'])).ok, true);
+    assert.deepEqual(await approval.service.claim('t', 't1', 'u1', ['claims:approve']), {
+      ok: true,
+      value: { status: 'claimed' }
+    });
   });
 
   it('hands out next only tasks the user may complete', async () => {
@@ -271,7 +328,7 @@ describe('task service', () => {
       )
     );
     assert.ok(source?.sql.includes('coalesce("ir"."id", "c"."import_report_id") as "report_id"'));
-    assert.equal((await service.queues('t', 'u1')).ok, true);
+    assert.deepEqual(await service.queues('t', 'u1'), { ok: true, value: { queues: [task()] } });
   });
 
   it('lists a page of open tasks', async () => {
@@ -351,12 +408,20 @@ describe('task files', () => {
   });
 
   it('stores a file for an open task that asks for one, under the agency uploads', async () => {
-    const { service, stored } = setup(fileTask);
+    const { service, stored, contentTypes } = setup(fileTask);
     const res = await service.uploadFile('a1', 't1', 'u1', pdf(3));
-    assert.ok(res.ok);
-    assert.deepEqual(res.value.name, 'pcs.pdf');
     assert.match(stored[0] ?? '', /^imports\/a1\/uploads\/[0-9a-f-]{36}\/pcs\.pdf$/);
-    assert.deepEqual(res.value.file, { bucket: 'ugula', key: stored[0] });
+    assert.deepEqual(res, {
+      ok: true,
+      value: { file: { bucket: 'ugula', key: stored[0] }, name: 'pcs.pdf' }
+    });
+    assert.deepEqual(contentTypes, ['application/pdf']);
+  });
+
+  it('stores a file of unknown type as raw bytes', async () => {
+    const { service, contentTypes } = setup(fileTask);
+    await service.uploadFile('a1', 't1', 'u1', { ...pdf(3), type: '' });
+    assert.deepEqual(contentTypes, ['application/octet-stream']);
   });
 
   it('refuses files for tasks that take none, closed or taken tasks, and empty or large files', async () => {
@@ -365,6 +430,7 @@ describe('task files', () => {
       return res.ok ? 'ok' : res.failure.message;
     };
     assert.equal(await message(task()), 'This task takes no files');
+    assert.equal(await message({ ...fileTask, kind: 'fault' }), 'This task takes no files');
     assert.equal(await message(undefined), 'Task not found');
     assert.equal(await message({ ...fileTask, status: 'completed' }), 'Task is already closed');
     assert.equal(

@@ -90,11 +90,48 @@ describe('createNemsisNodes', () => {
     });
     const file = { bucket: 'ugula', key: 'in/big.xml' };
     const res = await run(split, { file });
-    assert.ok(peak > 1 && peak < total);
+    assert.equal(peak, 16);
     assert.deepEqual(
       ((res.outputs.reports ?? []) as { key: string }[]).map((r) => r.key),
       Array.from({ length: total }, (_, i) => reportKey(file, i))
     );
+  });
+
+  it('records an empty file as no reports', async () => {
+    const { store, blobs, recorded } = memoryStore();
+    blobs.set('in/empty.xml', '<EMSDataSet><Header/></EMSDataSet>');
+    const [split] = createNemsisNodes(store);
+    const res = await run(split, { file: { bucket: 'ugula', key: 'in/empty.xml' } });
+    assert.deepEqual(res.outputs, { reports: [], count: 0 });
+    assert.deepEqual(recorded, [{ file: 'in/empty.xml', reports: [] }]);
+  });
+
+  it('refuses a stored file without a bucket or key', async () => {
+    const [split, readReport] = createNemsisNodes(memoryStore().store);
+    await assert.rejects(
+      () => run(split, { file: { bucket: '', key: 'in/file.xml' } }),
+      /A stored file needs a bucket and key/
+    );
+    await assert.rejects(
+      () => run(readReport, { report: { bucket: 'ugula', key: '' } }),
+      /A stored file needs a bucket and key/
+    );
+  });
+
+  it('reads a report without city codes without looking up places', async () => {
+    const { store, blobs } = memoryStore();
+    blobs.set('r.json', { eRecord: { 'eRecord.01': 'C' } });
+    const lookups: string[][] = [];
+    const [, readReport] = createNemsisNodes({
+      ...store,
+      findPlaces: async (codes) => {
+        lookups.push(codes);
+        return {};
+      }
+    });
+    const res = await run(readReport, { report: { bucket: 'ugula', key: 'r.json' } });
+    assert.equal((res.outputs.pcr as { pcrNumber: string }).pcrNumber, 'C');
+    assert.deepEqual(lookups, []);
   });
 
   it('reads a report with its GNIS city codes resolved to place names', async () => {
@@ -120,6 +157,10 @@ describe('createNemsisNodes', () => {
     );
     await assert.rejects(
       () => run(nodes[0], { file: { bucket: 'ugula', key: 'in/file.xml' } }),
+      /only the worker provides/
+    );
+    await assert.rejects(
+      () => run(nodes[1], { report: { bucket: 'ugula', key: 'r.json' } }),
       /only the worker provides/
     );
     await assert.rejects(

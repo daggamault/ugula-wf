@@ -26,6 +26,7 @@ describe('values', () => {
 
   it('returns trimmed required text or faults with the message', () => {
     assert.equal(requiredText(' c1 ', 'No claim'), 'c1');
-    assert.throws(() => requiredText(' ', 'No claim'), /No claim/);
+    assert.throws(() => requiredText(' ', 'No claim'), /^Error: No claim$/);
+    assert.throws(() => requiredText(7, 'No claim'), /^Error: No claim$/);
   });
 });

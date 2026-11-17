@@ -5,13 +5,20 @@ import { BUILT_IN_ROLES, canGrant, isUserAdmin, USER_ADMIN_PERMISSIONS } from '.
 
 const role = (name: string) => BUILT_IN_ROLES.find((r) => r.name === name)?.permissions ?? [];
 
-describe('roles', () => {
+const lacks = (name: string) => PERMISSIONS.filter((p) => !role(name).includes(p));
+
+const ALL_READS = PERMISSIONS.filter((p) => p.endsWith(':read'));
+
+describe('canGrant', () => {
   it('grants only permissions the granter holds', () => {
     assert.equal(canGrant(['claims:read', 'claims:update'], ['claims:read']), true);
     assert.equal(canGrant(['claims:read'], ['claims:read', 'claims:update']), false);
+    assert.equal(canGrant([], ['claims:read']), false);
     assert.equal(canGrant([], []), true);
   });
+});
 
+describe('isUserAdmin', () => {
   it('treats a user as an admin only with every users permission', () => {
     assert.deepEqual(USER_ADMIN_PERMISSIONS, [
       'users:create',
@@ -20,42 +27,71 @@ describe('roles', () => {
       'users:delete'
     ]);
     assert.equal(isUserAdmin(USER_ADMIN_PERMISSIONS), true);
+    assert.equal(isUserAdmin(PERMISSIONS), true);
     assert.equal(isUserAdmin(['users:create', 'users:read', 'users:update']), false);
+    assert.equal(isUserAdmin([]), false);
   });
+});
 
-  it('ships built-in roles of shrinking reach, each with valid unique permissions', () => {
+describe('BUILT_IN_ROLES', () => {
+  it('ships four roles, each with unique permissions', () => {
     assert.deepEqual(
       BUILT_IN_ROLES.map((r) => r.name),
       ['Admin', 'Billing Manager', 'Biller', 'Viewer']
     );
     for (const r of BUILT_IN_ROLES) {
       assert.equal(new Set(r.permissions).size, r.permissions.length, r.name);
-      assert.ok(canGrant(PERMISSIONS, r.permissions), r.name);
     }
+  });
+
+  it('gives the admin every permission', () => {
     assert.deepEqual(role('Admin'), PERMISSIONS);
-    assert.ok(canGrant(role('Billing Manager'), role('Biller')));
-    assert.ok(role('Viewer').every((p) => p.endsWith(':read')));
-    assert.ok(canGrant(role('Biller'), role('Viewer')));
   });
 
-  it('lets a billing manager customize rules but not manage workflows or users', () => {
-    const manager = role('Billing Manager');
-    assert.ok(manager.includes('workflows:update') && manager.includes('claims:update'));
-    assert.ok(!manager.includes('workflows:manage'));
-    assert.equal(isUserAdmin(manager), false);
-    assert.ok(!role('Biller').includes('workflows:update'));
+  it('lets a billing manager run billing and customize rules, but not manage workflows, users, roles or settings', () => {
+    assert.deepEqual(lacks('Billing Manager'), [
+      'settings:update',
+      'users:create',
+      'users:update',
+      'users:delete',
+      'roles:create',
+      'roles:update',
+      'roles:delete',
+      'workflows:manage'
+    ]);
+    assert.equal(isUserAdmin(role('Billing Manager')), false);
   });
 
-  it('lets every role see facilities and billing managers, not billers, change them', () => {
-    for (const r of BUILT_IN_ROLES) assert.ok(r.permissions.includes('facilities:read'), r.name);
-    assert.ok(role('Billing Manager').includes('facilities:update'));
-    assert.ok(!role('Biller').includes('facilities:update'));
-    assert.ok(role('Billing Manager').includes('runs:update'));
-    assert.ok(!role('Biller').includes('runs:create'));
+  it('lets a biller work claims and imports and only read the setup', () => {
+    assert.deepEqual(role('Biller'), [
+      'patients:read',
+      'imports:create',
+      'imports:read',
+      'claims:read',
+      'claims:update',
+      'tasks:read',
+      'tasks:update',
+      'payer_files:create',
+      'payer_files:read',
+      'settings:read',
+      'users:read',
+      'roles:read',
+      'payers:read',
+      'facilities:read',
+      'fees:read',
+      'reports:read',
+      'workflows:read',
+      'runs:read'
+    ]);
   });
 
-  it('lets billing managers, not billers, approve refunds, write-offs and collections', () => {
-    assert.ok(role('Billing Manager').includes('claims:approve'));
-    assert.ok(!role('Biller').includes('claims:approve'));
+  it('lets a viewer read everything and change nothing', () => {
+    assert.deepEqual([...role('Viewer')].sort(), [...ALL_READS].sort());
+  });
+
+  it('shrinks in reach from admin to viewer', () => {
+    assert.equal(canGrant(role('Admin'), role('Billing Manager')), true);
+    assert.equal(canGrant(role('Billing Manager'), role('Biller')), true);
+    assert.equal(canGrant(role('Biller'), role('Viewer')), true);
   });
 });

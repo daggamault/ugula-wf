@@ -30,6 +30,36 @@ describe('overloadOf', () => {
       null
     );
   });
+
+  it('allows a sample exactly at a limit and checks event loop, then heap, then memory', () => {
+    assert.equal(
+      overloadOf({ eventLoop: 0.9, heapBytes: megabytes(1000), rssBytes: megabytes(2000) }, limits),
+      null
+    );
+    assert.equal(
+      overloadOf(
+        { eventLoop: 0.95, heapBytes: megabytes(1200), rssBytes: megabytes(2500) },
+        limits
+      ),
+      'event loop 95% over 90%'
+    );
+    assert.equal(
+      overloadOf({ ...calm, heapBytes: megabytes(1200), rssBytes: megabytes(2500) }, limits),
+      'heap 1200 MB over 1000 MB'
+    );
+  });
+
+  it('scales every limit by the ratio', () => {
+    assert.equal(overloadOf({ ...calm, eventLoop: 0.85 }, limits, 0.9), 'event loop 85% over 81%');
+    assert.equal(
+      overloadOf({ ...calm, heapBytes: megabytes(950) }, limits, 0.9),
+      'heap 950 MB over 900 MB'
+    );
+    assert.equal(
+      overloadOf({ ...calm, rssBytes: megabytes(1900) }, limits, 0.9),
+      'memory 1900 MB over 1800 MB'
+    );
+  });
 });
 
 describe('createLoadGate', () => {
@@ -37,8 +67,14 @@ describe('createLoadGate', () => {
     const samples = [0.5, 0.95, 0.85, 0.8, 0.85].map((eventLoop) => ({ ...calm, eventLoop }));
     const gate = createLoadGate(() => samples.shift() ?? calm, limits);
     assert.deepEqual(
-      [gate(), gate(), gate(), gate(), gate()].map((g) => g.open),
-      [true, false, false, true, true]
+      [gate(), gate(), gate(), gate(), gate()],
+      [
+        { open: true, reason: null },
+        { open: false, reason: 'event loop 95% over 90%' },
+        { open: false, reason: 'event loop 85% over 81%' },
+        { open: true, reason: null },
+        { open: true, reason: null }
+      ]
     );
   });
 });

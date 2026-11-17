@@ -10,31 +10,69 @@ const graph = (n: number): GraphDef => ({
   edges: []
 });
 
-describe('history', () => {
-  it('undoes and redoes snapshots, clearing redo on a new edit', () => {
-    const h1 = recorded(emptyHistory, graph(0), 1000);
-    const h2 = recorded(h1, graph(1), 5000);
-    const back = undone(h2, graph(2));
+describe('recorded', () => {
+  it('keeps the graph from before an edit and when it was made', () => {
+    assert.deepEqual(recorded(emptyHistory, graph(0), 1000), {
+      past: [graph(0)],
+      future: [],
+      at: 1000
+    });
+  });
+
+  it('keeps edits apart once the pause after the last one is long enough', () => {
+    const first = recorded(emptyHistory, graph(0), 1000);
+    assert.deepEqual(recorded(first, graph(1), 1000 + COALESCE_MS).past, [graph(0), graph(1)]);
+  });
+
+  it('folds quick edits such as typing into one step', () => {
+    const first = recorded(emptyHistory, graph(0), 1000);
+    assert.deepEqual(recorded(first, graph(1), 1000 + COALESCE_MS - 1), {
+      past: [graph(0)],
+      future: [],
+      at: 1000 + COALESCE_MS - 1
+    });
+  });
+
+  it('clears what could be redone', () => {
+    const back = undone(recorded(emptyHistory, graph(0), 1000), graph(1));
     assert.ok(back);
-    assert.deepEqual(back.def, graph(1));
-    const forward = redone(back.history, back.def);
-    assert.deepEqual(forward?.def, graph(2));
-    assert.equal(recorded(back.history, graph(1), 9000).future.length, 0);
-    assert.equal(undone(emptyHistory, graph(0)), null);
-    assert.equal(redone(emptyHistory, graph(0)), null);
+    assert.deepEqual(recorded(back.history, graph(0), 9000).future, []);
   });
 
-  it('coalesces quick edits such as typing into one step', () => {
-    const h1 = recorded(emptyHistory, graph(0), 1000);
-    const h2 = recorded(h1, graph(1), 1000 + COALESCE_MS - 1);
-    assert.equal(h2.past.length, 1);
-    assert.equal(recorded(h2, graph(2), 1000 + 3 * COALESCE_MS).past.length, 2);
-  });
-
-  it('keeps a capped number of steps', () => {
+  it('keeps only the most recent steps', () => {
     let h = emptyHistory;
     for (let i = 0; i < HISTORY_LIMIT + 5; i++) h = recorded(h, graph(i), i * COALESCE_MS * 2);
     assert.equal(h.past.length, HISTORY_LIMIT);
     assert.deepEqual(h.past[0], graph(5));
+    assert.deepEqual(h.past.at(-1), graph(HISTORY_LIMIT + 4));
+  });
+});
+
+describe('undone', () => {
+  it('goes back to the last graph and lets the current one be redone', () => {
+    const h = recorded(recorded(emptyHistory, graph(0), 1000), graph(1), 5000);
+    assert.deepEqual(undone(h, graph(2)), {
+      def: graph(1),
+      history: { past: [graph(0)], future: [graph(2)], at: 0 }
+    });
+  });
+
+  it('has nothing to undo without a past', () => {
+    assert.equal(undone(emptyHistory, graph(0)), null);
+  });
+});
+
+describe('redone', () => {
+  it('goes forward to the graph that was undone', () => {
+    const back = undone(recorded(emptyHistory, graph(0), 1000), graph(1));
+    assert.ok(back);
+    assert.deepEqual(redone(back.history, back.def), {
+      def: graph(1),
+      history: { past: [graph(0)], future: [], at: 0 }
+    });
+  });
+
+  it('has nothing to redo without a future', () => {
+    assert.equal(redone(emptyHistory, graph(0)), null);
   });
 });

@@ -37,6 +37,7 @@ const batch = {
 const setup = ({
   rows = [claimRow(C1)],
   withProfile = true,
+  profileRow = profile as Record<string, unknown>,
   controlNumbers = true,
   published = true
 } = {}) => {
@@ -45,7 +46,7 @@ const setup = ({
       return controlNumbers ? [{ control_number: 7 }] : [];
     }
     if (q.sql.includes('from "claim_batches"')) return q.parameters.includes(C1) ? [batch] : [];
-    if (q.sql.includes('from "billing_profiles"')) return withProfile ? [profile] : [];
+    if (q.sql.includes('from "billing_profiles"')) return withProfile ? [profileRow] : [];
     if (q.sql.includes('from "claims" as "c"')) return rows;
     if (q.sql.includes('cross join lateral'))
       return published ? [{ id: 'v-check', key: 'billing.check-eligibility', version: 1 }] : [];
@@ -115,7 +116,7 @@ describe('eligibility requests', () => {
       value: { runId: 'check-1' }
     });
     const run = queries.find((q) => q.sql.startsWith('insert into "workflow_runs"'));
-    assert.ok(run?.parameters.some((p) => String(p).includes('"force":true')));
+    assert.ok(run?.parameters.includes(JSON.stringify({ claimId: C1, force: true })));
     assert.deepEqual(jobs, [
       { data: { runId: 'check-1', command: { type: 'advance' } }, priority: 2 }
     ]);
@@ -124,28 +125,59 @@ describe('eligibility requests', () => {
       rows: [{ ...claimRow(C1), ...unlisted }]
     }).service.checkEligibility('t1', C1);
     assert.match(nobody.ok ? '' : nobody.failure.message, /member ID/);
-    const missing = await setup({ rows: [] }).service.checkEligibility('t1', C1);
-    assert.equal(missing.ok ? null : missing.failure.code, 'not_found');
-    const unpublished = await setup({
-      rows: [{ ...claimRow(C1), ...row }],
-      published: false
-    }).service.checkEligibility('t1', C1);
-    assert.match(unpublished.ok ? '' : unpublished.failure.message, /not published/);
+    assert.deepEqual(await setup({ rows: [] }).service.checkEligibility('t1', C1), {
+      ok: false,
+      failure: { code: 'not_found', message: 'Claim not found' }
+    });
+    const unpublished = setup({ rows: [{ ...claimRow(C1), ...row }], published: false });
+    assert.deepEqual(await unpublished.service.checkEligibility('t1', C1), {
+      ok: false,
+      failure: { code: 'not_found', message: 'The check eligibility workflow is not published' }
+    });
+    assert.deepEqual(unpublished.jobs, []);
   });
 
   it('builds a 270 with a fresh control number, or says what is missing', async () => {
     const built = await setup({
       rows: [{ ...claimRow(C1), ...row }]
     }).service.eligibility('t1', C1);
-    assert.ok(built.ok && built.value.file.includes('ST*270*0001*005010X279A1'));
-    assert.ok(built.ok && built.value.name === 'eligibility-1001-7.x12');
-    const none = await setup({ rows: [] }).service.eligibility('t1', C1);
-    assert.equal(none.ok ? null : none.failure.code, 'not_found');
-    const noProfile = await setup({ withProfile: false }).service.eligibility('t1', C1);
-    assert.equal(noProfile.ok ? null : noProfile.failure.code, 'invalid');
+    assert.ok(built.ok);
+    assert.equal(built.value.name, 'eligibility-1001-7.x12');
+    assert.deepEqual(built.value.payers, ['Medicare', 'Blue Plan']);
+    assert.match(built.value.file, /ST\*270\*0001\*005010X279A1/);
+    assert.deepEqual(await setup({ rows: [] }).service.eligibility('t1', C1), {
+      ok: false,
+      failure: { code: 'not_found', message: 'Claim not found' }
+    });
+    assert.deepEqual(await setup({ withProfile: false }).service.eligibility('t1', C1), {
+      ok: false,
+      failure: {
+        code: 'invalid',
+        message: 'Add a billing profile in Settings',
+        details: { issues: ['Add a billing profile in Settings'] }
+      }
+    });
   });
 
-  it('refuses a claim no payer can be asked about and a agency out of control numbers', async () => {
+  it('refuses to build a 270 from an incomplete billing profile and lists every problem', async () => {
+    const { service, queries } = setup({
+      rows: [{ ...claimRow(C1), ...row }],
+      profileRow: { ...profile, npi: '1234567890', submitter_id: null }
+    });
+    assert.deepEqual(await service.eligibility('t1', C1), {
+      ok: false,
+      failure: {
+        code: 'invalid',
+        message: 'The billing NPI is invalid',
+        details: {
+          issues: ['The billing NPI is invalid', 'Add the clearinghouse submitter ID in Settings']
+        }
+      }
+    });
+    assert.ok(!queries.some((q) => q.sql.startsWith('update "billing_profiles"')));
+  });
+
+  it('refuses a claim no payer can be asked about and an agency out of control numbers', async () => {
     const unlisted = { ...row, coverages: row.coverages.slice(2) };
     const nobody = await setup({ rows: [{ ...claimRow(C1), ...unlisted }] }).service.eligibility(
       't1',
@@ -157,19 +189,22 @@ describe('eligibility requests', () => {
       rows: [{ ...claimRow(C1), ...row }],
       controlNumbers: false
     }).service.eligibility('t1', C1);
-    assert.equal(exhausted.ok ? null : exhausted.failure.code, 'conflict');
+    assert.deepEqual(exhausted, {
+      ok: false,
+      failure: { code: 'conflict', message: 'Batch control numbers are used up; contact support' }
+    });
   });
 
   it('looks up the claim, profile and control number of the agency only', async () => {
     const { service, queries } = setup({ rows: [{ ...claimRow(C1), ...row }] });
-    assert.ok((await service.eligibility('t1', C1)).ok);
+    assert.equal((await service.eligibility('t1', C1)).ok, true);
     assert.equal(queries.length, 3);
     for (const q of queries) assert.ok(q.parameters.includes('t1'), q.sql);
   });
 });
 
 describe('batch documents', () => {
-  it('downloads a agency batch file named after its key, or reports it missing', async () => {
+  it('downloads an agency batch file named after its key, or reports it missing', async () => {
     const { service, queries, fetched } = setup();
     assert.deepEqual(await service.document('t1', C1), {
       ok: true,
@@ -181,8 +216,10 @@ describe('batch documents', () => {
     });
     assert.deepEqual(fetched, [batch.document]);
     assert.deepEqual(queries[0]?.parameters, ['t1', C1]);
-    const missing = await service.document('t1', C2);
-    assert.equal(missing.ok ? null : missing.failure.code, 'not_found');
+    assert.deepEqual(await service.document('t1', C2), {
+      ok: false,
+      failure: { code: 'not_found', message: 'Batch not found' }
+    });
     assert.equal(fetched.length, 1);
   });
 });

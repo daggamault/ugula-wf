@@ -138,29 +138,50 @@ describe('settleRun', () => {
       exits: ['then', 'failed'],
       outputs: ['status']
     });
-    assert.deepEqual(calls.saved[0]?.error, error);
-    assert.equal(calls.tasks[0]?.kind, 'fault');
-    assert.equal(calls.tasks[0]?.permission, 'runs:update');
-    assert.equal(calls.tasks[0]?.waitId, 'fault:9');
-    assert.equal(calls.tasks[0]?.title, 'Stuck at Call payer');
-    assert.equal(calls.tasks[0]?.subject, 'PCR-1 · Jane Doe');
-    assert.equal(
-      calls.tasks[0]?.instructions,
-      'Call payer: Payer service answered 503.\n\nRetry once the cause is fixed.'
-    );
-    assert.deepEqual(calls.tasks[0]?.fields, [
+    assert.deepEqual(calls.saved, [
       {
-        name: 'pin',
-        type: 'string',
-        label: 'Continue from',
-        options: [
-          { value: 'then', label: 'then' },
-          { value: 'failed', label: 'failed' }
-        ]
+        status: 'faulted',
+        state: state({ status: 'faulted', fault: { cursor, error } }),
+        error
       }
     ]);
-    assert.deepEqual(calls.tasks[0]?.outcomes, FAULT_OUTCOMES);
-    assert.deepEqual(Object.keys(calls.tasks[0]?.hints ?? {}), FAULT_OUTCOMES);
+    assert.deepEqual(calls.tasks, [
+      {
+        agencyId: 't-1',
+        runId: 'run-1',
+        waitId: 'fault:9',
+        kind: 'fault',
+        queue: 'exceptions',
+        title: 'Stuck at Call payer',
+        subject: 'PCR-1 · Jane Doe',
+        summary: 'payer service answered 503',
+        instructions: 'Call payer: Payer service answered 503.\n\nRetry once the cause is fixed.',
+        context: { runId: 'run-1', node: 'Call payer', error },
+        fields: [
+          {
+            name: 'pin',
+            type: 'string',
+            label: 'Continue from',
+            options: [
+              { value: 'then', label: 'then' },
+              { value: 'failed', label: 'failed' }
+            ]
+          }
+        ],
+        outcomes: FAULT_OUTCOMES,
+        hints: {
+          retry: 'Runs the failed step again, after you fix what it names.',
+          skip: 'Skips the failed step with the outputs below and continues from the chosen pin.',
+          cancel: 'Stops the run for good. The claim stays as it is now.'
+        },
+        defaults: null,
+        priority: 0,
+        assigneeId: null,
+        dueAt: null,
+        permission: 'runs:update'
+      }
+    ]);
+    assert.deepEqual(calls.jobs, []);
   });
 
   it('asks only for the decisions that apply to the failed node', () => {
@@ -178,6 +199,12 @@ describe('settleRun', () => {
     assert.equal(
       readableError('duplicate key value violates unique constraint "x"'),
       'It would duplicate a record that already exists.'
+    );
+    assert.equal(
+      readableError(
+        'insert or update on table "claims" violates foreign key constraint "claims_payer_id_fkey"'
+      ),
+      'It refers to a record that does not exist.'
     );
     assert.equal(
       readableError('null value in column "payer_name" of relation "claim_coverages"'),
@@ -586,6 +613,12 @@ describe('notifyParent', () => {
       child,
       none
     );
+    await notifyParent(
+      fakeTx({ parent: { status: 'suspended', waitId: '8', kind: 'workflow' } }).tx,
+      child,
+      none
+    );
+    await notifyParent(fakeTx().tx, child, none);
     await notifyParent(fakeTx().tx, run, none);
     assert.deepEqual(none, []);
   });
@@ -597,14 +630,41 @@ describe('stallRun and cancelRun', () => {
       parent: { status: 'suspended', waitId: '7', kind: 'workflow' }
     });
     await stallRun(tx, child, null, 'bad input', '2026-01-01T00:00:00.000Z');
-    assert.equal(calls.saved[0]?.status, 'faulted');
-    assert.deepEqual(calls.saved[0]?.error, { message: 'bad input' });
-    assert.equal(calls.tasks[0]?.kind, 'fault');
-    assert.equal(calls.tasks[0]?.permission, 'runs:update');
-    assert.equal(calls.tasks[0]?.waitId, 'fault:0:2026-01-01T00:00:00.000Z');
-    assert.deepEqual(calls.tasks[0]?.outcomes, ['retry', 'cancel']);
-    assert.equal(calls.tasks[0]?.instructions, 'Bad input.\n\nRetry once the cause is fixed.');
+    assert.deepEqual(calls.saved, [
+      { status: 'faulted', state: null, error: { message: 'bad input' } }
+    ]);
+    assert.deepEqual(calls.tasks, [
+      {
+        agencyId: 't-1',
+        runId: 'child-a',
+        waitId: 'fault:0:2026-01-01T00:00:00.000Z',
+        kind: 'fault',
+        queue: 'exceptions',
+        title: 'Could not continue',
+        subject: null,
+        summary: 'Bad input.',
+        instructions: 'Bad input.\n\nRetry once the cause is fixed.',
+        context: { runId: 'child-a', error: { message: 'bad input' } },
+        fields: [],
+        outcomes: ['retry', 'cancel'],
+        hints: {
+          retry: 'Tries to continue the run again, after you fix what it names.',
+          cancel: 'Stops the run for good. The claim stays as it is now.'
+        },
+        defaults: null,
+        priority: 0,
+        assigneeId: null,
+        dueAt: null,
+        permission: 'runs:update'
+      }
+    ]);
     assert.deepEqual(calls.jobs, []);
+  });
+
+  it('keys a stall task by the step the saved state reached', async () => {
+    const { tx, calls } = fakeTx();
+    await stallRun(tx, run, state({ seq: 12 }), 'bad input', '2026-01-01T00:00:00.000Z');
+    assert.equal(calls.tasks[0]?.waitId, 'fault:12:2026-01-01T00:00:00.000Z');
   });
 
   it('starts draft recovery when an Encounter to Claim run ends early, and only then', async () => {
@@ -615,9 +675,7 @@ describe('stallRun and cancelRun', () => {
     const cancelled = fakeTx({ version: 'v-rec', recovered: ['rec-1'] });
     await cancelRun(cancelled.tx, encounter);
     assert.deepEqual(cancelled.calls.recoveries, [['run-1', 'v-rec', 'The run was cancelled']]);
-    assert.ok(
-      cancelled.calls.jobs.some((j) => j.runId === 'rec-1' && j.command.type === 'advance')
-    );
+    assert.deepEqual(cancelled.calls.jobs, [{ runId: 'rec-1', command: { type: 'advance' } }]);
     const failed = fakeTx({ version: 'v-rec' });
     await settleRun(failed.tx, encounter, waiting('nope' as never, {}), []);
     assert.equal(failed.calls.saved[0]?.status, 'failed');

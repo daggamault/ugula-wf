@@ -77,3 +77,35 @@ describe('coalescePublish', () => {
     assert.deepEqual(sent, ['c1', 'c2']);
   });
 });
+
+describe('coalescePublish keys and flushing', () => {
+  it('coalesces task events without a run apart from those of a run, and per agency', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const sent: [string, LiveEvent][] = [];
+    const live = coalescePublish(async (a, e) => void sent.push([a, e]));
+    await live.publish('t', { kind: 'task', id: 'k1', runId: null });
+    await live.publish('t', { kind: 'task', id: 'k1', runId: 'r1' });
+    await live.publish('t', { kind: 'task', id: 'k1', runId: null });
+    await live.publish('u', { kind: 'task', id: 'k1', runId: null });
+    await live.publish('t', { kind: 'claim', id: 'k1' });
+    await live.flush();
+    assert.deepEqual(sent, [
+      ['t', { kind: 'task', id: 'k1', runId: null }],
+      ['t', { kind: 'task', id: 'k1', runId: 'r1' }],
+      ['u', { kind: 'task', id: 'k1', runId: null }],
+      ['t', { kind: 'claim', id: 'k1' }]
+    ]);
+  });
+
+  it('flushes nothing when nothing is pending and opens a window for the next event', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const sent: string[] = [];
+    const live = coalescePublish(async (_, e) => void sent.push(String(e.id)), 10);
+    await live.flush();
+    assert.deepEqual(sent, []);
+    await live.publish('t', { kind: 'import', id: 'i1' });
+    t.mock.timers.tick(10);
+    await settle();
+    assert.deepEqual(sent, ['i1']);
+  });
+});

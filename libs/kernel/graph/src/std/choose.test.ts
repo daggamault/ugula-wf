@@ -50,10 +50,31 @@ describe('choose value', () => {
     );
   });
 
+  it('matches a key that is not text by its text', async () => {
+    const config = { mode: 'byCase', cases: [{ when: '1' }, { when: 'true' }] };
+    const inputs = { case1: 'one', case2: 'yes', otherwise: 'other' };
+    assert.deepEqual((await run({ ...inputs, key: 1 }, config)).outputs, { value: 'one' });
+    assert.deepEqual((await run({ ...inputs, key: true }, config)).outputs, { value: 'yes' });
+    assert.deepEqual((await run(inputs, config)).outputs, { value: 'other' });
+  });
+
   it('rejects a case that appears twice', async () => {
     await assert.rejects(
       run({ key: 'NH' }, { mode: 'byCase', cases: [{ when: 'NH' }, { when: 'NH' }] }),
       /Each case can appear once/
     );
+  });
+
+  it('allows from 1 to 20 options', async () => {
+    assert.equal((await run({}, { count: 20 })).signature.inputs.length, 20);
+    for (const count of [0, 21, 1.5]) await assert.rejects(run({}, { count }), /Invalid/);
+  });
+});
+
+describe('choose value summary', () => {
+  it('counts the options or lists the cases', () => {
+    assert.equal(choose?.summary?.({ mode: 'first', count: 3, cases: [] }), 'First filled in of 3');
+    assert.equal(choose?.summary?.(BY_STATE), 'NH, ME or otherwise');
+    assert.equal(choose?.summary?.({ mode: 'byCase', cases: [] }), null);
   });
 });

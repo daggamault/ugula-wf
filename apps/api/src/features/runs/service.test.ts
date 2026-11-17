@@ -76,46 +76,65 @@ describe('run service', () => {
   });
 
   it('fails to start when nothing is published', async () => {
-    const { db } = createRecordingDb();
+    const { db, queries } = createRecordingDb();
     const res = await createRunService({
       db,
       boss: recordingBoss().boss,
       blobs,
       maxBytes: 100
     }).start(scope, 'u1', 'g', 2, {});
-    assert.equal(codeOf(res), 'not_found');
+    assert.deepEqual(res, {
+      ok: false,
+      failure: { code: 'not_found', message: 'No published version to run' }
+    });
+    assert.ok(!queries.some((q) => q.sql.startsWith('insert')));
+  });
+
+  it('fails to start a built-in workflow when no version of it is in effect for the agency', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.includes('as req (key, version)')
+        ? []
+        : q.sql.startsWith('select')
+          ? [{ id: 'v1', version: 4, key: 'k', base: true }]
+          : [{ id: 'r1' }]
+    );
+    const { boss, jobs } = recordingBoss();
+    const res = await createRunService({ db, boss, blobs, maxBytes: 100 }).start(
+      scope,
+      'u1',
+      'g1',
+      4,
+      {}
+    );
+    assert.deepEqual(res, {
+      ok: false,
+      failure: { code: 'not_found', message: 'No published version to run' }
+    });
+    assert.ok(!queries.some((q) => q.sql.startsWith('insert')));
+    assert.deepEqual(jobs, []);
   });
 
   it('cancels only active runs', async () => {
     const withStatus = (status: string) => createRecordingDb(() => [{ id: 'r1', status }]).db;
     const { boss, jobs } = recordingBoss();
-    assert.equal(
-      codeOf(
-        await createRunService({ db: withStatus('suspended'), boss, blobs, maxBytes: 100 }).cancel(
-          't',
-          'r1'
-        )
-      ),
-      'ok'
+    const cancel = (db: ReturnType<typeof withStatus>) =>
+      createRunService({ db, boss, blobs, maxBytes: 100 }).cancel('t', 'r1');
+    assert.deepEqual(await cancel(withStatus('suspended')), {
+      ok: true,
+      value: { status: 'cancelling' }
+    });
+    assert.deepEqual(
+      jobs.map((j) => (j as { data: unknown }).data),
+      [{ runId: 'r1', command: { type: 'cancel' } }]
     );
-    assert.equal(
-      codeOf(
-        await createRunService({ db: withStatus('completed'), boss, blobs, maxBytes: 100 }).cancel(
-          't',
-          'r1'
-        )
-      ),
-      'conflict'
-    );
-    assert.equal(
-      codeOf(
-        await createRunService({ db: createRecordingDb().db, boss, blobs, maxBytes: 100 }).cancel(
-          't',
-          'r1'
-        )
-      ),
-      'not_found'
-    );
+    assert.deepEqual(await cancel(withStatus('completed')), {
+      ok: false,
+      failure: { code: 'conflict', message: 'Run already finished' }
+    });
+    assert.deepEqual(await cancel(createRecordingDb().db), {
+      ok: false,
+      failure: { code: 'not_found', message: 'Run not found' }
+    });
     assert.equal(jobs.length, 1);
   });
 
@@ -158,19 +177,20 @@ describe('run service', () => {
       await hidden.graphs('t', 'x'),
       await hidden.steps('t', 'x', { after: 0, limit: 1 })
     ]) {
-      assert.equal(codeOf(res), 'not_found');
+      assert.deepEqual(res, {
+        ok: false,
+        failure: { code: 'not_found', message: 'Run not found' }
+      });
     }
-    assert.equal(
-      codeOf(
-        await hidden.search('t', {
-          rootOnly: true,
-          page: 1,
-          pageSize: 25,
-          sort: 'started' as const,
-          dir: 'desc' as const
-        })
-      ),
-      'ok'
+    assert.deepEqual(
+      await hidden.search('t', {
+        rootOnly: true,
+        page: 1,
+        pageSize: 25,
+        sort: 'started' as const,
+        dir: 'desc' as const
+      }),
+      { ok: true, value: { items: [], total: 0, page: 1, pageSize: 25 } }
     );
   });
 });
@@ -190,12 +210,23 @@ describe('run input files', () => {
     });
     assert.ok(res.ok);
     assert.match(res.value.file.key, /^imports\/t-1\/uploads\/[0-9a-f-]{36}\/pcr\.xml$/);
-    assert.deepEqual([res.value.file.bucket, res.value.name], ['ugula', 'pcr.xml']);
+    assert.deepEqual(res.value, {
+      file: { bucket: 'ugula', key: res.value.file.key },
+      name: 'pcr.xml'
+    });
     assert.match(stored.at(-1) ?? '', / text\/xml 3$/);
+    const before = stored.length;
     const empty = await service.uploadFile('t-1', { name: 'a', type: '', bytes: new Uint8Array() });
-    assert.equal(codeOf(empty), 'invalid');
+    assert.deepEqual(empty, {
+      ok: false,
+      failure: { code: 'invalid', message: 'The file is empty' }
+    });
     const big = await service.uploadFile('t-1', { name: 'a', type: '', bytes: new Uint8Array(5) });
-    assert.equal(codeOf(big), 'invalid');
+    assert.deepEqual(big, {
+      ok: false,
+      failure: { code: 'invalid', message: 'The file is larger than 4 bytes' }
+    });
+    assert.equal(stored.length, before);
   });
 });
 

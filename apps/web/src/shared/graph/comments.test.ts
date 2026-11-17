@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ENTRY_TYPE, type GraphDef } from '@ugula/graph';
+import { ENTRY_TYPE, type GraphComment, type GraphDef } from '@ugula/graph';
 import {
   addComment,
   boundsOf,
@@ -9,6 +9,7 @@ import {
   commentsToFlow,
   framed,
   moveComments,
+  nextCommentId,
   removeComments,
   updateComment
 } from './comments.ts';
@@ -20,53 +21,162 @@ const def: GraphDef = {
   edges: []
 };
 
-describe('comments', () => {
-  it('adds a frame around the selection, or at the centre when nothing is selected', () => {
-    const around = boundsOf([
-      { x: 0, y: 0, width: 100, height: 50 },
-      { x: 200, y: 100, width: 100, height: 50 }
-    ]);
-    assert.deepEqual(around, { x: -40, y: -88, width: 380, height: 278 });
-    assert.equal(boundsOf([]), null);
-    const one = addComment(def, around, { x: 0, y: 0 });
-    assert.equal(one.id, 'comment1');
-    assert.deepEqual(one.def.comments?.[0]?.size, { width: 380, height: 278 });
-    const two = addComment(one.def, null, { x: 500, y: 500 });
-    assert.equal(two.id, 'comment2');
-    assert.deepEqual(two.def.comments?.[1]?.position, { x: 260, y: 360 });
+const pricing: GraphComment = {
+  id: 'comment1',
+  text: 'Pricing',
+  position: { x: 10, y: 20 },
+  size: { width: 300, height: 200 }
+};
+
+const withPricing: GraphDef = { ...def, comments: [pricing] };
+
+describe('commentNodeId and commentIdOf', () => {
+  it('round-trip a comment id through its canvas node id', () => {
+    assert.equal(commentNodeId('comment1'), 'comment:comment1');
+    assert.equal(commentIdOf('comment:comment1'), 'comment1');
   });
 
-  it('updates, moves and removes frames, dropping the list once empty', () => {
-    const { def: one } = addComment(def, null, { x: 0, y: 0 });
-    const renamed = updateComment(one, 'comment1', { text: 'Pricing', color: 'info' });
-    assert.deepEqual(
-      [renamed.comments?.[0]?.text, renamed.comments?.[0]?.color],
-      ['Pricing', 'info']
-    );
-    const moved = moveComments(renamed, { comment1: { x: 10.6, y: 2.2 } });
-    assert.deepEqual(moved.comments?.[0]?.position, { x: 11, y: 2 });
-    assert.equal('comments' in removeComments(moved, ['comment1']), false);
-    assert.equal(removeComments(def, ['x']), def);
-    assert.equal(moveComments(def, {}), def);
-  });
-
-  it('maps frames to canvas nodes behind the graph', () => {
-    const { def: one } = addComment(def, null, { x: 0, y: 0 });
-    const [node] = commentsToFlow(one);
-    assert.equal(node?.id, commentNodeId('comment1'));
-    assert.equal(node?.zIndex, -2);
-    assert.equal(node?.width, 480);
-    assert.equal(commentIdOf(node?.id ?? ''), 'comment1');
+  it('tell other nodes from comments', () => {
     assert.equal(commentIdOf('add1'), null);
   });
+});
 
-  it('finds the nodes that sit wholly inside a frame', () => {
-    const frame = { x: 0, y: 0, width: 300, height: 200 };
-    const ids = framed(frame, [
-      { id: 'in', x: 10, y: 10, width: 100, height: 50 },
-      { id: 'edge', x: 250, y: 10, width: 100, height: 50 },
-      { id: 'out', x: 400, y: 400, width: 10, height: 10 }
+describe('nextCommentId', () => {
+  it('takes the first free number', () => {
+    assert.equal(nextCommentId(new Set()), 'comment1');
+    assert.equal(nextCommentId(new Set(['comment1', 'comment3'])), 'comment2');
+  });
+});
+
+describe('boundsOf', () => {
+  it('frames the rects with padding and room for the title', () => {
+    assert.deepEqual(
+      boundsOf([
+        { x: 0, y: 0, width: 100, height: 50 },
+        { x: 200, y: 100, width: 100, height: 50 }
+      ]),
+      { x: -40, y: -88, width: 380, height: 278 }
+    );
+  });
+
+  it('frames nothing without rects', () => {
+    assert.equal(boundsOf([]), null);
+  });
+});
+
+describe('addComment', () => {
+  it('frames the given rect, rounded', () => {
+    assert.deepEqual(
+      addComment(def, { x: 1.4, y: 2.6, width: 99.5, height: 50.2 }, { x: 0, y: 0 }),
+      {
+        id: 'comment1',
+        def: {
+          ...def,
+          comments: [
+            {
+              id: 'comment1',
+              text: 'Comment',
+              position: { x: 1, y: 3 },
+              size: { width: 100, height: 50 }
+            }
+          ]
+        }
+      }
+    );
+  });
+
+  it('centres a default frame on the given point without a rect', () => {
+    const { id, def: next } = addComment(withPricing, null, { x: 500, y: 500 });
+    assert.equal(id, 'comment2');
+    assert.deepEqual(next.comments, [
+      pricing,
+      {
+        id: 'comment2',
+        text: 'Comment',
+        position: { x: 260, y: 360 },
+        size: { width: 480, height: 280 }
+      }
     ]);
-    assert.deepEqual(ids, ['in']);
+  });
+});
+
+describe('updateComment', () => {
+  it('changes only the named comment', () => {
+    const other = { ...pricing, id: 'comment2' };
+    const next = updateComment({ ...def, comments: [pricing, other] }, 'comment1', {
+      text: 'Fees',
+      color: 'info'
+    });
+    assert.deepEqual(next.comments, [{ ...pricing, text: 'Fees', color: 'info' }, other]);
+  });
+});
+
+describe('moveComments', () => {
+  it('moves the named comments to rounded positions', () => {
+    const other = { ...pricing, id: 'comment2' };
+    const next = moveComments(
+      { ...def, comments: [pricing, other] },
+      { comment1: { x: 10.6, y: 2.2 } }
+    );
+    assert.deepEqual(next.comments, [{ ...pricing, position: { x: 11, y: 2 } }, other]);
+  });
+
+  it('leaves a graph without comments as it is', () => {
+    assert.ok(moveComments(def, { comment1: { x: 1, y: 1 } }) === def);
+  });
+});
+
+describe('removeComments', () => {
+  it('removes the named comments', () => {
+    const other = { ...pricing, id: 'comment2' };
+    assert.deepEqual(
+      removeComments({ ...def, comments: [pricing, other] }, ['comment1']).comments,
+      [other]
+    );
+  });
+
+  it('drops the comment list once it is empty', () => {
+    assert.deepEqual(removeComments(withPricing, ['comment1']), def);
+  });
+
+  it('leaves a graph without comments as it is', () => {
+    assert.ok(removeComments(def, ['comment1']) === def);
+  });
+});
+
+describe('commentsToFlow', () => {
+  it('draws each comment as a canvas node behind the graph, dragged by its handle', () => {
+    assert.deepEqual(commentsToFlow(withPricing), [
+      {
+        id: 'comment:comment1',
+        type: 'comment',
+        position: { x: 10, y: 20 },
+        width: 300,
+        height: 200,
+        zIndex: -2,
+        className: 'pointer-events-none!',
+        dragHandle: '.comment-handle',
+        data: { comment: pricing }
+      }
+    ]);
+  });
+
+  it('draws nothing for a graph without comments', () => {
+    assert.deepEqual(commentsToFlow(def), []);
+  });
+});
+
+describe('framed', () => {
+  it('finds the rects wholly inside the frame, edges included', () => {
+    const frame = { x: 0, y: 0, width: 300, height: 200 };
+    assert.deepEqual(
+      framed(frame, [
+        { id: 'in', x: 10, y: 10, width: 100, height: 50 },
+        { id: 'flush', x: 0, y: 0, width: 300, height: 200 },
+        { id: 'across', x: 250, y: 10, width: 100, height: 50 },
+        { id: 'out', x: 400, y: 400, width: 10, height: 10 }
+      ]),
+      ['in', 'flush']
+    );
   });
 });

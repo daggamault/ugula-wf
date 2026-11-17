@@ -12,6 +12,56 @@ describe('isPublicAddress', () => {
       assert.equal(isPublicAddress(ip), false, ip);
     }
   });
+
+  it('draws the private ranges at their exact edges', () => {
+    const edges: [string, boolean][] = [
+      ['172.15.255.255', true],
+      ['172.16.0.1', false],
+      ['172.31.255.255', false],
+      ['172.32.0.1', true],
+      ['100.63.255.255', true],
+      ['100.64.0.1', false],
+      ['100.127.255.255', false],
+      ['100.128.0.0', true],
+      ['198.17.255.255', true],
+      ['198.18.0.1', false],
+      ['198.19.255.255', false],
+      ['198.20.0.0', true],
+      ['192.0.0.8', false],
+      ['192.0.2.1', true],
+      ['0.1.2.3', false],
+      ['223.255.255.255', true],
+      ['224.0.0.1', false],
+      ['255.255.255.255', false]
+    ];
+    assert.deepEqual(
+      edges.map(([ip]) => [ip, isPublicAddress(ip)]),
+      edges
+    );
+  });
+
+  it('treats IPv6 unique-local, link-local, multicast and unspecified addresses as private', () => {
+    const cases: [string, boolean][] = [
+      ['::', false],
+      ['fc00::1', false],
+      ['fbff::1', true],
+      ['febf::1', false],
+      ['fec0::1', true],
+      ['ff02::1', false],
+      ['::ffff:192.168.1.1', false],
+      ['64:ff9b::808:808', true],
+      ['64:ff9b::a00:1', false]
+    ];
+    assert.deepEqual(
+      cases.map(([ip]) => [ip, isPublicAddress(ip)]),
+      cases
+    );
+  });
+
+  it('rejects text that is not an address', () => {
+    for (const ip of ['1.2.3', '256.1.1.1', 'example.com', ''])
+      assert.equal(isPublicAddress(ip), false, ip);
+  });
 });
 
 describe('http request node', () => {
@@ -196,6 +246,50 @@ describe('http request node', () => {
       /redirected more than 5 times/
     );
     assert.equal(hops, 6);
+  });
+
+  it('reads an empty answer as empty text, or nothing when it says JSON', async () => {
+    const answer = (res: Response) => {
+      const [node] = createHttpNodes({ fetch: async () => res });
+      if (!node) throw new Error('missing node');
+      return invokeNode(node, { inputs: { url: 'https://x.test' } });
+    };
+    assert.deepEqual((await answer(new Response(null, { status: 204 }))).outputs, {
+      status: 204,
+      headers: {},
+      body: ''
+    });
+    const json = await answer(
+      new Response('', { headers: { 'content-type': 'application/json; charset=utf-8' } })
+    );
+    assert.deepEqual(json.outputs.body, null);
+  });
+
+  it('returns a redirect status without a location as the answer', async () => {
+    let calls = 0;
+    const [node] = createHttpNodes({
+      fetch: async () => {
+        calls++;
+        return new Response(null, { status: 304 });
+      }
+    });
+    if (!node) throw new Error('missing node');
+    const { outputs } = await invokeNode(node, {
+      config: { failOnError: false },
+      inputs: { url: 'https://x.test' }
+    });
+    assert.deepEqual([outputs.status, calls], [304, 1]);
+  });
+
+  it('cuts the error message to 500 characters', async () => {
+    const [node] = createHttpNodes({
+      fetch: async () => new Response('x'.repeat(1000), { status: 500 })
+    });
+    if (!node) throw new Error('missing node');
+    await assert.rejects(
+      () => invokeNode(node, { inputs: { url: 'https://x.test' } }),
+      (e: Error) => e.message === `HTTP 500: ${'x'.repeat(490)}`
+    );
   });
 
   it('caps the response size and times out slow servers', async () => {

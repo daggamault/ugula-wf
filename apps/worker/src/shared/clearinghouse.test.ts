@@ -1,16 +1,15 @@
 import assert from 'node:assert/strict';
-import { randomBytes } from 'node:crypto';
 import { describe, it } from 'node:test';
 import { MOCK_HOST_KEY, WAYSTAR_EXTENSIONS } from '@ugula/billing';
 import { openSecret, parseKeyring, sealSecret } from '@ugula/clearinghouse';
 import { createRecordingDb } from '@ugula/db/testing';
 import { type ConnectionSettings, connect, createConnections, sourceOf } from './clearinghouse.ts';
 
-const newKey = () => randomBytes(32).toString('base64');
+const keyOf = (fill: number) => Buffer.alloc(32, fill).toString('base64');
 
-const oldKey = newKey();
+const oldKey = keyOf(1);
 
-const keyring = parseKeyring(newKey(), [oldKey]);
+const keyring = parseKeyring(keyOf(2), [oldKey]);
 
 const fallback: ConnectionSettings = {
   host: 'localhost',
@@ -48,14 +47,19 @@ const row = (
   receiver_id: 'WAYSTAR'
 });
 
-const setup = (rows: ReturnType<typeof row>[], withFallback = true, withKey = true) => {
+const setup = (
+  rows: ReturnType<typeof row>[],
+  withFallback = true,
+  withKey = true,
+  profiles = [{ submitter_id: 'sub09', receiver_id: 'zirmed' }]
+) => {
   const { db, queries } = createRecordingDb((q) => {
     if (q.sql.startsWith('select') && q.sql.includes('from "clearinghouse_connections"')) {
       const agency = q.parameters.find((p) => typeof p === 'string' && p.startsWith('t'));
       return agency ? rows.filter((r) => r.agency_id === agency) : rows;
     }
     if (q.sql.includes('from "billing_profiles"')) {
-      return [{ submitter_id: 'sub09', receiver_id: 'zirmed' }];
+      return profiles;
     }
     return [];
   });
@@ -79,7 +83,7 @@ const setup = (rows: ReturnType<typeof row>[], withFallback = true, withKey = tr
     fetch: fetchVia('server'),
     agencyFetch: fetchVia('public'),
     realtimeTimeoutMs: 1000,
-    now: () => new Date(),
+    now: () => new Date('2026-11-03T12:00:00Z'),
     report: (m) => reports.push(m)
   });
   return { connections, queries, reports, sent };
@@ -92,7 +96,7 @@ describe('connect', () => {
       receiverId: 'WAYSTAR',
       fetch,
       timeoutMs: 1000,
-      now: () => new Date()
+      now: () => new Date('2026-11-03T12:00:00Z')
     };
     const ch = connect(fallback, realtime);
     assert.ok(ch.checkEligibility && ch.checkClaimStatus);
@@ -171,8 +175,14 @@ describe('createConnections', () => {
     );
     await connections.pollTargets();
     const updates = queries.filter((q) => q.sql.startsWith('update "clearinghouse_connections"'));
-    assert.equal(updates.length, 1);
+    assert.deepEqual(
+      updates.map((q) => q.sql),
+      [
+        'update "clearinghouse_connections" set "sftp_secret" = $1 where "agency_id" = $2 and "sftp_secret" = $3'
+      ]
+    );
     const [sealed, agencyId, previous] = updates[0]?.parameters ?? [];
+
     assert.deepEqual([agencyId, previous], ['t1', stale]);
     assert.equal(openSecret(keyring, String(sealed), 't1'), 'pw');
     assert.ok(String(sealed).startsWith(`v1.${keyring.current.id}.`));
@@ -185,9 +195,49 @@ describe('createConnections', () => {
     const tampered = setup([row('t1', 'acme', { secret: sealSecret(keyring, 'pw', 't9') })], false);
     assert.deepEqual(await tampered.connections.pollTargets(), []);
     assert.equal(await tampered.connections.forAgency('t1'), null);
-    assert.match(tampered.reports[0] ?? '', /password of agency t1 cannot be opened/);
+    assert.deepEqual(tampered.reports, [
+      'Clearinghouse: the password of agency t1 cannot be opened',
+      'Clearinghouse: the password of agency t1 cannot be opened'
+    ]);
     const keyless = setup([row('t1', 'acme')], false, false);
     assert.deepEqual(await keyless.connections.pollTargets(), []);
-    assert.match(keyless.reports[0] ?? '', /CLEARINGHOUSE_SECRET_KEY is not set/);
+    assert.deepEqual(keyless.reports, [
+      'Clearinghouse: agency t1 has a connection, but CLEARINGHOUSE_SECRET_KEY is not set'
+    ]);
+  });
+
+  it('leaves a password sealed with a previous key alone when it cannot be opened, saying why', async () => {
+    const stale = sealSecret(parseKeyring(oldKey), 'pw', 't9');
+    const { connections, queries, reports } = setup([row('t1', 'acme', { secret: stale })], false);
+    assert.deepEqual(await connections.pollTargets(), []);
+    assert.deepEqual(
+      queries.filter((q) => q.sql.startsWith('update')),
+      []
+    );
+    assert.deepEqual(reports, [
+      'Clearinghouse: the password of agency t1 cannot be opened',
+      'Clearinghouse: the password of agency t1 cannot be opened'
+    ]);
+  });
+
+  it("looks up only the agency's own connection, and the server default checks in real time only for an agency with a billing profile", async () => {
+    const { connections, queries } = setup([], true, true, []);
+    const fallen = await connections.forAgency('t2');
+    assert.equal(fallen?.afterDownload, 'delete');
+    assert.equal(fallen?.checkEligibility, null);
+    assert.equal(fallen?.checkClaimStatus, null);
+    const [own, profile] = queries;
+    assert.ok(
+      own?.sql.endsWith(
+        'from "clearinghouse_connections" as "cc" left join "billing_profiles" as "b" on "b"."agency_id" = "cc"."agency_id" where "cc"."agency_id" = $1'
+      )
+    );
+    assert.deepEqual(own?.parameters, ['t2']);
+    assert.equal(
+      profile?.sql,
+      'select "submitter_id", "receiver_id" from "billing_profiles" where "agency_id" = $1'
+    );
+    assert.deepEqual(profile?.parameters, ['t2']);
+    assert.equal(queries.length, 2);
   });
 });

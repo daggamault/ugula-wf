@@ -39,6 +39,11 @@ describe('envelope', () => {
     assert.deepEqual(file.segments.at(-1), ['IEA', '1', '000000007']);
   });
 
+  it('defaults to the mock clearinghouse sending to the development agency', () => {
+    const [isa = []] = readX12(envelope(at, { functional: 'HB', version: 'V' }, [])).segments;
+    assert.deepEqual([isa[6], isa[8]], ['DEMOCH'.padEnd(15), 'DEVEMS01'.padEnd(15)]);
+  });
+
   it('strips delimiters and non-printable characters from values', () => {
     const text = envelope(at, { functional: 'HB', version: '005010X279A1' }, body);
     assert.ok(text.includes('BHT*0022*11*O B R N ~'));
@@ -57,9 +62,14 @@ describe('envelope', () => {
 });
 
 describe('envelope helpers', () => {
-  it('stamps dates and draws control numbers in range', () => {
+  it('stamps the time the file was created', () => {
     assert.deepEqual(stamp(at), { date: '20261103', time: '1234' });
-    const n = randomControl();
-    assert.ok(Number.isInteger(n) && n >= 1 && n < MAX_CONTROL_NUMBER);
+  });
+
+  it('draws control numbers from 1 to one below the maximum', (t) => {
+    t.mock.method(Math, 'random', () => 0);
+    assert.equal(randomControl(), 1);
+    t.mock.method(Math, 'random', () => 1 - Number.EPSILON);
+    assert.equal(randomControl(), MAX_CONTROL_NUMBER - 1);
   });
 });

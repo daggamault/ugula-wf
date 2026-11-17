@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { type GraphDef, INPUT_TYPE, type NodeInstance } from '@ugula/graph';
-import { createElement } from 'react';
+import { type GraphDef, INPUT_TYPE, type Json, type NodeInstance } from '@ugula/graph';
+import { createElement, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createCatalog } from '../../shared/graph/catalog.ts';
 import { testNodes } from '../../shared/testing.ts';
+import { render, screen, userEvent } from '../../shared/testing-dom.ts';
 import {
   ConfigEditor,
   NodeSettings,
@@ -45,6 +46,35 @@ describe('ConfigEditor', () => {
     assert.ok(html.includes('Settings as JSON') && html.includes('disabled=""'));
     assert.ok(html.includes('&quot;expression&quot;: &quot;1&quot;'));
   });
+
+  it('sends the settings once the JSON parses, and clears them when emptied', async () => {
+    const sent: unknown[] = [];
+    const Harness = () => {
+      const [config, setConfig] = useState<Json | undefined>({ expression: '1' });
+      return createElement(ConfigEditor, {
+        node: {
+          id: 'n1',
+          type: 'std.expr',
+          version: 1,
+          ...(config === undefined ? {} : { config })
+        },
+        editable: true,
+        onConfig: (next) => {
+          sent.push(next);
+          setConfig(next);
+        }
+      });
+    };
+    render(createElement(Harness));
+    const user = userEvent.setup();
+    const json = screen.getByRole('textbox', { name: 'Settings as JSON' });
+    await user.clear(json);
+    assert.deepEqual(sent, [undefined]);
+    await user.type(json, '{{"expression": "2"');
+    assert.deepEqual(sent, [undefined]);
+    await user.type(json, '}');
+    assert.deepEqual(sent, [undefined, { expression: '2' }]);
+  });
 });
 
 describe('NodeSettings', () => {
@@ -63,7 +93,24 @@ describe('NodeSettings', () => {
     assert.ok(!switched.includes('<textarea'));
   });
 
-  it('registers editors for formulas, tasks, workflows and names, and keeps the table editors', () => {
+  it('sends edits from the settings form for nodes without a dedicated editor', async () => {
+    const sent: unknown[] = [];
+    render(
+      createElement(NodeSettings, {
+        node: { id: 's', type: 'std.flow.switch', version: 1, config: { cases: ['paid'] } },
+        nodeId: 's',
+        config: { cases: ['paid'] },
+        editable: true,
+        onConfig: (config) => sent.push(config),
+        def,
+        catalog: createCatalog(testNodes)
+      })
+    );
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Add Case' }));
+    assert.deepEqual(sent, [{ cases: ['paid', ''] }]);
+  });
+
+  it('registers dedicated editors only for node types that exist', () => {
     assert.deepEqual(Object.keys(TABLE_EDITORS), ['std.table.lookup', 'std.table.decide']);
     for (const type of [
       ...Object.keys(TABLE_EDITORS),

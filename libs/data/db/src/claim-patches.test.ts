@@ -32,9 +32,15 @@ describe('applyClaimEdit', () => {
   it('logs the edit and changes nothing else when no field is given', async () => {
     const { db, queries } = createRecordingDb(logged);
     assert.equal(await applyClaimEdit(db, 't1', 'c1', empty, event), true);
-    assert.equal(queries.length, 1);
-    assert.match(queries[0]?.sql ?? '', /on conflict \("claim_id", "source_key"\) do nothing/);
-    assert.deepEqual(queries[0]?.parameters.slice(0, 3), ['t1', 'c1', 'edited']);
+    assert.deepEqual(
+      queries.map((q) => [q.sql, q.parameters]),
+      [
+        [
+          'insert into "claim_events" ("agency_id", "claim_id", "kind", "note", "created_by_id", "source_key") values ($1, $2, $3, $4, $5, $6) on conflict ("claim_id", "source_key") do nothing returning "id"',
+          ['t1', 'c1', 'edited', 'Claim data edited', null, 'run:1']
+        ]
+      ]
+    );
   });
 
   it('skips an edit already applied for its source key', async () => {
@@ -44,12 +50,20 @@ describe('applyClaimEdit', () => {
     assert.equal(queries.length, 1);
   });
 
-  it('applies each given field in set-based statements', async () => {
+  it('applies each given field in set-based statements, keeping eligibility only for the same insured', async () => {
     const { db, queries } = createRecordingDb(logged);
     const edit: ClaimEdit = {
       ...empty,
       serviceDate: '2026-10-01',
+      nonCoveredMiles: 2.5,
       originDestination: 'RH',
+      pickup: {
+        name: null,
+        addressLine: '9 Oak Ave',
+        city: 'Springfield',
+        state: 'IL',
+        postalCode: '62702'
+      },
       destination: {
         name: 'Mercy',
         addressLine: '1 Main St',
@@ -58,17 +72,17 @@ describe('applyClaimEdit', () => {
         postalCode: '62701'
       },
       patientAddress: { addressLine: '9 Oak', city: 'Springfield', state: 'IL', postalCode: null },
-      diagnoses: ['R079'],
+      diagnoses: ['R079', 'R51'],
       lines: [{ code: 'A0427', units: 1, unitCents: 90_000, totalCents: 90_000 }],
       coverages: [
         {
           coverageId: 'cov1',
-          payerId: null,
+          payerId: 'p9',
           memberId: 'M1',
-          groupId: null,
-          relationship: null,
-          insuredFirstName: null,
-          insuredLastName: null,
+          groupId: 'G1',
+          relationship: '01',
+          insuredFirstName: 'Ann',
+          insuredLastName: 'Doe',
           remove: false
         },
         {
@@ -88,31 +102,100 @@ describe('applyClaimEdit', () => {
         relationship: '18',
         insuredFirstName: null,
         insuredLastName: null
-      }
+      },
+      note: 'Fixed the PCR'
     };
-    assert.equal(await applyClaimEdit(db, 't1', 'c1', edit, event), true);
-    const sqls = queries.map((q) => q.sql);
-    const claim = sqls.find((s) => s.startsWith('update "claims"')) ?? '';
-    for (const column of ['service_date', 'origin_code', 'destination_name', 'total_cents']) {
-      assert.match(claim, new RegExp(`"${column}" = `));
-    }
-    assert.doesNotMatch(claim, /"level"|"pickup_city"/);
-    assert.ok(sqls.some((s) => s.startsWith('update "patients"')));
-    const cleared = sqls.findIndex((s) => s.startsWith('delete from "claim_diagnoses"'));
-    assert.ok(cleared >= 0 && sqls[cleared + 1]?.startsWith('insert into "claim_diagnoses"'));
-    assert.ok(sqls.some((s) => s.startsWith('insert into "claim_lines"')));
-    const coverages = sqls.find((s) => /update claim_coverages cc set\s+payer_id/.test(s)) ?? '';
-    for (const column of [
-      'eligibility',
-      'eligibility_note',
-      'eligibility_checked_at',
-      'eligibility_requested_at'
-    ]) {
-      assert.match(coverages, new RegExp(`${column} = case when .* then "cc"\\."${column}" end`));
-    }
-    assert.ok(sqls.some((s) => s.startsWith('delete from "claim_coverages"')));
-    assert.ok(sqls.some((s) => /row_number\(\) over/.test(s)));
-    assert.ok(sqls.some((s) => /insert into "claim_coverages".*select/s.test(s)));
+    assert.equal(
+      await applyClaimEdit(db, 't1', 'c1', edit, { sourceKey: 'run:1', createdBy: 'u1' }),
+      true
+    );
+    const sameInsured = (agency: string, column: string) =>
+      `case when coalesce((select p.id from payers p where p.id = v.payer_id and p.agency_id = ${agency}), cc.payer_id) is not distinct from cc.payer_id and lower(coalesce(v.member_id, cc.member_id, '')) = lower(coalesce(cc.member_id, '')) then "cc"."${column}" end`;
+    assert.deepEqual(
+      queries.map((q) => [q.sql, q.parameters]),
+      [
+        [
+          'insert into "claim_events" ("agency_id", "claim_id", "kind", "note", "created_by_id", "source_key") values ($1, $2, $3, $4, $5, $6) on conflict ("claim_id", "source_key") do nothing returning "id"',
+          ['t1', 'c1', 'edited', 'Fixed the PCR', 'u1', 'run:1']
+        ],
+        [
+          'update "claims" set "service_date" = $1, "non_covered_miles" = $2, "origin_code" = $3, "destination_code" = $4, "pickup_address_line" = $5, "pickup_city" = $6, "pickup_state" = $7, "pickup_postal_code" = $8, "destination_address_line" = $9, "destination_city" = $10, "destination_state" = $11, "destination_postal_code" = $12, "destination_name" = $13, "total_cents" = $14, "updated_at" = now() where "id" = $15',
+          [
+            '2026-10-01',
+            2.5,
+            'R',
+            'H',
+            '9 Oak Ave',
+            'Springfield',
+            'IL',
+            '62702',
+            '1 Main St',
+            'Springfield',
+            'IL',
+            '62701',
+            'Mercy',
+            90_000,
+            'c1'
+          ]
+        ],
+        [
+          'update "patients" set "address_line" = $1, "city" = $2, "state" = $3, "postal_code" = $4, "updated_at" = now() where "agency_id" = $5 and "id" = (select "patient_id" from "claims" where "id" = $6)',
+          ['9 Oak', 'Springfield', 'IL', null, 't1', 'c1']
+        ],
+        ['delete from "claim_diagnoses" where "claim_id" = $1', ['c1']],
+        [
+          'insert into "claim_diagnoses" ("claim_id", "position", "code") values ($1, $2, $3), ($4, $5, $6)',
+          ['c1', 1, 'R079', 'c1', 2, 'R51']
+        ],
+        ['delete from "claim_lines" where "claim_id" = $1', ['c1']],
+        [
+          'insert into "claim_lines" ("claim_id", "position", "code", "units", "unit_cents", "total_cents") values ($1, $2, $3, $4, $5, $6)',
+          ['c1', 1, 'A0427', 1, 90_000, 90_000]
+        ],
+        [
+          [
+            '',
+            '    update claim_coverages cc set',
+            '      payer_id = coalesce((select p.id from payers p where p.id = v.payer_id and p.agency_id = $1), cc.payer_id),',
+            '      member_id = coalesce(v.member_id, cc.member_id),',
+            `      eligibility = ${sameInsured('$2', 'eligibility')},`,
+            `      eligibility_note = ${sameInsured('$3', 'eligibility_note')},`,
+            `      eligibility_checked_at = ${sameInsured('$4', 'eligibility_checked_at')},`,
+            `      eligibility_requested_at = ${sameInsured('$5', 'eligibility_requested_at')},`,
+            '      group_id = coalesce(v.group_id, cc.group_id),',
+            '      relationship = coalesce(v.relationship, cc.relationship),',
+            '      insured_first_name = coalesce(v.insured_first_name, cc.insured_first_name),',
+            '      insured_last_name = coalesce(v.insured_last_name, cc.insured_last_name)',
+            '    from (values ($6::uuid, $7::uuid, $8::text, $9::text, $10::text, $11::text, $12::text)) as v (id, payer_id, member_id, group_id, relationship, insured_first_name, insured_last_name)',
+            '    where cc.id = v.id and cc.claim_id = $13'
+          ].join('\n'),
+          ['t1', 't1', 't1', 't1', 't1', 'cov1', 'p9', 'M1', 'G1', '01', 'Ann', 'Doe', 'c1']
+        ],
+        ['delete from "claim_coverages" where "claim_id" = $1 and "id" in ($2)', ['c1', 'cov2']],
+        [
+          [
+            '',
+            '    update claim_coverages cc set position = r.position',
+            '    from (',
+            '      select id, row_number() over (order by position) as position',
+            '      from claim_coverages where claim_id = $1',
+            '    ) r',
+            '    where cc.id = r.id and cc.position <> r.position'
+          ].join('\n'),
+          ['c1']
+        ],
+        [
+          'insert into "claim_coverages" ("agency_id", "claim_id", "position", "payer_name", "payer_id", "member_id", "relationship", "insured_first_name", "insured_last_name") select "p"."agency_id", $1::uuid as "claim_id", (select coalesce(max(position), 0) + 1 as "position" from "claim_coverages" where "claim_id" = $2) as "position", "p"."name", "p"."id", $3::text as "member_id", $4::text as "relationship", $5::text as "insured_first_name", $6::text as "insured_last_name" from "payers" as "p" where "p"."id" = $7 and "p"."agency_id" = $8',
+          ['c1', 'c1', 'M2', '18', null, null, 'p1', 't1']
+        ]
+      ]
+    );
+  });
+
+  it('leaves the diagnoses alone when none are sent', async () => {
+    const { db, queries } = createRecordingDb(logged);
+    await applyClaimEdit(db, 't1', 'c1', { ...empty, diagnoses: [] }, event);
+    assert.equal(queries.length, 1);
   });
 
   it('splits origin and destination codes, totals the lines and notes a biller signature', async () => {
@@ -183,15 +266,12 @@ describe('applyClaimEdit', () => {
   it('clears every line and zeroes the total when the lines are emptied', async () => {
     const { db, queries } = createRecordingDb(logged);
     await applyClaimEdit(db, 't1', 'c1', { ...empty, lines: [] }, event);
-    const sqls = queries.map((q) => q.sql);
-    assert.ok(sqls.some((s) => s.startsWith('delete from "claim_lines"')));
-    assert.equal(
-      sqls.some((s) => s.startsWith('insert into "claim_lines"')),
-      false
+    assert.deepEqual(
+      queries.slice(1).map((q) => [q.sql, q.parameters]),
+      [
+        ['update "claims" set "total_cents" = $1, "updated_at" = now() where "id" = $2', [0, 'c1']],
+        ['delete from "claim_lines" where "claim_id" = $1', ['c1']]
+      ]
     );
-    assert.deepEqual(queries.find((q) => q.sql.startsWith('update "claims"'))?.parameters, [
-      0,
-      'c1'
-    ]);
   });
 });

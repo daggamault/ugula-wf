@@ -51,19 +51,55 @@ describe('run routes', () => {
   it('start runs and accept no signals from users', async () => {
     const started = await request('/', { method: 'POST', body: JSON.stringify({ graphId: ID }) });
     assert.equal(started.status, 201);
+    assert.deepEqual(await started.json(), { id: 'r1', version: 1 });
     assert.deepEqual(calls.at(-1), [{ agencyId: 't-1' }, 'u-1', ID, undefined, {}]);
     const signal = await request('/signals', { method: 'POST', body: '{"name":"ack","key":"C1"}' });
     assert.equal(signal.status, 404);
   });
 
   it('serve run detail and the bundle and reject bad ids', async () => {
-    assert.equal((await request(`/${ID}`)).status, 200);
-    assert.equal((await request(`/${ID}/graphs`)).status, 200);
+    const detail = await request(`/${ID}`);
+    assert.deepEqual([detail.status, await detail.json()], [200, { run: { id: ID } }]);
+    assert.deepEqual(calls.at(-1), ['t-1', ID]);
+    const graphs = await request(`/${ID}/graphs`);
+    assert.deepEqual([graphs.status, await graphs.json()], [200, { graphs: [] }]);
+    assert.deepEqual(calls.at(-1), ['t-1', ID]);
     assert.equal((await request('/nope')).status, 400);
   });
 
   it('map cancel conflicts', async () => {
-    assert.equal((await request(`/${ID}/cancel`, { method: 'POST' })).status, 409);
+    const res = await request(`/${ID}/cancel`, { method: 'POST' });
+    assert.deepEqual([res.status, await res.json()], [409, { error: 'Run already finished' }]);
+  });
+
+  it('accept a cancel of an active run in the session agency', async () => {
+    const cancels: unknown[][] = [];
+    const accepting = withSession(
+      createRunRoutes({
+        ...service,
+        cancel: async (...args: unknown[]) => {
+          cancels.push(args);
+          return ok({ status: 'cancelling' });
+        }
+      } as unknown as RunService)
+    );
+    const res = await accepting(`/${ID}/cancel`, { method: 'POST' });
+    assert.deepEqual([res.status, await res.json()], [202, { status: 'cancelling' }]);
+    assert.deepEqual(cancels, [['t-1', ID]]);
+  });
+
+  it('map runs missing from the agency to 404', async () => {
+    const missing = withSession(
+      createRunRoutes({
+        ...service,
+        find: async () => fail('not_found', 'Run not found'),
+        steps: async () => fail('not_found', 'Run not found')
+      } as unknown as RunService)
+    );
+    for (const path of [`/${ID}`, `/${ID}/steps`]) {
+      const res = await missing(path);
+      assert.deepEqual([res.status, await res.json()], [404, { error: 'Run not found' }], path);
+    }
   });
 });
 

@@ -127,8 +127,10 @@ describe('claim coverages', () => {
     });
     assert.equal(sqlOf(queries, 'insert into "claim_lines"').length, 0);
     const [coverages] = sqlOf(queries, 'insert into "claim_coverages"');
-    assert.ok(coverages?.parameters.includes('M1') && coverages.parameters.includes('M2'));
-    assert.ok(!coverages?.parameters.includes('DUP'));
+    assert.deepEqual(coverages?.parameters, [
+      ...[ID, 'r1', 1, 'Medicare', 'r1', 'medicare', 'MCR', 'M1', null, '18', null, null],
+      ...[ID, 'r1', 2, 'Medicare', 'r1', 'medicare', 'MCR', 'M2', null, '18', null, null]
+    ]);
     const [diagnoses] = sqlOf(queries, 'insert into "claim_diagnoses"');
     assert.deepEqual(diagnoses?.parameters, [ID, 1, 'R079', ID, 2, 'I10']);
   });
@@ -159,6 +161,21 @@ describe('claim coverages', () => {
           { id: 'd', position: 5 }
         ]
       }
+    );
+  });
+
+  it('keeps a payer without a member ID on the active row without one before a same-named row', () => {
+    const [, bcbs] = claim.coverages;
+    assert.ok(bcbs);
+    assert.deepEqual(
+      planCoverages(
+        [
+          { id: 'x', payer_name: 'BCBS', member_id: 'old' },
+          { id: 'y', payer_name: 'bcbs', member_id: null }
+        ],
+        [bcbs]
+      ),
+      { rows: [{ coverage: bcbs, position: 1, id: 'y' }], trailing: [{ id: 'x', position: 2 }] }
     );
   });
 
@@ -215,11 +232,35 @@ describe('claim coverages', () => {
     assert.ok(
       kept?.sql.includes('eligibility = case when cc.payer_id is not distinct from v.payer_id')
     );
-    assert.deepEqual(kept?.parameters.slice(0, 3), [KEPT, 1, 'Medicare']);
-    assert.ok(kept?.parameters.includes('M1'));
+    assert.deepEqual(kept?.parameters, [
+      KEPT,
+      1,
+      'Medicare',
+      'r1',
+      'medicare',
+      'MCR',
+      'M1',
+      null,
+      '18',
+      null,
+      null,
+      ID
+    ]);
     const [added] = sqlOf(queries, 'insert into "claim_coverages"');
-    assert.ok(added?.parameters.includes('0195f2a4-0000-7000-8000-00000000000b'));
-    assert.ok(!added?.parameters.includes('MCR'));
+    assert.deepEqual(added?.parameters, [
+      ID,
+      'r1',
+      2,
+      'BCBS',
+      'r1',
+      '0195f2a4-0000-7000-8000-00000000000b',
+      null,
+      null,
+      'G9',
+      '18',
+      null,
+      null
+    ]);
   });
 });
 
@@ -253,15 +294,17 @@ describe('createDraftStore', () => {
       duplicate: false
     });
     const [insert] = sqlOf(queries, 'insert into "claims"');
-    assert.ok(insert?.sql.includes('on conflict do nothing'));
-    assert.ok(
-      insert?.sql.includes(
-        '(select "r"."id" from "import_reports" as "r" where "r"."agency_id" = (select "agency_id" from "workflow_runs"'
-      )
+    assert.equal(
+      insert?.sql,
+      'insert into "claims" ("agency_id", "import_report_id", "pcr_number", "source_key") values ((select "agency_id" from "workflow_runs" where "id" = $1), (select "r"."id" from "import_reports" as "r" where "r"."agency_id" = (select "agency_id" from "workflow_runs" where "id" = $2) and "r"."report_key" = $3), $4, $5) on conflict do nothing returning "id"'
     );
-    assert.ok(insert?.parameters.includes('imports/t-1/a/f.xml.reports/00000.json'));
-    assert.ok(insert?.parameters.includes('PCR-1'));
-    assert.ok(!insert?.sql.includes('"level"') && !insert?.sql.includes('"patient_id"'));
+    assert.deepEqual(insert?.parameters, [
+      'r1',
+      'r1',
+      'imports/t-1/a/f.xml.reports/00000.json',
+      'PCR-1',
+      'r1:s:open:0'
+    ]);
     const [link] = sqlOf(queries, 'insert into "claim_runs"');
     assert.ok(
       link?.sql.includes('select "agency_id", "id", $1::uuid as "claim_id" from "workflow_runs"')
@@ -276,14 +319,11 @@ describe('createDraftStore', () => {
     );
     await createDraftStore(db, boss).assignPatient('r1', ID, 'k', ID);
     const update = queries.at(-1);
-    assert.ok(
-      update?.sql.startsWith(
-        'update "claims" set "patient_id" = (select "id" from "patients" where "id" = $1 and "agency_id" = $2)'
-      )
+    assert.equal(
+      update?.sql,
+      'update "claims" set "patient_id" = (select "id" from "patients" where "id" = $1 and "agency_id" = $2), "updated_at" = now() where "id" = $3 and (exists (select "id" from "patients" where "id" = $4 and "agency_id" = $5) and ("status" = $6 or "patient_id" = (select "id" from "patients" where "id" = $7 and "agency_id" = $8)))'
     );
-    assert.ok(update?.sql.includes('exists (select "id" from "patients"'));
-    assert.ok(update?.sql.includes('or "patient_id" = (select "id" from "patients"'));
-    assert.ok(update?.parameters.includes('draft'));
+    assert.deepEqual(update?.parameters, [ID, 't-1', ID, ID, 't-1', 'draft', ID, 't-1']);
   });
 
   it('refuses unknown patients, claims that are no longer drafts and unknown claims', async () => {
@@ -316,7 +356,18 @@ describe('createDraftStore', () => {
     );
     assert.ok(reopen?.sql.includes('r.id in (select cr.run_id from claim_runs cr'));
     assert.ok(reopen?.sql.includes('or r.id = (select cycle_run_id from old)'));
-    assert.ok(reopen?.parameters.includes('suspended') && reopen.parameters.includes('r1'));
+    assert.deepEqual(reopen?.parameters, [
+      ID,
+      'r1',
+      'imports/t-1/a/f.xml.reports/00000.json',
+      ID,
+      ID,
+      'r1',
+      'running',
+      'suspended',
+      'faulted',
+      ID
+    ]);
     assert.equal(sqlOf(queries, 'insert into "claims"').length, 0);
     assert.equal(sqlOf(queries, 'insert into "claim_runs"').length, 1);
     assert.deepEqual(jobs, [{ runId: OLD_RUN, command: { type: 'cancel' } }]);
@@ -362,11 +413,43 @@ describe('createDraftStore', () => {
     await createDraftStore(db, boss).saveClaim('r1', ID, 'k', claim);
     const [update] = sqlOf(queries, 'update "claims"');
     assert.ok(update?.sql.endsWith('where "id" = $48 and "status" = $49'));
-    assert.ok(!update?.parameters.includes('needs_review'));
-    assert.ok(update?.parameters.includes('emergency') && update.parameters.includes('ALS1'));
-    assert.ok(update?.parameters.includes('2026-10-01'));
-    assert.ok(update?.parameters.includes('S') && update.parameters.includes('H'));
-    assert.ok(update?.parameters.includes('St. Mary'));
+    const at = (column: string) =>
+      update?.parameters[Number(update.sql.match(new RegExp(`"${column}" = \\$(\\d+)`))?.[1]) - 1];
+    assert.deepEqual(
+      [
+        'patient_id',
+        'pcr_number',
+        'classification',
+        'level',
+        'is_emergency',
+        'loaded_miles',
+        'is_deceased',
+        'non_covered_miles',
+        'total_cents',
+        'service_date',
+        'origin_code',
+        'destination_code',
+        'pickup_state',
+        'destination_name'
+      ].map(at),
+      [
+        'p1',
+        'PCR-1',
+        'emergency',
+        'ALS1',
+        true,
+        12.4,
+        false,
+        null,
+        114_220,
+        '2026-10-01',
+        'S',
+        'H',
+        'IL',
+        'St. Mary'
+      ]
+    );
+    assert.deepEqual(update?.parameters.slice(-2), [ID, 'draft']);
     const [cleared] = sqlOf(queries, 'with "lines" as (delete from "claim_lines"');
     assert.ok(cleared?.sql.includes('"coverages" as (delete from "claim_coverages"'));
     assert.ok(cleared?.sql.includes('delete from "claim_diagnoses"'));
@@ -386,11 +469,21 @@ describe('createDraftStore', () => {
       19_220
     ]);
     const [coverages] = sqlOf(queries, 'insert into "claim_coverages"');
-    assert.ok(coverages?.sql.includes('(select "id" from "payers" where "agency_id" ='));
-    assert.ok(coverages?.parameters.includes('medicare') && coverages.parameters.includes('MCR'));
-    assert.ok(coverages?.sql.includes('and "id" = $'));
-    assert.ok(coverages?.parameters.includes('0195f2a4-0000-7000-8000-00000000000b'));
-    assert.ok(!coverages?.parameters.includes('bcbs'));
+    assert.ok(
+      coverages?.sql.includes(
+        '(select "id" from "payers" where "agency_id" = (select "agency_id" from "workflow_runs" where "id" = $5) and lower(name) = $6)'
+      )
+    );
+    assert.ok(
+      coverages?.sql.includes(
+        '(select "id" from "payers" where "agency_id" = (select "agency_id" from "workflow_runs" where "id" = $17) and "id" = $18)'
+      )
+    );
+    assert.deepEqual(coverages?.parameters, [
+      ...[ID, 'r1', 1, 'Medicare', 'r1', 'medicare', 'MCR', 'M1', null, '18', null, null],
+      ...[ID, 'r1', 2, 'BCBS', 'r1', '0195f2a4-0000-7000-8000-00000000000b', null, null, 'G9'],
+      ...['18', null, null]
+    ]);
     const [diagnoses] = sqlOf(queries, 'insert into "claim_diagnoses"');
     assert.deepEqual(diagnoses?.parameters, [ID, 1, 'R079', ID, 2, 'I10']);
   });
@@ -515,9 +608,12 @@ describe('createCycleStore', () => {
     );
     const store = createCycleStore(db, boss);
     assert.equal(await store.claimCheck('r1', ID), null);
-    assert.ok(
-      queries.some((q) => q.sql.includes('from "claims" as "c"') && q.parameters.includes('t-1'))
+    assert.deepEqual(
+      queries.map((q) => q.parameters.slice(-2)),
+      [['r1'], [ID, 't-1']]
     );
+    assert.ok(queries[1]?.sql.endsWith('where "c"."id" = $4 and "c"."agency_id" = $5'));
+
     assert.equal(await store.claimCheck('r1', 'bad'), null);
   });
 
@@ -561,10 +657,14 @@ describe('createCycleStore', () => {
     };
     await createCycleStore(db, boss).patchClaim('r1', ID, 'r1:s:patch:0', patch);
     const [edited] = sqlOf(queries, 'insert into "claim_events"');
-    assert.ok(
-      edited?.parameters.includes('edited') && edited.parameters.includes('Fixed the date')
-    );
-    assert.ok(edited?.parameters.includes('r1:s:patch:0'));
+    assert.deepEqual(edited?.parameters, [
+      't-1',
+      ID,
+      'edited',
+      'Fixed the date',
+      null,
+      'r1:s:patch:0'
+    ]);
     assert.ok(queries.some((q) => q.sql.startsWith('update "claims" set "service_date"')));
     assert.ok(
       queries.some(
@@ -572,7 +672,11 @@ describe('createCycleStore', () => {
       )
     );
     const [signal] = sqlOf(queries, 'insert into "signals"');
-    assert.ok(signal?.parameters.includes(`claim:${ID}`));
+    assert.equal(
+      signal?.sql,
+      'insert into "signals" ("agency_id", "key", "received") values ($1, $2, $3) on conflict ("agency_id", "key") do update set "received" = signals.received + 1, "updated_at" = now()'
+    );
+    assert.deepEqual(signal?.parameters, ['t-1', `claim:${ID}`, 1]);
     assert.deepEqual(
       jobs.map((j) => [j.runId, j.command.type]),
       [[CYCLE, 'resume']]
@@ -627,7 +731,8 @@ describe('createCycleStore', () => {
     const { db, queries } = attach(true);
     await createCycleStore(db, boss).attachCycle('r1', ID, 'k', CYCLE);
     const run = queries.find((q) => q.sql.startsWith('select "id" from "workflow_runs"'));
-    assert.ok(run?.parameters.includes('t-1'));
+    assert.equal(run?.sql, 'select "id" from "workflow_runs" where "id" = $1 and "agency_id" = $2');
+    assert.deepEqual(run?.parameters, [CYCLE, 't-1']);
     const [update] = sqlOf(queries, 'update "claims"');
     assert.deepEqual(update?.parameters.slice(0, 3), [CYCLE, 'draft', 'needs_review']);
     assert.ok(update?.sql.includes('"status" = case when c.status = $2 then $3 else c.status end'));
@@ -678,7 +783,8 @@ describe('createCycleStore', () => {
     const voided = await close({ status: 'draft', balance_cents: 0 }, 'void');
     assert.deepEqual(voided.find((q) => q.sql.startsWith('update'))?.parameters[0], 'void');
     const forgotten = owed.find((q) => q.sql.startsWith('delete from "signals"'));
-    assert.ok(forgotten?.parameters.includes(`claim:${ID}`));
+    assert.equal(forgotten?.sql, 'delete from "signals" where "agency_id" = $1 and "key" = $2');
+    assert.deepEqual(forgotten?.parameters, ['t-1', `claim:${ID}`]);
     const done = await close({ status: 'paid', balance_cents: 0 });
     assert.equal(
       done.some((q) => q.sql.startsWith('update')),
@@ -728,12 +834,19 @@ describe('createCycleStore', () => {
 describe('createFacilityStore', () => {
   it('bills a claim to a facility of its own agency once per step, and back to the payers', async () => {
     const FACILITY_ID = '0195f2a4-0000-7000-8000-0000000000f1';
-    const respond = ({ recorded = false, status = 'needs_review', known = true } = {}) =>
+    const respond = ({
+      recorded = false,
+      status = 'needs_review',
+      known = true,
+      locked = true
+    } = {}) =>
       createRecordingDb((q) =>
         ownedClaim(q)
           ? [owned]
           : q.sql.includes('for update')
-            ? [{ id: ID, status, patient_id: null }]
+            ? locked
+              ? [{ id: ID, status, patient_id: null }]
+              : []
             : q.sql.startsWith('select "id" from "claim_events"') && recorded
               ? [{ id: 'e0' }]
               : q.sql.startsWith('select "id" from "facilities"') && known
@@ -750,8 +863,13 @@ describe('createFacilityStore', () => {
     const [lookup] = sqlOf(queries, 'select "id" from "facilities"');
     assert.deepEqual(lookup?.parameters, [FACILITY_ID, 't-1']);
     const [event] = sqlOf(queries, 'insert into "claim_events"');
-    assert.ok(event?.parameters.includes('responsibility'));
-    assert.ok(event?.parameters.includes('Contract with Oak Manor'));
+    assert.deepEqual(event?.parameters, [
+      't-1',
+      ID,
+      'responsibility',
+      'Contract with Oak Manor',
+      'k'
+    ]);
     const [update] = sqlOf(queries, 'update "claims"');
     assert.deepEqual(update?.parameters.slice(0, 1), [FACILITY_ID]);
     assert.equal(sqlOf(queries, 'insert into "signals"').length, 1);
@@ -766,7 +884,8 @@ describe('createFacilityStore', () => {
     const facility = { party: 'facility' as const, facilityId: FACILITY_ID, note: '' };
     for (const [opts, fault] of [
       [{ known: false }, /is not in the facility directory/],
-      [{ status: 'paid' }, /already closed/]
+      [{ status: 'paid' }, /already closed/],
+      [{ locked: false }, new RegExp(`Claim ${ID} does not exist`)]
     ] as const) {
       const refused = respond(opts);
       await assert.rejects(
@@ -821,9 +940,14 @@ describe('createLedgerStore', () => {
       previous: { bucket: 'ugula', key: 'imports/t-1/f.xml.reports/00000.json' }
     });
     const [insert] = sqlOf(queries, 'insert into "claim_events"');
-    assert.ok(insert?.sql.startsWith('insert into "claim_events"'));
-    assert.ok(insert?.parameters.includes('revised'));
-    assert.ok(insert?.parameters.includes(JSON.stringify(report)));
+    assert.deepEqual(insert?.parameters, [
+      't-1',
+      ID,
+      'revised',
+      'An updated patient care report arrived',
+      JSON.stringify(report),
+      'k1'
+    ]);
     assert.ok(insert?.sql.includes('on conflict ("claim_id", "source_key") do nothing'));
     for (const key of ['imports/t-2/g.json', 'imports/t-1/../t-2/g.json']) {
       await assert.rejects(
@@ -1015,7 +1139,15 @@ describe('createLedgerStore', () => {
       fileName: 'pcs.pdf'
     });
     assert.equal(await store.claimDocument('r1', ID, 'not-a-uuid'), null);
-    assert.ok(sqlOf(queries, 'select "id", "kind", "signed_on"')[0]?.parameters.includes(ID));
+    assert.deepEqual(
+      sqlOf(queries, 'select "id", "kind", "signed_on"').map((q) => [q.sql, q.parameters]),
+      [
+        [
+          'select "id", "kind", "signed_on", "file_name" from "claim_documents" where "id" = $1 and "claim_id" = $2',
+          [DOC, ID]
+        ]
+      ]
+    );
   });
 
   it('records coverage events idempotently', async () => {
@@ -1027,9 +1159,15 @@ describe('createLedgerStore', () => {
       payerClaimNumber: 'PCN-7'
     });
     const insert = queries.at(-1);
-    assert.ok(insert?.sql.includes('"coverage_id"'));
-    assert.ok(insert?.parameters.includes('cov-1'));
-    assert.ok(insert?.parameters.includes('PCN-7'));
+    assert.deepEqual(insert?.parameters, [
+      't-1',
+      ID,
+      'resubmit_queued',
+      'cov-1',
+      '',
+      'PCN-7',
+      'k1'
+    ]);
     assert.ok(insert?.sql.includes('on conflict ("claim_id", "source_key") do nothing'));
   });
 });
@@ -1138,9 +1276,12 @@ describe('createStatementStore', () => {
     assert.equal(data.balanceCents, 35_000);
     assert.ok(queries[0]?.sql.includes('inner join "claim_balances" as "cb"'));
     const payments = queries.find((q) => q.sql.includes('from "claim_events" as "e"'));
-    assert.ok(payments?.sql.includes('("e"."paid_cents" <> $'));
-    assert.ok(payments?.parameters.includes('refunded'));
-    assert.ok(payments?.parameters.includes('balance_protected'));
+    assert.ok(
+      payments?.sql.endsWith(
+        'where "e"."claim_id" = $1 and "e"."kind" in ($2, $3, $4) and ("e"."paid_cents" <> $5 or "e"."adjusted_cents" <> $6) order by "e"."created_at", "e"."id"'
+      )
+    );
+    assert.deepEqual(payments?.parameters, [ID, 'response', 'refunded', 'balance_protected', 0, 0]);
     const missing = createRecordingDb((q) =>
       q.sql.includes('from "claims" as "c"')
         ? [{ ...claimRow, organization_name: null, phone: null }]
@@ -1228,7 +1369,19 @@ describe('createStatementStore', () => {
     assert.match(stored.at(-1)?.key ?? '', /^statements\/t-1\/[0-9a-f-]{36}\/2-[0-9a-f]{16}\.pdf$/);
     const insert = queries.at(-1);
     assert.ok(insert?.sql.includes('on conflict ("claim_id", "source_key") do nothing'));
-    assert.ok(insert?.parameters.includes('Patient statement 2 of 4'));
+    assert.deepEqual(insert?.parameters, [
+      't-1',
+      ID,
+      'statement',
+      'Patient statement 2 of 4',
+      JSON.stringify({
+        bucket: 'ugula',
+        key: statementKey('t-1', ID, 2, 'r1:s:stmt:0'),
+        size: 4,
+        contentType: 'application/pdf'
+      }),
+      'r1:s:stmt:0'
+    ]);
   });
 });
 
@@ -1268,7 +1421,7 @@ describe('createSubmissionStore', () => {
       pending: null
     });
     const ready = queries.find((q) => q.sql.includes('inner join "patients" as "p"'));
-    assert.ok(ready?.parameters.includes('t-1') && ready.parameters.includes('ready'));
+    assert.deepEqual(ready?.parameters, ['t-1', ID, 'ready', 'denied', 'reconcile', 'follow_up']);
     await assert.rejects(() => store.submission('r1', 'bad', 'cov-1'), /Claim bad does not exist/);
     const unknown = createStore(createRecordingDb().db);
     await assert.rejects(() => unknown.submission('r1', ID, 'cov-1'), /does not exist/);
@@ -1379,10 +1532,34 @@ describe('createSubmissionStore', () => {
     assert.match(stored[0]?.key ?? '', /^batches\/t-1\/[0-9a-f-]{36}\/837P-000000007\.txt$/);
     assert.deepEqual([stored[0]?.size, stored[0]?.type], [6, 'application/edi-x12']);
     const [batch] = sqlOf(fresh.queries, 'insert into "claim_batches"');
-    assert.ok(batch?.parameters.includes(7) && batch.parameters.includes(95_000));
+    const batchId = String(batch?.parameters[0]);
+    assert.match(batchId, /^[0-9a-f-]{36}$/);
+    assert.deepEqual(batch?.parameters, [
+      batchId,
+      't-1',
+      7,
+      1,
+      95_000,
+      false,
+      JSON.stringify({
+        bucket: 'ugula',
+        key: `batches/t-1/${batchId}/837P-000000007.txt`,
+        size: 6,
+        contentType: 'application/edi-x12'
+      }),
+      null
+    ]);
     const [event] = sqlOf(fresh.queries, 'insert into "claim_events"');
-    assert.ok(event?.parameters.includes('resubmitted') && event.parameters.includes('cov-1'));
-    assert.ok(event?.parameters.includes('837P file #7') && event.parameters.includes('k1'));
+    assert.deepEqual(event?.parameters, [
+      't-1',
+      ID,
+      'resubmitted',
+      'cov-1',
+      '837P file #7',
+      batchId,
+      null,
+      'k1'
+    ]);
     const [marked] = sqlOf(fresh.queries, 'update "claims"');
     assert.deepEqual(marked?.parameters.slice(0, 1), ['submitted']);
 
@@ -1519,9 +1696,12 @@ describe('createClaimTaskStore', () => {
     assert.deepEqual(await open.store.setPayers('r1', ID, ['Medicare', 'Aetna']), {
       status: 'saved'
     });
-    assert.ok(open.queries.some((q) => q.sql.startsWith('insert into "claim_coverages"')));
-    const draft = await setup({ status: 'draft' }).store.setPayers('r1', ID, []);
-    assert.equal(draft.status, 'refused');
+    const [added] = sqlOf(open.queries, 'insert into "claim_coverages"');
+    assert.deepEqual(added?.parameters.slice(0, 5), [ID, 't-1', 2, 'Aetna', '18']);
+    assert.deepEqual(await setup({ status: 'draft' }).store.setPayers('r1', ID, []), {
+      status: 'refused',
+      reason: 'This claim is still a draft. Finish its PCR tasks before changing it.'
+    });
   });
 
   it('posts a payment keyed by the run step, by the biller who entered it', async () => {
@@ -1531,7 +1711,20 @@ describe('createClaimTaskStore', () => {
       balanceCents: 7_500
     });
     const [event] = queries.filter((q) => q.sql.startsWith('insert into "claim_events"'));
-    assert.ok(event?.parameters.includes('run:step') && event.parameters.includes(USER));
+    assert.deepEqual(event?.parameters, [
+      't-1',
+      ID,
+      'response',
+      null,
+      2_500,
+      0,
+      null,
+      null,
+      null,
+      '',
+      USER,
+      'run:step'
+    ]);
     const closed = await setup({ status: 'paid' }).store.postPayment('r1', ID, 'k', payment, 'x');
     assert.deepEqual(closed, { status: 'refused', reason: 'Claim is already closed' });
   });
@@ -1541,11 +1734,16 @@ describe('createClaimTaskStore', () => {
     const denied = { ...payment, coverageId: 'm', paidCents: 0, route: 'appeal' as const };
     assert.equal((await store.postPayment('r1', ID, 'run:step', denied, USER)).status, 'posted');
     const events = queries.filter((q) => q.sql.startsWith('insert into "claim_events"'));
-    assert.ok(
-      events.some(
-        (q) => q.parameters.includes('appeal') && q.parameters.includes('run:step:denied')
-      )
-    );
+    assert.deepEqual(events[1]?.parameters, [
+      't-1',
+      ID,
+      'denied',
+      'm',
+      'appeal',
+      'Denied, as posted by hand',
+      USER,
+      'run:step:denied'
+    ]);
     const plain = setup({ coverages: [{ id: 'm', payer: 'Medicare' }] });
     await plain.store.postPayment('r1', ID, 'k', { ...denied, route: 'reconcile' }, USER);
     assert.ok(!plain.queries.some((q) => q.parameters.includes('k:denied')));
@@ -1564,9 +1762,14 @@ describe('createClaimTaskStore', () => {
       { key: documentKey('t-1', ID, 'run:step', 'pcs form.pdf'), contentType: 'application/pdf' }
     ]);
     const [event] = queries.filter((q) => q.sql.startsWith('insert into "claim_events"'));
-    assert.ok(
-      event?.parameters.includes('Physician certification statement uploaded: pcs form.pdf')
-    );
+    assert.deepEqual(event?.parameters, [
+      't-1',
+      ID,
+      'document',
+      'Physician certification statement uploaded: pcs form.pdf',
+      USER,
+      'run:step'
+    ]);
     const again = setup({ kept: true });
     assert.deepEqual(
       await again.store.addDocument('r1', ID, 'run:step', {
@@ -1578,6 +1781,21 @@ describe('createClaimTaskStore', () => {
       { status: 'added', documentId: 'd0' }
     );
     assert.ok(!again.queries.some((q) => q.sql.startsWith('insert into "claim_documents"')));
+  });
+
+  it('names an upload without a file name a document', async () => {
+    const { queries, stored, store } = setup();
+    await store.addDocument('r1', ID, 'run:step', {
+      kind: 'pcs',
+      signedOn: null,
+      file: { bucket: 'b', key: `${uploadsOf('t-1')}u1/` },
+      addedBy: null
+    });
+    assert.deepEqual(stored, [
+      { key: documentKey('t-1', ID, 'run:step', 'document'), contentType: 'application/pdf' }
+    ]);
+    const [document] = sqlOf(queries, 'insert into "claim_documents"');
+    assert.deepEqual(document?.parameters.slice(0, 4), ['t-1', ID, 'pcs', 'document']);
   });
 
   it('refuses closed claims and files that are not documents, and rejects other uploads', async () => {
@@ -1599,7 +1817,10 @@ describe('createClaimTaskStore', () => {
       },
       boss
     );
-    assert.equal((await store.addDocument('r1', ID, 'k', document)).status, 'refused');
+    assert.deepEqual(await store.addDocument('r1', ID, 'k', document), {
+      status: 'refused',
+      reason: 'Upload the document as a PDF, PNG, JPEG or TIFF file'
+    });
     await assert.rejects(
       () =>
         html.store.addDocument('r1', ID, 'k', {

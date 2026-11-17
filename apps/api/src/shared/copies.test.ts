@@ -66,6 +66,20 @@ describe('compareCopy', () => {
     assert.deepEqual(out.latest, { version: 3, definition: { a: 1 } });
     assert.equal(out.baseChanged, true);
   });
+
+  it('reports an agency item made from scratch as having no base', async () => {
+    const { db } = createRecordingDb((q) =>
+      q.sql.startsWith('select "id", "version", "definition", "base_version_id"')
+        ? [{ id: 'mine', version: 1, definition: { b: 2 }, base_version_id: null }]
+        : []
+    );
+    assert.deepEqual(await compareCopy(db, 'data_tables', { id: 't', key: 'k', scope: 'agency' }), {
+      mine: { version: 1, definition: { b: 2 } },
+      copiedFrom: null,
+      latest: null,
+      baseChanged: false
+    });
+  });
 });
 
 describe('overrideCopy', () => {
@@ -117,6 +131,21 @@ describe('overrideCopy', () => {
       ...spec([]),
       insertCopy: () => Promise.reject(Object.assign(new Error('pg'), { code: '23505' }))
     });
-    assert.equal(out.ok ? '' : out.failure.message, 'This table is already overridden');
+    assert.deepEqual(out, {
+      ok: false,
+      failure: { code: 'conflict', message: 'This table is already overridden' }
+    });
+  });
+
+  it('rethrows other errors from making the copy', async () => {
+    const { db } = createRecordingDb((q) => (q.sql.includes('"contract"') ? [NEWEST] : []));
+    const item = { id: 't', key: 'k', scope: 'system' as const };
+    await assert.rejects(
+      overrideCopy(db, 'graphs', admin, item, {
+        ...spec([]),
+        insertCopy: () => Promise.reject(Object.assign(new Error('pg'), { code: '57014' }))
+      }),
+      { code: '57014' }
+    );
   });
 });

@@ -1,48 +1,95 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
 import type { Agency } from '../access.tsx';
+import { act, render, screen, userEvent, within } from '../testing-dom.ts';
 import { AgencyPicker } from './agency-picker.tsx';
 
-const agency = (i: number): Agency => ({
+const agency = (i: number, organizationName = 'Acme'): Agency => ({
   id: `a${i}`,
   name: `Agency ${i}`,
   organizationId: 'o1',
-  organizationName: 'Acme'
+  organizationName
 });
 
-const render = (agencies: Agency[]) =>
-  renderToStaticMarkup(
+const show = (agencies: Agency[]) => {
+  render(
     createElement(AgencyPicker, {
       agencies,
       current: { id: 'a1', name: 'Agency 1', organizationName: 'Acme' }
     })
   );
+  const panel = screen.getByRole('dialog', { name: 'Agencies', hidden: true });
+  const choiceButtons = () => within(panel).queryAllByRole('button', { hidden: true });
+  const choices = () => choiceButtons().map((b) => b.textContent);
+  const open = () => act(() => panel.showPopover());
+  const trigger = screen.getByRole('button', { name: /Switch agency/ });
+  return { panel, choiceButtons, choices, open, trigger, user: userEvent.setup() };
+};
 
 describe('AgencyPicker', () => {
-  it('shows the current agency and lists the others to switch to', () => {
-    const html = render([agency(1), agency(2)]);
-    assert.ok(html.includes('Switch agency') && html.includes('Acme'));
-    assert.ok(!html.includes('disabled=""'));
-    assert.ok(html.includes('aria-label="Agencies"'));
-    assert.equal(html.split('aria-current="true"').length, 2);
-    assert.ok(html.includes('Agency 2'));
-    assert.ok(!html.includes('Find an'));
-    assert.ok(
-      html.includes('h-12 ') && html.includes('pointer-coarse:h-14') && !html.includes('h-10')
+  it('names the trigger by the current agency and its organization', () => {
+    const { trigger } = show([agency(1), agency(2)]);
+    assert.equal(trigger.textContent, 'Agency 1AcmeSwitch agency');
+    assert.equal(trigger.hasAttribute('disabled'), false);
+  });
+
+  it('locks the trigger when there is nowhere to switch to', () => {
+    const { trigger } = show([agency(1)]);
+    assert.equal(trigger.hasAttribute('disabled'), true);
+  });
+
+  it('targets the agency list popover from the trigger', () => {
+    const { trigger, panel } = show([agency(1), agency(2)]);
+    assert.equal(trigger.getAttribute('popovertarget'), panel.id);
+    assert.equal(panel.getAttribute('popover'), 'auto');
+  });
+
+  it('lists every agency and marks only the current one', () => {
+    const { choices, choiceButtons, panel } = show([agency(1), agency(2)]);
+    assert.deepEqual(choices(), ['Agency 1Acme', 'Agency 2Acme']);
+    assert.deepEqual(
+      choiceButtons().map((b) => b.getAttribute('aria-current')),
+      ['true', null]
     );
+    assert.ok(!panel.querySelector('input'));
   });
 
-  it('locks the button when there is nowhere to switch to', () => {
-    const html = render([agency(1)]);
-    assert.ok(html.includes('disabled=""'));
+  it('switches to another agency and closes the list', async () => {
+    const { panel, open, user } = show([agency(1), agency(2)]);
+    open();
+    await user.click(within(panel).getByRole('button', { name: 'Agency 2 Acme' }));
+    assert.equal(window.location.pathname, '/agencies/a2');
+    assert.equal(panel.matches(':popover-open'), false);
   });
 
-  it('offers a search once the list gets long', () => {
-    const html = render([1, 2, 3, 4, 5, 6, 7].map(agency));
-    assert.ok(html.includes('>Find an Agency</label>') && html.includes('type="search"'));
-    assert.ok(html.includes('placeholder="Find an agency"'));
-    assert.ok(html.includes('Agency 7'));
+  it('closes without navigating when the current agency is chosen', async () => {
+    const { panel, open, user } = show([agency(1), agency(2)]);
+    open();
+    await user.click(within(panel).getByRole('button', { name: 'Agency 1 Acme' }));
+    assert.equal(window.location.pathname, '/');
+    assert.equal(panel.matches(':popover-open'), false);
+  });
+
+  it('offers no search for six agencies or fewer', () => {
+    const { panel } = show([1, 2, 3, 4, 5, 6].map((i) => agency(i)));
+    assert.ok(!panel.querySelector('input'));
+  });
+
+  it('filters by agency or organization name, ignoring case and surrounding spaces', async () => {
+    const { panel, choices, open, user } = show([
+      ...[1, 2, 3, 4, 5, 6].map((i) => agency(i)),
+      agency(7, 'Bayside')
+    ]);
+    open();
+    const search = within(panel).getByRole('searchbox', { name: 'Find an Agency' });
+    assert.equal(search.getAttribute('placeholder'), 'Find an agency');
+    await user.type(search, ' BAYSIDE ');
+    assert.deepEqual(choices(), ['Agency 7Bayside']);
+    await user.clear(search);
+    await user.type(search, 'agency 1');
+    assert.deepEqual(choices(), ['Agency 1Acme']);
+    await user.type(search, 'x');
+    assert.deepEqual(choices(), []);
   });
 });

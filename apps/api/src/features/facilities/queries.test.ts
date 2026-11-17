@@ -62,3 +62,15 @@ describe('searchHospitals', () => {
     assert.deepEqual(queries[0]?.parameters, ['%mercy%', '%st\\_%', 'Mercy  St_', 20]);
   });
 });
+
+describe('facility queries without matches', () => {
+  it('lists every facility without a search, finds no hospitals without one and reports a missed delete', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    await searchFacilities(db, 't-1', { page: 1, pageSize: 25, sort: 'city', dir: 'desc' });
+    assert.ok(!queries[0]?.sql.includes('like'));
+    assert.ok(queries[0]?.sql.includes('order by lower(f.city) desc nulls last'));
+    assert.deepEqual(await searchHospitals(db, undefined), []);
+    assert.equal(await deleteFacility(db, 't-1', 'f1'), false);
+    assert.equal(queries.length, 2);
+  });
+});

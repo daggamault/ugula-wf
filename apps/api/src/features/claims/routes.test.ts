@@ -41,8 +41,15 @@ describe('claim routes', () => {
     assert.equal((await request('/?status=all&lastName=doe')).status, 200);
     assert.equal((await request('/?sort=waiting&dir=asc')).status, 200);
     assert.equal((await request('/?status=paid')).status, 400);
-    assert.equal((await request(`/${ID}`)).status, 200);
-    assert.equal((await request('/nope')).status, 400);
+    const found = await request(`/${ID}`);
+    assert.equal(found.status, 200);
+    assert.deepEqual(await found.json(), { claim: { id: ID }, files: [] });
+    const invalid = await request('/nope');
+    assert.equal(invalid.status, 400);
+    assert.deepEqual(await invalid.json(), {
+      error: 'id: Invalid UUID: Received "nope"',
+      issues: ['id: Invalid UUID: Received "nope"']
+    });
     assert.deepEqual(calls, [
       [
         'search',
@@ -94,6 +101,7 @@ describe('claim routes', () => {
     assert.equal(res.headers.get('content-disposition'), 'inline; filename="2-abc.pdf"');
     assert.equal(await res.text(), '%PDF-1.7');
     assert.equal((await request(`/${ID}/events/nope/document`)).status, 400);
+    assert.equal((await request(`/${ID}/documents/nope`)).status, 400);
   });
 
   it('pages and sorts claim history on the server', async () => {
@@ -113,6 +121,7 @@ describe('claim routes', () => {
   it('restarts a claim cycle', async () => {
     const res = await request(`/${ID}/restart-cycle`, { method: 'POST' });
     assert.equal(res.status, 201);
+    assert.deepEqual(await res.json(), { runId: 'r2' });
     assert.deepEqual(calls.at(-1), ['restartCycle', 't-1', ID]);
   });
 });
@@ -143,6 +152,7 @@ describe('claim route failures', () => {
     find: async () => fail('not_found', 'Claim not found'),
     events: async () => fail('not_found', 'Claim not found'),
     document: async () => fail('not_found', 'Document not found'),
+    documentFile: async () => fail('not_found', 'Document not found'),
     restartCycle: async () => fail('conflict', 'This claim still has an active workflow run'),
     startTask: async () => fail('conflict', 'Claim is already closed')
   } as unknown as ClaimService;
@@ -154,6 +164,7 @@ describe('claim route failures', () => {
         send(`/${ID}`),
         send(`/${ID}/events`),
         send(`/${ID}/events/${ID}/document`),
+        send(`/${ID}/documents/${ID}`),
         send(`/${ID}/restart-cycle`, { method: 'POST' }),
         send(`/${ID}/tasks`, {
           method: 'POST',
@@ -161,7 +172,7 @@ describe('claim route failures', () => {
         })
       ].map(async (res) => (await res).status)
     );
-    assert.deepEqual(statuses, [404, 404, 404, 409, 409]);
+    assert.deepEqual(statuses, [404, 404, 404, 404, 409, 409]);
     const missing = await send(`/${ID}/events/${ID}/document`);
     assert.deepEqual(await missing.json(), { error: 'Document not found' });
   });

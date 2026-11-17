@@ -4,7 +4,8 @@ import { ENTRY_TYPE, RETURN_TYPE, refKey } from '../compile.ts';
 import { pin } from '../define.ts';
 import { createRegistry } from '../registry.ts';
 import { runRule } from '../rules.ts';
-import type { GraphDef, Json, NodeRef } from '../types.ts';
+import { invokeNode } from '../testing.ts';
+import type { GraphDef, Json, NodeRef, Values } from '../types.ts';
 import { validateGraph } from '../validate.ts';
 import { eachNodes } from './each.ts';
 import { logicNodes } from './logic.ts';
@@ -117,9 +118,65 @@ describe('rule per item nodes', () => {
     );
   });
 
-  it('reports a rule that does not fit', () => {
+  it('passes the shared inputs with each item, and runs nothing for a missing list', async () => {
+    const calls: Values[] = [];
+    const evaluate = async (rule: NodeRef, inputs: Values) => {
+      calls.push({ rule: rule.type, ...inputs });
+      return { long: inputs.miles === 9 };
+    };
+    const find = eachNodes.find((d) => d.type === 'std.list.find-rule');
+    if (!find) throw new Error('find-rule');
+    const config = { ...ref, test: 'long' };
+    const found = await invokeNode(find, { config, evaluate, inputs: { list: [1, 9, 9] } });
+    assert.deepEqual(found.outputs, { item: 9, found: true, index: 1 });
+    assert.deepEqual(calls, [
+      { rule: 'test.scale', miles: 1 },
+      { rule: 'test.scale', miles: 9 }
+    ]);
+    calls.length = 0;
+    const missing = await invokeNode(find, { config, evaluate });
+    assert.deepEqual(missing.outputs, { item: null, found: false, index: null });
+    assert.deepEqual(calls, []);
+    assert.deepEqual(
+      missing.signature.inputs.map((p) => [p.name, p.type]),
+      [['list', { list: 'any' }]]
+    );
+  });
+
+  it('keeps an item only when the rule says exactly true', async () => {
+    const filter = eachNodes.find((d) => d.type === 'std.list.filter-rule');
+    if (!filter) throw new Error('filter-rule');
+    const answers: Json[] = [true, 'true', 1, null, true];
+    const { outputs } = await invokeNode(filter, {
+      config: { ...ref, test: 'long' },
+      inputs: { list: ['a', 'b', 'c', 'd', 'e'] },
+      evaluate: async () => ({ long: answers.shift() ?? null })
+    });
+    assert.deepEqual(outputs, { list: ['a', 'e'], count: 2 });
+  });
+
+  it('describes each output as one per item', () => {
     const registry = createRegistry(nodes, (r) =>
       refKey(r) === refKey(SCALE) ? scale : undefined
+    );
+    const inst = { id: 'each', type: 'std.list.map-rule', version: 1, config: ref };
+    assert.deepEqual(
+      registry.signature(inst, scale).outputs.map((p) => p.description),
+      ['What the rule gives. One for each item.', 'What the rule gives. One for each item.']
+    );
+  });
+
+  it('summarizes the rule it runs', () => {
+    for (const def of eachNodes) assert.equal(def.summary?.(ref), 'Rule: test.scale');
+  });
+
+  it('reports a rule that does not fit', () => {
+    const registry = createRegistry(nodes, (r) =>
+      refKey(r) === refKey(SCALE)
+        ? scale
+        : r.type === 'test.flow'
+          ? { ...scale, signature: { ...scale.signature, execIn: ['exec'] } }
+          : undefined
     );
     const check = (type: string, config: Json) =>
       validateGraph(host(type, config, []), registry).map((i) => i.message);
@@ -131,6 +188,15 @@ describe('rule per item nodes', () => {
     ]);
     assert.deepEqual(check('std.list.find-rule', { ...ref, rule: 'test.gone', test: 'long' }), [
       'Invalid config: Unknown rule test.gone@1'
+    ]);
+    assert.deepEqual(check('std.list.filter-rule', { ...ref, test: 'short' }), [
+      'Invalid config: test.scale has no output "short"'
+    ]);
+    assert.deepEqual(check('std.list.map-rule', { ...ref, rule: 'test.flow' }), [
+      'Invalid config: test.flow is not a rule'
+    ]);
+    assert.deepEqual(check('std.list.map-rule', { ...ref, item: '' }), [
+      'Invalid config: Choose the input each item goes to'
     ]);
   });
 });

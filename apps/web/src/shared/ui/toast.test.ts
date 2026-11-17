@@ -1,43 +1,71 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it, type TestContext } from 'node:test';
 import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
-import { addToast, TOAST_LIMIT, Toaster, ToastProvider } from './toast.tsx';
+import { act, render, screen, userEvent, within } from '../testing-dom.ts';
+import {
+  accentClasses,
+  addToast,
+  TOAST_LIMIT,
+  Toaster,
+  type ToastInput,
+  ToastProvider,
+  useToast
+} from './toast.tsx';
+
+const item = (id: number, title = `T${id}`) => ({ id, title });
 
 describe('addToast', () => {
-  it('keeps the newest few and updates a repeat of the same message in place, keeping its timer', () => {
-    const toasts = Array.from({ length: TOAST_LIMIT + 2 }, (_, i) => ({ id: i, title: `T${i}` }));
-    const kept = toasts.reduce(addToast, []);
+  it('appends a new message', () => {
+    assert.deepEqual(addToast([item(1)], item(2)), [item(1), item(2)]);
+  });
+
+  it('keeps only the newest few', () => {
+    const toasts = Array.from({ length: TOAST_LIMIT + 2 }, (_, i) => item(i));
+    assert.equal(TOAST_LIMIT, 4);
     assert.deepEqual(
-      kept.map((t) => t.id),
+      toasts.reduce(addToast, []).map((t) => t.id),
       [2, 3, 4, 5]
     );
-    const repeated = addToast(kept, { id: 9, title: 'T3', description: 'Again' });
+  });
+
+  it('updates a repeated title in place, keeping its id and so its timer', () => {
+    const repeated = addToast([item(1), item(2)], { id: 9, title: 'T1', description: 'Again' });
+    assert.deepEqual(repeated, [{ id: 1, title: 'T1', description: 'Again' }, item(2)]);
+  });
+
+  it('matches a repeat by key before title', () => {
+    const keyed = addToast([{ id: 1, key: 'run', title: 'Started' }, item(2)], {
+      id: 9,
+      key: 'run',
+      title: 'Finished'
+    });
+    assert.deepEqual(keyed, [{ id: 1, key: 'run', title: 'Finished' }, item(2)]);
+  });
+
+  it('keeps a keyed message apart from an unkeyed one with the same title', () => {
     assert.deepEqual(
-      repeated.map((t) => [t.id, t.description]),
-      [
-        [2, undefined],
-        [3, 'Again'],
-        [4, undefined],
-        [5, undefined]
-      ]
-    );
-    const keyed = addToast(repeated, { id: 10, key: 'T2', title: 'Something else' });
-    assert.deepEqual(
-      keyed.map((t) => [t.id, t.title]),
-      [
-        [2, 'Something else'],
-        [3, 'T3'],
-        [4, 'T4'],
-        [5, 'T5']
-      ]
+      addToast([item(1, 'Saved')], { id: 2, key: 'fee', title: 'Saved' }).map((t) => t.id),
+      [1, 2]
     );
   });
 });
 
+describe('accentClasses', () => {
+  it('colors each intent with its token, using readable warning text', () => {
+    assert.deepEqual(accentClasses, {
+      primary: 'text-primary',
+      success: 'text-success',
+      info: 'text-info',
+      warning: 'text-warning-text',
+      danger: 'text-danger'
+    });
+  });
+});
+
 describe('Toaster', () => {
-  it('announces notifications from one persistent live region with its action and a dismiss button', () => {
-    const html = renderToStaticMarkup(
+  const showToaster = () => {
+    const dismissed: number[] = [];
+    render(
       createElement(Toaster, {
         toasts: [
           { id: 1, title: 'PCR-1 approved', description: 'Next up: PCR-2' },
@@ -48,21 +76,186 @@ describe('Toaster', () => {
             action: { label: 'Open Imports', to: '/imports' }
           }
         ],
-        onDismiss: () => undefined
+        onDismiss: (id) => dismissed.push(id)
       })
     );
-    assert.ok(html.includes('aria-label="Notifications"'));
-    assert.ok(html.includes('aria-live="polite"') && !/role="(alert|status)"/.test(html));
-    assert.ok(html.includes('Next up: PCR-2'));
-    assert.ok(html.includes('href="/imports"') && html.includes('>Open Imports</a>'));
-    assert.equal(html.match(/aria-label="Dismiss"/g)?.length, 2);
-    assert.ok(html.includes('lucide-circle-check') && html.includes('size-4 text-success'));
-    assert.ok(html.includes('lucide-circle-alert') && html.includes('size-4 text-danger'));
-    assert.ok(html.includes('rounded-xl') && html.includes('shadow-lg'));
+    const region = screen.getByRole('region', { name: 'Notifications' });
+    const cards = within(region).getAllByRole('listitem');
+    return { dismissed, region, cards, user: userEvent.setup() };
+  };
+
+  it('announces politely from one live region, without alert or status roles', () => {
+    const { region } = showToaster();
+    assert.equal(region.getAttribute('aria-live'), 'polite');
+    assert.equal(region.getAttribute('aria-relevant'), 'additions text');
+    assert.ok(!screen.queryByRole('alert'));
+    assert.ok(!screen.queryByRole('status'));
   });
 
-  it('renders an empty live region under its children from the provider', () => {
-    const html = renderToStaticMarkup(createElement(ToastProvider, null, 'App'));
-    assert.ok(html.startsWith('App<section'));
+  it('lists each message with its title and description', () => {
+    const { cards } = showToaster();
+    assert.equal(cards.length, 2);
+    within(cards[0] as HTMLElement).getByText('PCR-1 approved');
+    within(cards[0] as HTMLElement).getByText('Next up: PCR-2');
+    within(cards[1] as HTMLElement).getByText('Upload failed');
+  });
+
+  it('shows a decorative success icon by default and the intent icon otherwise', () => {
+    const { cards } = showToaster();
+    const icons = cards.map((card) => card.querySelector('svg'));
+    assert.deepEqual(
+      icons.map((icon) => icon?.getAttribute('aria-hidden')),
+      ['true', 'true']
+    );
+    assert.ok(icons[0]?.classList.contains('lucide-circle-check'));
+    assert.ok(icons[0]?.classList.contains('text-success'));
+    assert.ok(icons[1]?.classList.contains('lucide-circle-alert'));
+    assert.ok(icons[1]?.classList.contains('text-danger'));
+  });
+
+  it('links to a follow-up action', () => {
+    const { cards } = showToaster();
+    const link = within(cards[1] as HTMLElement).getByRole('link', { name: 'Open Imports' });
+    assert.equal(link.getAttribute('href'), '/imports');
+    assert.ok(!within(cards[0] as HTMLElement).queryByRole('link'));
+  });
+
+  it('dismisses a message from its button', async () => {
+    const { cards, dismissed, user } = showToaster();
+    await user.click(within(cards[1] as HTMLElement).getByRole('button', { name: 'Dismiss' }));
+    assert.deepEqual(dismissed, [2]);
+  });
+
+  it('dismisses a message when following its action', async () => {
+    const { dismissed, user } = showToaster();
+    await user.click(screen.getByRole('link', { name: 'Open Imports' }));
+    assert.deepEqual(dismissed, [2]);
+    assert.equal(window.location.pathname, '/imports');
+  });
+});
+
+describe('ToastProvider', () => {
+  const showProvider = (t?: TestContext) => {
+    if (t) t.mock.timers.enable({ apis: ['setTimeout'] });
+    const recorded: ToastInput[] = [];
+    let notify: (toast: ToastInput) => void = () => undefined;
+    const Probe = () => {
+      notify = useToast();
+      return createElement('p', null, 'App');
+    };
+    render(
+      createElement(ToastProvider, {
+        onNotify: (toast) => recorded.push(toast),
+        children: createElement(Probe)
+      })
+    );
+    const region = screen.getByRole('region', { name: 'Notifications' });
+    return {
+      recorded,
+      region,
+      show: (toast: ToastInput) => act(() => notify(toast)),
+      titles: () =>
+        within(region)
+          .queryAllByRole('listitem')
+          .map((li) => li.querySelector('p')?.textContent),
+      tick: (ms: number) => act(() => t?.mock.timers.tick(ms))
+    };
+  };
+
+  it('renders its children above an empty live region', () => {
+    const { region, titles } = showProvider();
+    screen.getByText('App');
+    assert.deepEqual(titles(), []);
+    assert.ok(region.previousElementSibling?.textContent === 'App');
+  });
+
+  it('shows and records each message', () => {
+    const { recorded, show, titles } = showProvider();
+    show({ title: 'Saved' });
+    show({ title: 'Deleted', intent: 'danger' });
+    assert.deepEqual(titles(), ['Saved', 'Deleted']);
+    assert.deepEqual(recorded, [{ title: 'Saved' }, { title: 'Deleted', intent: 'danger' }]);
+  });
+
+  it('shows but does not record a message marked unrecorded', () => {
+    const { recorded, show, titles } = showProvider();
+    show({ title: 'Copied', isRecorded: false });
+    assert.deepEqual(titles(), ['Copied']);
+    assert.deepEqual(recorded, []);
+  });
+
+  it('shows a repeated message once', () => {
+    const { show, titles } = showProvider();
+    show({ title: 'Saved' });
+    show({ title: 'Saved' });
+    assert.deepEqual(titles(), ['Saved']);
+  });
+
+  it('dismisses a message from its button', async () => {
+    const { show, titles } = showProvider();
+    show({ title: 'Saved' });
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Dismiss' }));
+    assert.deepEqual(titles(), []);
+  });
+
+  it('dismisses a message on its own after six seconds', (t) => {
+    const { show, tick, titles } = showProvider(t);
+    show({ title: 'Saved' });
+    tick(5_999);
+    assert.deepEqual(titles(), ['Saved']);
+    tick(1);
+    assert.deepEqual(titles(), []);
+  });
+
+  it('keeps the first timer when a message repeats', (t) => {
+    const { show, tick, titles } = showProvider(t);
+    show({ title: 'Saved' });
+    tick(4_000);
+    show({ title: 'Saved', description: 'Again' });
+    tick(2_000);
+    assert.deepEqual(titles(), []);
+  });
+
+  it('holds a message while the pointer is over it', (t) => {
+    const { region, show, tick, titles } = showProvider(t);
+    show({ title: 'Saved' });
+    const card = within(region).getByRole('listitem');
+    act(() => {
+      card.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+    });
+    tick(10_000);
+    assert.deepEqual(titles(), ['Saved']);
+    act(() => {
+      card.dispatchEvent(
+        new PointerEvent('pointerout', { bubbles: true, relatedTarget: document.body })
+      );
+    });
+    tick(5_999);
+    assert.deepEqual(titles(), ['Saved']);
+    tick(1);
+    assert.deepEqual(titles(), []);
+  });
+
+  it('holds a message while focus is inside it', (t) => {
+    const { region, show, tick, titles } = showProvider(t);
+    show({ title: 'Saved' });
+    const dismiss = within(region).getByRole('button', { name: 'Dismiss' });
+    act(() => dismiss.focus());
+    tick(10_000);
+    assert.deepEqual(titles(), ['Saved']);
+    act(() => dismiss.blur());
+    tick(6_000);
+    assert.deepEqual(titles(), []);
+  });
+
+  it('does nothing when used outside a provider', () => {
+    let notify: (toast: ToastInput) => void = () => undefined;
+    const Probe = () => {
+      notify = useToast();
+      return null;
+    };
+    render(createElement(Probe));
+    assert.doesNotThrow(() => notify({ title: 'Lost' }));
+    assert.ok(!screen.queryByRole('region'));
   });
 });

@@ -59,7 +59,7 @@ describe('auth service', () => {
       db,
       sessions: memorySessions(),
       throttle: throttle(),
-      now: () => new Date()
+      now: () => NOW
     });
     assert.deepEqual(await service.signIn({ email: 'dev@example.com', password: 'wrong' }, IP), {
       ok: false,
@@ -85,7 +85,7 @@ describe('auth service', () => {
       db,
       sessions: memorySessions(),
       throttle: throttle(),
-      now: () => new Date()
+      now: () => NOW
     });
     for (let i = 0; i < 5; i++) {
       await service.signIn({ email: 'dev@example.com', password: 'wrong' }, IP);
@@ -119,7 +119,7 @@ describe('auth service', () => {
       db,
       sessions: memorySessions(),
       throttle: throttle(),
-      now: () => new Date()
+      now: () => NOW
     });
     const signed = await service.signIn({ email: 'dev@example.com', password: 'P@ssw0rd123' }, IP);
     const other = await service.signIn({ email: 'dev@example.com', password: 'P@ssw0rd123' }, IP);
@@ -143,7 +143,7 @@ describe('auth service', () => {
       db,
       sessions: memorySessions(),
       throttle: throttle(),
-      now: () => new Date()
+      now: () => NOW
     });
     await service.signIn({ email: 'nobody@example.com', password: 'warm-up' }, IP);
     const timed = async (email: string) => {
@@ -168,7 +168,7 @@ describe('auth service', () => {
       db,
       sessions: memorySessions(),
       throttle: throttle(),
-      now: () => new Date()
+      now: () => NOW
     });
     assert.deepEqual(await service.me('u-1'), {
       ok: true,
@@ -305,6 +305,17 @@ describe('auth service invitations', () => {
     await taken.db.destroy();
   });
 
+  it('rethrows database errors other than a duplicate account while joining', async () => {
+    const broken = invitationService(invitation, {
+      fail: Object.assign(new Error('timeout'), { code: '57014' })
+    });
+    await assert.rejects(
+      broken.service.acceptInvitation({ token: 'tok', password: 'P@ssw0rd123456' }, IP),
+      { code: '57014' }
+    );
+    await broken.db.destroy();
+  });
+
   it('never changes the role of someone already in the agency', async () => {
     const member = invitationService(
       {
@@ -403,7 +414,7 @@ describe('auth service set password', () => {
       db,
       sessions: memorySessions(),
       throttle: throttle(),
-      now: () => new Date()
+      now: () => NOW
     });
     assert.deepEqual(
       await service.setPassword({ token: 'tok', password: 'New-password1' }),

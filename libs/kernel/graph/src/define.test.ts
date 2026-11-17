@@ -172,6 +172,18 @@ describe('define helpers', () => {
       outputs: { margin: 30 }
     });
     assert.equal(grade.effect, undefined);
+    const send = branchNode({
+      type: 't.send',
+      title: 'Send',
+      category: 'T',
+      description: '',
+      effect: true,
+      inputs: [],
+      outputs: [],
+      exits: { sent: { label: 'Sent' } },
+      compute: () => ({ exit: 'sent', outputs: {} })
+    });
+    assert.equal(send.effect, true);
     assert.deepEqual(grade.exits, { pass: { label: 'Pass' }, fail: { label: 'Fail' } });
   });
 });

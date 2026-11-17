@@ -11,6 +11,8 @@ describe('credentialsMatch', () => {
     assert.equal(credentialsMatch(expected, { username: 'ugula', password: 'pa:ss' }), true);
     assert.equal(credentialsMatch(expected, { username: 'ugula', password: 'pa:s' }), false);
     assert.equal(credentialsMatch(expected, { username: 'other', password: 'pa:ss' }), false);
+    assert.equal(credentialsMatch(expected, { username: 'Ugula', password: 'pa:ss' }), false);
+    assert.equal(credentialsMatch(expected, { username: '', password: '' }), false);
   });
 });
 
@@ -18,11 +20,14 @@ describe('isBasicAuthorized', () => {
   it('reads Basic credentials whose password may hold colons', () => {
     assert.equal(isBasicAuthorized(expected, basic('ugula:pa:ss')), true);
     assert.equal(isBasicAuthorized(expected, basic('ugula:wrong')), false);
+    assert.equal(isBasicAuthorized(expected, basic('ugula')), false);
   });
 
-  it('refuses a missing or non-Basic header', () => {
+  it('refuses a missing, empty or non-Basic header', () => {
     assert.equal(isBasicAuthorized(expected, null), false);
+    assert.equal(isBasicAuthorized(expected, ''), false);
     assert.equal(isBasicAuthorized(expected, 'Basic'), false);
+    assert.equal(isBasicAuthorized(expected, 'Basic '), false);
     assert.equal(
       isBasicAuthorized(expected, basic('ugula:pa:ss').replace('Basic', 'Bearer')),
       false

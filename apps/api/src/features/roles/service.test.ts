@@ -72,24 +72,41 @@ describe('toRole', () => {
 });
 
 describe('role service', () => {
-  it('lists, finds and describes permissions against what the caller holds', async () => {
-    const { db } = roleDb({ role: { ...roleRow(['fees:read']), total: '1' } });
+  it('lists and finds roles in the caller agency, marked by what the caller can grant', async () => {
+    const { db, queries } = roleDb({ role: { ...roleRow(['fees:read']), total: '1' } });
     const service = createRoleService({ db });
     const access = testAccess(['roles:read', 'fees:read']);
-    const page = await service.search(access, { page: 1, pageSize: 25, sort: 'name', dir: 'asc' });
-    assert.ok(page.ok);
-    assert.equal(page.value.total, 1);
-    assert.equal(page.value.items[0]?.isGrantable, true);
-    assert.equal((await service.find(access, 'r-1')).ok, true);
-    const perms = service.permissions(access);
+    const role = {
+      id: 'r-1',
+      name: 'Biller',
+      version: 2,
+      users: 0,
+      permissions: ['fees:read'],
+      isGrantable: true,
+      updatedAt
+    };
+    assert.deepEqual(
+      await service.search(access, { page: 1, pageSize: 25, sort: 'name', dir: 'asc' }),
+      { ok: true, value: { items: [role], total: 1, page: 1, pageSize: 25 } }
+    );
+    assert.deepEqual(await service.find(access, 'r-1'), { ok: true, value: role });
+    assert.ok(queries.every((q) => q.parameters.includes('t-1')));
+    await db.destroy();
+  });
+
+  it('describes every permission and marks the ones the caller holds as grantable', () => {
+    const { db } = roleDb({});
+    const perms = createRoleService({ db }).permissions(testAccess(['roles:read', 'fees:read']));
     assert.ok(perms.ok);
-    assert.equal(perms.value.items.length, PERMISSIONS.length);
+    assert.deepEqual(
+      perms.value.items.map((p) => p.permission),
+      [...PERMISSIONS]
+    );
     assert.deepEqual(
       perms.value.items.filter((p) => p.isGrantable).map((p) => p.permission),
       ['roles:read', 'fees:read']
     );
     assert.ok(perms.value.items.every((p) => p.description.length > 0));
-    await db.destroy();
   });
 
   it('reports missing roles', async () => {
@@ -142,9 +159,24 @@ describe('role service', () => {
 
   it('updates under the agency lock and returns the saved role', async () => {
     const { db, queries } = roleDb({ role: roleRow(['fees:read']) });
-    const res = await createRoleService({ db }).update(testAccess(), 'r-1', input(['fees:update']));
-    assert.ok(res.ok);
+    assert.deepEqual(
+      await createRoleService({ db }).update(testAccess(), 'r-1', input(['fees:update'])),
+      {
+        ok: true,
+        value: {
+          id: 'r-1',
+          name: 'Biller',
+          version: 2,
+          users: 0,
+          permissions: ['fees:read'],
+          isGrantable: true,
+          updatedAt
+        }
+      }
+    );
     assert.ok(queries[0]?.sql.includes('for no key update'));
+    const [update] = queries.filter((q) => q.sql.startsWith('update "roles"'));
+    assert.deepEqual(update?.parameters.slice(-3), ['r-1', 't-1', 2]);
     assert.deepEqual(writes(queries), [
       'update "roles" set',
       'delete from "role_permissions"',
@@ -247,5 +279,19 @@ describe('role service', () => {
       failure: { code: 'conflict', message: 'Invitations still give this role; delete them first' }
     });
     await invited.db.destroy();
+  });
+
+  it('rethrows database errors it does not recognise', async () => {
+    const { db } = roleDb({
+      role: roleRow([]),
+      fail: (q) => (q.sql.startsWith('select') ? null : pgError('57014'))
+    });
+    const service = createRoleService({ db });
+    await assert.rejects(service.create(testAccess(), { name: 'x', permissions: [] }), {
+      code: '57014'
+    });
+    await assert.rejects(service.update(testAccess(), 'r-1', input([])), { code: '57014' });
+    await assert.rejects(service.remove(testAccess(), 'r-1'), { code: '57014' });
+    await db.destroy();
   });
 });

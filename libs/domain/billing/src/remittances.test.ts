@@ -101,9 +101,18 @@ describe('readPostings', () => {
         [3, 'reconcile', 0]
       ]
     );
-    assert.match(
-      readPostings([{ position: 1, route: 'appeal', adjustedCents: -500 }])[0]?.message ?? '',
-      /-500 cents .*post it by hand/
+    assert.deepEqual(
+      readPostings([{ position: 1, route: 'appeal', adjustedCents: -500, crossover: true }]),
+      [
+        {
+          position: 1,
+          route: 'review',
+          message:
+            'The adjustment of -500 cents is not a whole amount of the right sign; post it by hand',
+          adjustedCents: 0,
+          crossover: false
+        }
+      ]
     );
     assert.deepEqual(readPostings([{ position: 1, route: 'reversal', adjustedCents: -500 }]), [
       { position: 1, route: 'reversal', message: '', adjustedCents: -500, crossover: false }
@@ -150,6 +159,9 @@ describe('remittanceCoverage', () => {
     assert.equal(remittanceCoverage(coverages, null, '19')?.id, 'mcr');
     assert.equal(remittanceCoverage(coverages, null, '4'), null);
     assert.equal(remittanceCoverage(coverages, null, '3'), null);
+    assert.equal(remittanceCoverage(coverages, null, '2')?.id, 'blue');
+    assert.equal(remittanceCoverage(coverages, null, '20')?.id, 'blue');
+    assert.equal(remittanceCoverage(coverages, '', '1')?.id, 'mcr');
   });
 
   it('trusts a single payer ID match over the processing order the status claims', () => {
@@ -173,5 +185,7 @@ describe('remittanceCoverage', () => {
     assert.equal(remittanceCoverage(twice, 'DEMOMCR', '21')?.id, 'mcr-2');
     assert.equal(remittanceCoverage(twice, 'DEMOMCR', '20'), null);
     assert.equal(remittanceCoverage(twice, 'DEMOMCR', '22'), null);
+    assert.equal(remittanceCoverage(twice, 'DEMOMCR', '1')?.id, 'mcr');
+    assert.equal(remittanceCoverage(twice, 'DEMOMCR', '4'), null);
   });
 });

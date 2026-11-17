@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { invokeNode } from '../testing.ts';
+import type { Json } from '../types.ts';
 import { createHumanTaskNode } from './human.ts';
 
 const humanTaskNode = createHumanTaskNode(['claims:approve', 'claims:update']);
@@ -108,11 +109,25 @@ describe('human task node', () => {
   });
 
   it('rejects tasks without unique identifier outcomes or a permission name', async () => {
-    for (const outcomes of [[], ['ok', 'ok'], ['not ok']])
-      await assert.rejects(() => invokeNode(humanTaskNode, { config: { ...config, outcomes } }));
-    await assert.rejects(() =>
-      invokeNode(humanTaskNode, { config: { ...config, permission: 'approve' } })
+    for (const [outcomes, message] of [
+      [[], /Invalid length/],
+      [['ok', 'ok'], /Outcomes must be unique/],
+      [['not ok'], /Invalid format/]
+    ] as [Json[], RegExp][]) {
+      await assert.rejects(
+        () => invokeNode(humanTaskNode, { config: { ...config, outcomes } }),
+        message
+      );
+    }
+    await assert.rejects(
+      () => invokeNode(humanTaskNode, { config: { ...config, permission: 'approve' } }),
+      /Invalid format/
     );
+    for (const missing of ['title', 'queue'])
+      await assert.rejects(
+        () => invokeNode(humanTaskNode, { config: { ...config, [missing]: '' } }),
+        /Invalid length/
+      );
   });
 
   it('accepts only permissions the catalog knows, any well-formed one without a list', async () => {

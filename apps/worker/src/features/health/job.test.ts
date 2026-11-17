@@ -4,22 +4,28 @@ import type { WorkHandler } from 'pg-boss';
 import { HEALTH_QUEUE, registerHealthJob } from './job.ts';
 
 describe('registerHealthJob', () => {
-  it('registers the health queue with a handler that answers ok', async () => {
-    let created = '';
+  const register = async () => {
+    const calls: string[] = [];
     let handler: WorkHandler<unknown> | undefined;
-    const boss = {
-      createQueue: async (name: string) => {
-        created = name;
-      },
-      work: async <T>(_: string, h: WorkHandler<T>) => {
+    const id = await registerHealthJob({
+      createQueue: async (name: string) => void calls.push(`createQueue:${name}`),
+      work: async <T>(name: string, h: WorkHandler<T>) => {
+        calls.push(`work:${name}`);
         handler = h as WorkHandler<unknown>;
         return 'health-worker';
       }
-    };
+    });
+    return { calls, id, handler };
+  };
 
-    const id = await registerHealthJob(boss);
-    assert.equal(created, HEALTH_QUEUE);
+  it('creates the health queue before working it and returns the worker id', async () => {
+    const { calls, id } = await register();
+    assert.deepEqual(calls, [`createQueue:${HEALTH_QUEUE}`, `work:${HEALTH_QUEUE}`]);
     assert.equal(id, 'health-worker');
+  });
+
+  it('answers status ok', async () => {
+    const { handler } = await register();
     assert.deepEqual(await handler?.([]), { status: 'ok' });
   });
 });

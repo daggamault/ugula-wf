@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { fail, ok } from '../../shared/result.ts';
-import { withSession } from '../../shared/testing.ts';
+import { testAccess, withSession } from '../../shared/testing.ts';
 import { createPayerRoutes } from './routes.ts';
 import type { PayerService } from './service.ts';
 
@@ -82,5 +82,28 @@ describe('payer route failures', () => {
     assert.equal((await missing(`/${ID}`, { method: 'DELETE' })).status, 404);
     assert.equal((await missing(`/${ID}/aliases/${ID}`, { method: 'DELETE' })).status, 404);
     assert.equal((await missing('/nope', { method: 'DELETE' })).status, 400);
+  });
+});
+
+describe('payer route writes', () => {
+  it('passes the writes the role holds and maps a refused save to 403', async () => {
+    const seen: unknown[] = [];
+    const refusing = {
+      save: async (_agencyId: string, _input: unknown, writes: unknown) => {
+        seen.push(writes);
+        return fail('forbidden', "You can't change payers");
+      }
+    } as unknown as PayerService;
+    const send = withSession(
+      createPayerRoutes(refusing),
+      testAccess(['payers:read', 'payers:create'])
+    );
+    const res = await send('/', {
+      method: 'PUT',
+      body: JSON.stringify({ name: 'Medicare', payerCode: '00952', claimFiling: 'MB' })
+    });
+    assert.equal(res.status, 403);
+    assert.deepEqual(await res.json(), { error: "You can't change payers" });
+    assert.deepEqual(seen, [{ create: true, update: false }]);
   });
 });

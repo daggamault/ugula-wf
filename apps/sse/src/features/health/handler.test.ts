@@ -4,20 +4,17 @@ import { describe, it } from 'node:test';
 import { handleHealth } from './handler.ts';
 
 describe('handleHealth', () => {
-  it('writes 200 status ok json response', () => {
-    let status = 0;
-    let body = '';
+  it('writes a 200 JSON response with status ok', () => {
+    const calls: unknown[][] = [];
     const res = {
-      writeHead: (code: number) => {
-        status = code;
-      },
-      end: (payload: string) => {
-        body = payload;
-      }
+      writeHead: (...args: unknown[]) => void calls.push(['writeHead', ...args]),
+      end: (...args: unknown[]) => void calls.push(['end', ...args])
     } as unknown as ServerResponse;
 
     handleHealth(res);
-    assert.equal(status, 200);
-    assert.equal(body, '{"status":"ok"}');
+    assert.deepEqual(calls, [
+      ['writeHead', 200, { 'content-type': 'application/json' }],
+      ['end', '{"status":"ok"}']
+    ]);
   });
 });

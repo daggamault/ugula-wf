@@ -46,10 +46,26 @@ describe('payer file eligibility', () => {
         [COVERAGE.toUpperCase(), 'c1', 'eligible']
       ]
     );
-    const lookups = queries.filter((q) => q.sql.includes('from "claim_coverages"'));
-    assert.equal(lookups.length, 1);
-    assert.ok(!lookups[0]?.sql.includes('::text'));
-    assert.ok(queries.some((q) => q.sql.startsWith('update "claim_coverages"')));
+    const [lookup, save, insert] = queries;
+    assert.equal(
+      lookup?.sql,
+      'select "claim_coverages"."id", "claim_coverages"."claim_id", "payers"."claim_filing" from "claim_coverages" left join "payers" on "payers"."id" = "claim_coverages"."payer_id" where "claim_coverages"."agency_id" = $1 and "claim_coverages"."id" in ($2)'
+    );
+    assert.deepEqual(lookup?.parameters, ['t1', COVERAGE]);
+    assert.equal(
+      save?.sql,
+      'update "claim_coverages" set "eligibility" = $1, "eligibility_note" = $2, "eligibility_checked_at" = $3, "stay_kind" = $4, "stay_admitted_on" = $5, "stay_discharged_on" = $6 where "id" = $7'
+    );
+    assert.deepEqual(insert?.parameters, [
+      't1',
+      'c1',
+      'eligibility',
+      COVERAGE,
+      'Coverage active',
+      null,
+      null,
+      'd:2'
+    ]);
     assert.equal(queries.filter((q) => q.sql.startsWith('insert into "claim_events"')).length, 1);
   });
 
@@ -94,8 +110,6 @@ describe('payer file eligibility', () => {
         stay: { kind: 'snf', admittedOn: '2026-10-01', dischargedOn: null }
       }
     ]);
-    const lookup = queries.find((q) => q.sql.includes('from "claim_coverages"'));
-    assert.deepEqual(lookup?.parameters, ['t1', COVERAGE]);
     assert.deepEqual(saves(queries), [
       ['active', 'Gold; Covered 2026-01-01 to now', c.now, 'snf', '2026-10-01', null, COVERAGE]
     ]);
@@ -148,6 +162,26 @@ describe('payer file eligibility', () => {
         ['PCR-1', null, 'unmatched', 'No payer on a claim matches this response'],
         ['', null, 'unmatched', 'No payer on a claim matches this response']
       ]
+    );
+  });
+
+  it('looks each traced coverage up once however often and in whatever case the file names it', async () => {
+    const { c, queries } = traced();
+    const out = await postEligibility(c, [result(COVERAGE), result(COVERAGE.toUpperCase())]);
+    assert.deepEqual(
+      queries.filter((q) => q.sql.includes('from "claim_coverages"')).map((q) => q.parameters),
+      [['t1', COVERAGE]]
+    );
+    assert.deepEqual(
+      out.items.map((i) => [i.reference, i.claimId, i.outcome]),
+      [
+        [COVERAGE, 'c1', 'eligible'],
+        [COVERAGE.toUpperCase(), 'c1', 'eligible']
+      ]
+    );
+    assert.deepEqual(
+      events(queries).map((p) => p[7]),
+      ['d:1', 'd:2']
     );
   });
 

@@ -58,16 +58,20 @@ describe('slotGraph', () => {
 
   it('passes the exec flow through action slots', () => {
     const def = slotGraph({ ...pure, execIn: ['exec'], execOut: ['then'] });
-    assert.ok(def.edges.some((e) => e.fromPin === 'exec' && e.toPin === 'exec'));
+    assert.deepEqual(def.edges, [
+      { from: 'entry', fromPin: 'exec', to: 'return', toPin: 'exec' },
+      { from: 'entry', fromPin: 'lines', to: 'return', toPin: 'lines' }
+    ]);
     assert.equal(isPassThrough(def), true);
   });
 
   it('refuses outputs that no input passes and more than one path', () => {
-    assert.throws(
-      () => slotGraph({ ...pure, outputs: [pin('total', 'number')] }),
-      /same name and type/
-    );
-    assert.throws(() => slotGraph({ ...pure, execIn: ['a', 'b'] }), /one way in/);
+    const passes = /Every slot output needs an input of the same name and type/;
+    assert.throws(() => slotGraph({ ...pure, outputs: [pin('total', 'number')] }), passes);
+    assert.throws(() => slotGraph({ ...pure, outputs: [pin('lines', 'string')] }), passes);
+    const paths = /A slot has at most one way in and one way out/;
+    assert.throws(() => slotGraph({ ...pure, execIn: ['a', 'b'] }), paths);
+    assert.throws(() => slotGraph({ ...pure, execIn: ['exec'], execOut: ['a', 'b'] }), paths);
   });
 });
 
@@ -83,5 +87,19 @@ describe('isPassThrough', () => {
     );
     assert.equal(isPassThrough({ ...def, edges: [] }), false);
     assert.equal(isPassThrough({ ...def, nodes: def.nodes.slice(0, 1) }), false);
+    assert.equal(
+      isPassThrough({
+        ...def,
+        nodes: [...def.nodes, { id: 'r2', type: RETURN_TYPE, version: 1 }]
+      }),
+      false
+    );
+    assert.equal(
+      isPassThrough({
+        ...def,
+        signature: { ...def.signature, outputs: [pin('lines', 'number')] }
+      }),
+      false
+    );
   });
 });

@@ -16,7 +16,8 @@ const sftp = {
 
 const setup = ({
   published = true,
-  agency = null as { id: string; sftp_password_hash: string } | null
+  agency = null as { id: string; sftp_password_hash: string } | null,
+  announce = recordAnnouncements()
 } = {}) => {
   const { db, queries } = createRecordingDb((q: CompiledQuery) => {
     if (q.sql.includes('from "agencies"')) return agency ? [agency] : [];
@@ -38,13 +39,17 @@ const setup = ({
           ]
         : [];
     }
+    if (q.sql.includes('from "imports" as "i"')) {
+      return q.parameters.includes('i1') ? [{ id: 'i1', file_name: 'f.xml' }] : [];
+    }
     if (q.sql.trimStart().startsWith('select')) return published ? [{ id: 'v1', version: 2 }] : [];
     return [{ id: 'r1' }];
   });
   const stored: string[] = [];
+  const contentTypes: string[] = [];
   const jobs: unknown[] = [];
   const boss: RunQueueClient = { insert: async (_n, batch) => void jobs.push(...batch) };
-  const { publish, events: publishAfter } = recordAnnouncements();
+  const { publish, events: publishAfter } = announce;
   const service = createImportService({
     db,
     boss,
@@ -54,12 +59,13 @@ const setup = ({
     blobs: {
       putBytes: async (key, body, contentType) => {
         stored.push(key);
+        contentTypes.push(contentType);
         return { bucket: 'ugula', key, size: body.byteLength, contentType };
       },
       getJson: async () => ({ eRecord: { 'eRecord.01': 'PCR-1' } })
     }
   });
-  return { service, stored, jobs, queries, publishAfter };
+  return { service, stored, contentTypes, jobs, queries, publishAfter };
 };
 
 const file = (text: string, name = 'pcrs.xml') => ({
@@ -72,16 +78,17 @@ describe('import service uploads', () => {
   it('stores the upload and starts the workflow with a reference to it', async () => {
     const { service, stored, jobs, queries } = setup();
     const res = await service.upload('t-1', 'u-1', 'billing.receive-nemsis-file', file('<x/>'));
-    assert.ok(res.ok);
-    assert.equal(res.value.runId, 'r1');
     assert.match(stored[0] ?? '', /^imports\/t-1\/[0-9a-f-]{36}\/pcrs\.xml$/);
-    assert.deepEqual(res.value.file, {
-      bucket: 'ugula',
-      key: stored[0],
-      size: 4,
-      contentType: 'application/xml'
+    assert.deepEqual(res, {
+      ok: true,
+      value: {
+        runId: 'r1',
+        file: { bucket: 'ugula', key: stored[0], size: 4, contentType: 'application/xml' }
+      }
     });
-    assert.equal(jobs.length, 1);
+    assert.deepEqual(jobs, [{ data: { runId: 'r1', command: { type: 'advance' } }, priority: 2 }]);
+    const run = queries.find((q) => q.sql.startsWith('insert into "workflow_runs"'));
+    assert.ok(run?.parameters.includes('v1'));
     const recorded = queries.find((q) => q.sql.startsWith('insert into "imports"'));
     assert.deepEqual(recorded?.parameters.slice(0, 4), ['t-1', 'r1', 'upload', 'pcrs.xml']);
     assert.equal(recorded?.parameters.at(-1), 'u-1');
@@ -89,26 +96,49 @@ describe('import service uploads', () => {
 
   it('rejects empty, oversized and unroutable uploads before storing anything', async () => {
     const { service, stored } = setup({ published: false });
-    const code = async (f: ReturnType<typeof file>) => {
+    const failure = async (f: ReturnType<typeof file>) => {
       const res = await service.upload('t-1', 'u-1', 'billing.receive-nemsis-file', f);
-      return res.ok ? 'ok' : res.failure.code;
+      return res.ok ? null : res.failure;
     };
-    assert.equal(await code(file('')), 'invalid');
-    assert.equal(await code(file('01234567890')), 'invalid');
-    assert.equal(await code(file('<x/>')), 'not_found');
+    assert.deepEqual(await failure(file('')), { code: 'invalid', message: 'The file is empty' });
+    assert.deepEqual(await failure(file('01234567890')), {
+      code: 'invalid',
+      message: 'The file is larger than 10 bytes'
+    });
+    assert.deepEqual(await failure(file('<x/>')), {
+      code: 'not_found',
+      message: 'Workflow billing.receive-nemsis-file has no published version'
+    });
     assert.deepEqual(stored, []);
+  });
+
+  it('stores an upload of unknown type as raw bytes', async () => {
+    const { service, contentTypes } = setup();
+    await service.upload('t-1', 'u-1', 'billing.receive-nemsis-file', {
+      ...file('<x/>'),
+      type: ''
+    });
+    assert.deepEqual(contentTypes, ['application/octet-stream']);
   });
 
   it('finds an import and pages its reports only within the agency', async () => {
     const { service, queries } = setup();
     const page = { page: 1, pageSize: 25, sort: 'position' as const, dir: 'asc' as const };
-    const found = await service.find('t-1', 'i1');
-    assert.ok(found.ok && 'import' in found.value && !('reports' in found.value));
-    assert.equal((await service.reports('t-1', 'i1', page)).ok, true);
-    assert.ok(queries.some((q) => q.sql.includes('from "import_reports" as "ir"')));
-    const { service: empty } = setup({ published: false });
-    assert.equal((await empty.reports('t-1', 'i9', page)).ok, false);
-    assert.equal((await empty.find('t-1', 'i9')).ok, false);
+    assert.deepEqual(await service.find('t-1', 'i1'), {
+      ok: true,
+      value: { import: { id: 'i1', file_name: 'f.xml' } }
+    });
+    assert.deepEqual(await service.reports('t-1', 'i1', page), {
+      ok: true,
+      value: { items: [], total: 0, page: 1, pageSize: 25 }
+    });
+    const reports = queries.find((q) => q.sql.includes('from "import_reports" as "ir"'));
+    assert.ok(reports?.parameters.includes('t-1') && reports.parameters.includes('i1'));
+    const notFound = { ok: false, failure: { code: 'not_found', message: 'Import not found' } };
+    const other = setup();
+    assert.deepEqual(await other.service.reports('t-1', 'i9', page), notFound);
+    assert.deepEqual(await other.service.find('t-1', 'i9'), notFound);
+    assert.ok(!other.queries.some((q) => q.sql.includes('from "import_reports" as "ir"')));
   });
 
   it('reads one stored report of the agency with its XML', async () => {
@@ -134,13 +164,15 @@ describe('import service uploads', () => {
     assert.deepEqual(codes?.parameters, ['eRecord.01', 'PCR-1']);
     const lookup = queries.find((q) => q.sql.includes('from "import_reports"'));
     assert.ok(lookup?.sql.endsWith('where "r"."id" = $1 and "i"."agency_id" = $2'));
-    const missing = await service.report('t-1', 'rep-9');
-    assert.equal(!missing.ok && missing.failure.code, 'not_found');
+    assert.deepEqual(await service.report('t-1', 'rep-9'), {
+      ok: false,
+      failure: { code: 'not_found', message: 'Report not found' }
+    });
   });
 });
 
 describe('import service SFTP hooks', () => {
-  it('authenticates agency SFTP accounts into a agency-scoped S3 folder', async () => {
+  it('authenticates agency SFTP accounts into an agency-scoped S3 folder', async () => {
     const agency = { id: 't-1', sftp_password_hash: await hashPassword('s3cret-pass') };
     const { service } = setup({ agency });
     const res = await service.authenticateSftp('acme-ems', 's3cret-pass');
@@ -163,8 +195,12 @@ describe('import service SFTP hooks', () => {
         }
       }
     });
-    assert.equal((await service.authenticateSftp('acme-ems', 'wrong')).ok, false);
-    assert.equal((await setup().service.authenticateSftp('nobody', 'x')).ok, false);
+    const denied = {
+      ok: false,
+      failure: { code: 'unauthorized', message: 'Invalid SFTP credentials' }
+    };
+    assert.deepEqual(await service.authenticateSftp('acme-ems', 'wrong'), denied);
+    assert.deepEqual(await setup().service.authenticateSftp('nobody', 'x'), denied);
   });
 
   it('starts ingest for completed uploads and ignores everything else', async () => {
@@ -176,12 +212,17 @@ describe('import service SFTP hooks', () => {
       file_size: 9,
       status: 1
     };
-    const res = await service.receiveSftpEvent(event);
-    assert.deepEqual(res.ok && 'file' in res.value && res.value.file, {
-      bucket: 'ugula',
-      key: 'imports/t-1/sftp/2026/pcrs.xml',
-      size: 9,
-      contentType: 'application/xml'
+    assert.deepEqual(await service.receiveSftpEvent(event), {
+      ok: true,
+      value: {
+        runId: 'r1',
+        file: {
+          bucket: 'ugula',
+          key: 'imports/t-1/sftp/2026/pcrs.xml',
+          size: 9,
+          contentType: 'application/xml'
+        }
+      }
     });
     assert.deepEqual(await service.receiveSftpEvent({ ...event, status: 2 }), {
       ok: true,
@@ -195,8 +236,19 @@ describe('import service SFTP hooks', () => {
     const recorded = queries.find((q) => q.sql.startsWith('insert into "imports"'));
     assert.deepEqual(recorded?.parameters.slice(0, 4), ['t-1', 'r1', 'sftp', 'pcrs.xml']);
     assert.equal(recorded?.parameters.at(-1), null);
-    const unknown = await setup().service.receiveSftpEvent(event);
-    assert.equal(!unknown.ok && unknown.failure.code, 'not_found');
+    assert.deepEqual(await setup().service.receiveSftpEvent(event), {
+      ok: false,
+      failure: { code: 'not_found', message: 'No agency uses SFTP account acme-ems' }
+    });
+    const unpublished = setup({ published: false, agency: { id: 't-1', sftp_password_hash: '' } });
+    assert.deepEqual(await unpublished.service.receiveSftpEvent(event), {
+      ok: false,
+      failure: {
+        code: 'not_found',
+        message: 'Workflow billing.receive-nemsis-file has no published version'
+      }
+    });
+    assert.deepEqual(unpublished.jobs, []);
   });
 
   it('refuses oversized files and unsafe paths before recording an import', async () => {
@@ -230,10 +282,22 @@ describe('import service announcements and names', () => {
     );
     assert.deepEqual(publishAfter, [{ agencyId: 't-1', event: { kind: 'import', id: null } }]);
     const recorded = queries.find((q) => q.sql.startsWith('insert into "imports"'));
-    assert.equal(recorded?.parameters[3], 'upload');
+    assert.deepEqual(recorded?.parameters.slice(2, 4), ['upload', 'upload']);
     const refused = setup({ published: false });
     await refused.service.upload('t-1', 'u-1', 'billing.receive-nemsis-file', file('<x/>'));
     assert.deepEqual(refused.publishAfter, []);
+  });
+
+  it('still reports an import as started when the announcement fails', async () => {
+    const { service, jobs } = setup({
+      announce: {
+        events: [],
+        publish: async () => Promise.reject(new Error('redis down'))
+      }
+    });
+    const res = await service.upload('t-1', 'u-1', 'billing.receive-nemsis-file', file('<x/>'));
+    assert.equal(res.ok && res.value.runId, 'r1');
+    assert.equal(jobs.length, 1);
   });
 
   it('refuses SFTP logins for agencies without an SFTP password', async () => {

@@ -54,7 +54,6 @@ describe('createSharedLimiter', () => {
     assert.equal(await limit(async () => 4), 4);
     assert.equal(peak(), 2);
     assert.equal(held.size, 0);
-    assert.equal(busyRetryAfter(new Error('busy')), null);
   });
 
   it('releases the lease when a task fails', async () => {
@@ -82,7 +81,10 @@ describe('createSharedLimiter', () => {
       limit(() => Promise.reject(new Error('boom'))),
       /boom/
     );
-    assert.equal(errors.length, 2);
+    assert.deepEqual(
+      errors.map((e) => (e as Error).message),
+      ['redis down', 'redis down']
+    );
   });
 
   it('backs off exponentially with jitter up to a second', async () => {
@@ -102,22 +104,54 @@ describe('createSharedLimiter', () => {
   });
 });
 
+describe('busyRetryAfter', () => {
+  it('reports busy after a single try without waiting, retrying after one to three seconds', async () => {
+    const busyAfter = async (random: number) => {
+      const waits: number[] = [];
+      const limit = createSharedLimiter(
+        { acquire: async () => false, release: async () => {} },
+        { wait: async (ms) => waits.push(ms), random: () => random, tries: 1 }
+      );
+      const err = await limit(async () => null).catch((e: unknown) => e);
+      assert.deepEqual(waits, []);
+      assert.equal((err as Error).message, 'Every shared slot is busy');
+      return busyRetryAfter(err);
+    };
+    assert.equal(await busyAfter(0), 1_000);
+    assert.equal(await busyAfter(0.5), 2_000);
+  });
+
+  it('ignores errors that are not a busy limit', () => {
+    assert.equal(busyRetryAfter(new Error('busy')), null);
+    assert.equal(
+      busyRetryAfter(Object.assign(new Error('x'), { code: 'OTHER', retryAfterMs: 5 })),
+      null
+    );
+    assert.equal(busyRetryAfter(Object.assign(new Error('x'), { code: 'LIMIT_BUSY' })), null);
+    assert.equal(busyRetryAfter({ code: 'LIMIT_BUSY', retryAfterMs: 5 }), null);
+    assert.equal(busyRetryAfter(null), null);
+  });
+});
+
 describe('createRedisLeases', () => {
   it('acquires and releases leases atomically in one sorted set', async () => {
     const calls: unknown[][] = [];
     const redis: ScriptRunner = {
       eval: async (script, numKeys, ...args) => {
         calls.push([script.includes('ZADD') ? 'acquire' : 'release', numKeys, ...args]);
-        return script.includes('ZADD') ? (args[1] === 'a' ? 1 : 0) : 1;
+        if (!script.includes('ZADD')) return 1;
+        return args[1] === 'a' ? 1 : args[1] === 'c' ? '1' : 0;
       }
     };
     const leases = createRedisLeases(redis, { key: 'k', limit: 2, ttlMs: 150_000 });
     assert.equal(await leases.acquire('a'), true);
     assert.equal(await leases.acquire('b'), false);
+    assert.equal(await leases.acquire('c'), false);
     await leases.release('a');
     assert.deepEqual(calls, [
       ['acquire', 1, 'k', 'a', 2, 150_000],
       ['acquire', 1, 'k', 'b', 2, 150_000],
+      ['acquire', 1, 'k', 'c', 2, 150_000],
       ['release', 1, 'k', 'a']
     ]);
   });

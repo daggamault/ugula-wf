@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { describe, it } from 'node:test';
-import { createBlobStore, createS3Storage, importsPrefix, type ObjectStorage } from './index.ts';
+import {
+  clearinghousePrefix,
+  createBlobStore,
+  createS3Storage,
+  importsPrefix,
+  type ObjectStorage
+} from './index.ts';
 
 const memory = (): ObjectStorage & { objects: Map<string, Uint8Array> } => {
   const objects = new Map<string, Uint8Array>();
@@ -20,9 +26,10 @@ const memory = (): ObjectStorage & { objects: Map<string, Uint8Array> } => {
   };
 };
 
-describe('importsPrefix', () => {
-  it('scopes imports to their agency', () => {
+describe('storage prefixes', () => {
+  it('scopes imports and clearinghouse files to their agency', () => {
     assert.equal(importsPrefix('t-1'), 'imports/t-1/');
+    assert.equal(clearinghousePrefix('t-1'), 'clearinghouse/t-1/');
   });
 });
 
@@ -43,7 +50,24 @@ describe('createBlobStore', () => {
     assert.equal(new TextDecoder().decode(await blobs.getBytes(xml)), '<x/>');
     await blobs.remove(xml);
     await assert.rejects(() => blobs.getBytes(xml), /missing a.xml/);
-    await assert.rejects(() => blobs.remove({ bucket: 'other', key: 'a.xml' }), /not in bucket/);
+  });
+
+  it('sizes a reference by its UTF-8 bytes', async () => {
+    const blobs = createBlobStore(memory());
+    assert.deepEqual(await blobs.putJson('k', 'é'), {
+      bucket: 'ugula',
+      key: 'k',
+      size: 4,
+      contentType: 'application/json'
+    });
+    assert.deepEqual(await blobs.getJson({ bucket: 'ugula', key: 'k' }), 'é');
+  });
+
+  it('ensures its bucket through the storage', async () => {
+    let ensured = 0;
+    const blobs = createBlobStore({ ...memory(), ensure: async () => void ensured++ });
+    await blobs.ensureBucket();
+    assert.equal(ensured, 1);
   });
 
   it('refuses references to other buckets', async () => {
@@ -54,13 +78,17 @@ describe('createBlobStore', () => {
       /not in bucket ugula/
     );
     await assert.rejects(() => blobs.getJson({ bucket: 'other', key: 'k' }), /not in bucket ugula/);
+    await assert.rejects(
+      () => blobs.remove({ bucket: 'other', key: 'k' }),
+      /Blob k is not in bucket ugula/
+    );
   });
 });
 
 type Seen = { method: string; url: string; type: string | undefined; body: string };
 
 const withS3 = async (
-  respond: (req: Seen) => { status: number; body?: string },
+  respond: (req: Seen) => { status: number; body?: string; chunked?: boolean },
   run: (storage: ObjectStorage, seen: Seen[]) => Promise<void>
 ) => {
   const seen: Seen[] = [];
@@ -74,9 +102,9 @@ const withS3 = async (
       body: Buffer.concat(chunks).toString()
     };
     seen.push(entry);
-    const { status, body = '' } = respond(entry);
+    const { status, body = '', chunked = false } = respond(entry);
     res.writeHead(status, {
-      'content-length': Buffer.byteLength(body),
+      ...(chunked ? {} : { 'content-length': Buffer.byteLength(body) }),
       'content-type': 'text/plain'
     });
     res.end(entry.method === 'HEAD' ? undefined : body);
@@ -100,12 +128,32 @@ const withS3 = async (
 };
 
 describe('createS3Storage', () => {
-  it('reads objects and refuses ones larger than the limit', async () => {
+  it('reads objects up to the limit and refuses larger ones', async () => {
     await withS3(
-      ({ url }) => ({ status: 200, body: url.includes('big') ? 'x'.repeat(10) : 'tiny' }),
+      ({ url }) => ({ status: 200, body: url.includes('big') ? 'x'.repeat(9) : 'x'.repeat(8) }),
+      async (storage, seen) => {
+        assert.equal(new TextDecoder().decode(await storage.get('small')), 'xxxxxxxx');
+        await assert.rejects(() => storage.get('big'), {
+          message: 'Object big is 9 bytes, more than 8'
+        });
+        assert.deepEqual(
+          seen.map(({ method, url }) => [method, url.split('?')[0]]),
+          [
+            ['GET', '/ugula/small'],
+            ['GET', '/ugula/big']
+          ]
+        );
+      }
+    );
+  });
+
+  it('refuses an object larger than the limit when its size is not announced', async () => {
+    await withS3(
+      () => ({ status: 200, body: 'x'.repeat(10), chunked: true }),
       async (storage) => {
-        assert.equal(new TextDecoder().decode(await storage.get('small')), 'tiny');
-        await assert.rejects(() => storage.get('big'), /Object big is 10 bytes, more than 8/);
+        await assert.rejects(() => storage.get('streamed'), {
+          message: 'Object streamed is 10 bytes, more than 8'
+        });
       }
     );
   });

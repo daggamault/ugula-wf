@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { fail, ok } from '../../shared/result.ts';
-import { withSession } from '../../shared/testing.ts';
+import { testAccess, withSession } from '../../shared/testing.ts';
 import { createFeeRoutes } from './routes.ts';
 import type { FeeService } from './service.ts';
 
@@ -82,5 +82,25 @@ describe('fee route failures', () => {
     assert.deepEqual(await saved.json(), { error: 'Choose a payer from the payer directory' });
     assert.equal((await send('/?sort=price')).status, 400);
     assert.equal((await send(`/?q=${'x'.repeat(81)}`)).status, 400);
+  });
+});
+
+describe('fee route writes', () => {
+  it('passes the writes the role holds and maps a refused save to 403', async () => {
+    const seen: unknown[] = [];
+    const refusing = {
+      save: async (_agencyId: string, _input: unknown, writes: unknown) => {
+        seen.push(writes);
+        return fail('forbidden', "You can't add fees");
+      }
+    } as unknown as FeeService;
+    const send = withSession(createFeeRoutes(refusing), testAccess(['fees:read', 'fees:update']));
+    const res = await send('/', {
+      method: 'PUT',
+      body: JSON.stringify({ code: 'A0427', amountCents: 1 })
+    });
+    assert.equal(res.status, 403);
+    assert.deepEqual(await res.json(), { error: "You can't add fees" });
+    assert.deepEqual(seen, [{ create: false, update: true }]);
   });
 });

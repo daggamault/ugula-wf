@@ -4,8 +4,14 @@ import { CLAIM_TASK_KEYS, CLAIM_TASKS, readPayerNames } from './claim-tasks.ts';
 
 describe('CLAIM_TASKS', () => {
   it('names each claim task workflow a biller can start, and which work on drafts', () => {
-    assert.equal(CLAIM_TASK_KEYS.length, 6);
-    assert.equal(CLAIM_TASKS['billing.post-payment'].label, 'Post Payment');
+    assert.deepEqual(CLAIM_TASK_KEYS, [
+      'billing.correct-claim-data',
+      'billing.change-responsible-party',
+      'billing.receive-document',
+      'billing.chase-document',
+      'billing.log-records-request',
+      'billing.post-payment'
+    ]);
     assert.deepEqual(
       CLAIM_TASK_KEYS.filter((k) => CLAIM_TASKS[k].onDrafts),
       ['billing.receive-document']
@@ -21,10 +27,19 @@ describe('readPayerNames', () => {
 
   it('refuses a payer listed twice, a name too long or too many payers', () => {
     assert.equal(readPayerNames(['Medicare', 'medicare']), 'medicare is listed twice');
-    assert.match(String(readPayerNames(['x'.repeat(61)])), /at most 60 characters/);
-    assert.match(
-      String(readPayerNames(Array.from({ length: 11 }, (_, i) => `P${i}`))),
-      /at most 10 payers/
+    assert.equal(
+      readPayerNames(['Medicare', 'x'.repeat(61)]),
+      `Payer names have at most 60 characters: ${'x'.repeat(61)}`
     );
+    assert.equal(
+      readPayerNames(Array.from({ length: 11 }, (_, i) => `P${i}`)),
+      'A claim can have at most 10 payers'
+    );
+  });
+
+  it('accepts up to ten payers of up to sixty characters, not counting blank lines', () => {
+    const ten = Array.from({ length: 10 }, (_, i) => `P${i}`);
+    assert.deepEqual(readPayerNames([...ten, ' ', '']), ten);
+    assert.deepEqual(readPayerNames([` ${'x'.repeat(60)} `]), ['x'.repeat(60)]);
   });
 });

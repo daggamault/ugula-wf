@@ -1,30 +1,68 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { createElement, type ReactElement } from 'react';
+import { render } from '../../shared/testing-dom.ts';
 import { CopyBadge, RoleBadge, ScopeBadge, StaleBadge, scopeLabel } from './scope-badges.tsx';
 
-const html = (el: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(el);
+const badge = (el: ReactElement) => {
+  const { container } = render(el);
+  const span = container.querySelector('span');
+  return span && { text: span.textContent, accent: span.className.includes('text-custom') };
+};
 
-describe('scope badges', () => {
-  it('names each scope and marks copies with the custom accent', () => {
+describe('scopeLabel', () => {
+  it('names each scope', () => {
     assert.equal(scopeLabel('system'), 'Built-in');
-    const builtIn = html(createElement(ScopeBadge, { scope: 'system' }));
-    assert.ok(builtIn.includes('Built-in') && !builtIn.includes('text-custom'));
-    const agency = html(createElement(ScopeBadge, { scope: 'agency' }));
-    assert.ok(agency.includes('Agency') && agency.includes('text-custom'));
+    assert.equal(scopeLabel('agency'), 'Agency');
+  });
+});
+
+describe('ScopeBadge', () => {
+  it('shows built-in workflows plainly', () => {
+    assert.deepEqual(badge(createElement(ScopeBadge, { scope: 'system' })), {
+      text: 'Built-in',
+      accent: false
+    });
   });
 
-  it('shows agency rules, copies in effect and stale copies', () => {
-    assert.ok(html(createElement(RoleBadge, { role: 'slot' })).includes('Agency Rule'));
-    assert.equal(html(createElement(RoleBadge, { role: 'rule' })), '');
-    assert.ok(
-      html(createElement(CopyBadge, { scope: 'system', effective: 'agency' })).includes(
-        'Has Agency Copy'
-      )
-    );
-    assert.equal(html(createElement(CopyBadge, { scope: 'agency', effective: 'agency' })), '');
-    assert.ok(html(createElement(StaleBadge, { stale: true })).includes('Base Updated'));
-    assert.equal(html(createElement(StaleBadge, { stale: false })), '');
+  it('marks agency workflows with the custom accent', () => {
+    assert.deepEqual(badge(createElement(ScopeBadge, { scope: 'agency' })), {
+      text: 'Agency',
+      accent: true
+    });
+  });
+});
+
+describe('RoleBadge', () => {
+  it('flags agency rules only', () => {
+    assert.deepEqual(badge(createElement(RoleBadge, { role: 'slot' })), {
+      text: 'Agency Rule',
+      accent: false
+    });
+    assert.equal(badge(createElement(RoleBadge, { role: 'rule' })), null);
+  });
+});
+
+describe('CopyBadge', () => {
+  it('says when an agency copy is in effect instead', () => {
+    assert.deepEqual(badge(createElement(CopyBadge, { scope: 'system', effective: 'agency' })), {
+      text: 'Has Agency Copy',
+      accent: true
+    });
+  });
+
+  it('shows nothing when the workflow itself is in effect', () => {
+    assert.equal(badge(createElement(CopyBadge, { scope: 'agency', effective: 'agency' })), null);
+    assert.equal(badge(createElement(CopyBadge, { scope: 'system', effective: 'system' })), null);
+  });
+});
+
+describe('StaleBadge', () => {
+  it('warns only when the base has changed since the copy', () => {
+    assert.deepEqual(badge(createElement(StaleBadge, { stale: true })), {
+      text: 'Base Updated',
+      accent: false
+    });
+    assert.equal(badge(createElement(StaleBadge, { stale: false })), null);
   });
 });

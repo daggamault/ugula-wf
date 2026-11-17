@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { CompletionRequest } from './completions.ts';
 import {
-  CLAIM_FILING_CODES,
   isMedicareFiling,
   isValidNpi,
   payerDocument,
@@ -13,8 +12,8 @@ import {
 
 describe('claim filing codes', () => {
   it('recognizes the X12 claim filing indicator codes billers can choose', () => {
-    assert.equal(CLAIM_FILING_CODES.MB, 'Medicare Part B');
     assert.equal(payerDocument({ name: 'State', claimFiling: 'MC' }), 'State (Medicaid)');
+    assert.equal(payerDocument({ name: 'Fed', claimFiling: 'OF' }), 'Fed (Other federal program)');
     assert.equal(payerDocument({ name: 'Odd', claimFiling: 'toString' }), 'Odd');
   });
 });
@@ -24,6 +23,8 @@ describe('isValidNpi', () => {
     assert.equal(isValidNpi('1234567893'), true);
     assert.equal(isValidNpi('1234567890'), false);
     assert.equal(isValidNpi('123456789'), false);
+    assert.equal(isValidNpi('12345678930'), false);
+    assert.equal(isValidNpi('123456789X'), false);
   });
 });
 
@@ -31,7 +32,10 @@ describe('payer matching', () => {
   it('keys payer names by their words, ignoring case, accents and punctuation', () => {
     assert.equal(payerKey('  Blue Cross/Blue-Shield of TÉXAS '), 'blue cross blue shield of texas');
     assert.equal(payerKey('UHC #2'), 'uhc 2');
-    assert.ok(payerQuery('BCBS TX').endsWith('payer directory\nQuery: BCBS TX'));
+    assert.equal(
+      payerQuery('BCBS TX'),
+      'Instruct: Given the name of a health insurance payer from an ambulance patient care report, retrieve the matching payer from the agency payer directory\nQuery: BCBS TX'
+    );
   });
 
   const medicare = { id: 'p1', name: 'Medicare', claimFiling: 'MB' };
@@ -60,6 +64,11 @@ describe('payer matching', () => {
     assert.deepEqual(request.schema.properties, {
       choice: { type: 'integer', minimum: 0, maximum: 2 }
     });
+    assert.equal(request.maxTokens, 20);
+    assert.equal(await suggestPayer(answering({ choice: 1 }), 'CMS', [medicare, blue]), medicare);
+    assert.equal(await suggestPayer(answering({ choice: -1 }), 'X', [medicare]), null);
+    assert.equal(await suggestPayer(answering({ choice: 1.5 }), 'X', [medicare]), null);
+    assert.equal(await suggestPayer(answering({}), 'X', [medicare]), null);
     assert.equal(await suggestPayer(answering({ choice: 0 }), 'Self Pay', [medicare, blue]), null);
     assert.equal(await suggestPayer(answering({ choice: 7 }), 'X', [medicare]), null);
     assert.equal(await suggestPayer(answering({ choice: 'one' }), 'X', [medicare]), null);

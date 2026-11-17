@@ -2,17 +2,27 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { focusRingClasses, interactiveClasses } from './interactive.ts';
 
-describe('interactive classes', () => {
-  it('gives every control the same primary focus ring and color transition', () => {
-    assert.ok(focusRingClasses.includes('focus-visible:outline-primary'));
-    assert.ok(focusRingClasses.includes('outline-2') && focusRingClasses.includes('duration-150'));
-    assert.ok(!focusRingClasses.includes('cursor-'));
+describe('focusRingClasses', () => {
+  it('rings keyboard focus in primary and fades colors over 150ms, without touching the cursor', () => {
+    assert.deepEqual(focusRingClasses.split(' '), [
+      'focus-visible:outline-primary',
+      'outline-2',
+      'outline-offset-2',
+      'outline-transparent',
+      'transition',
+      'duration-150',
+      'ease-out'
+    ]);
   });
+});
 
-  it('adds pointer and disabled cursors for clickable elements', () => {
-    assert.ok(interactiveClasses.startsWith(focusRingClasses));
-    assert.ok(interactiveClasses.includes('cursor-pointer'));
-    assert.ok(interactiveClasses.includes('disabled:cursor-not-allowed'));
-    assert.ok(interactiveClasses.includes('aria-disabled:cursor-not-allowed'));
+describe('interactiveClasses', () => {
+  it('adds a pointer cursor, and a not-allowed cursor when disabled natively or by aria', () => {
+    assert.deepEqual(interactiveClasses.split(' '), [
+      ...focusRingClasses.split(' '),
+      'cursor-pointer',
+      'disabled:cursor-not-allowed',
+      'aria-disabled:cursor-not-allowed'
+    ]);
   });
 });

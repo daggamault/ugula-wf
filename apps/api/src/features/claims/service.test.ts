@@ -26,7 +26,8 @@ const setup = ({
   events = [] as Record<string, unknown>[],
   published = true,
   activeRun = false,
-  document = null as Record<string, unknown> | null
+  document = null as Record<string, unknown> | null,
+  mapFails = false
 } = {}) => {
   const { db, queries } = createRecordingDb((q: CompiledQuery) => {
     if (q.sql.endsWith('for update')) return row ? [row] : [];
@@ -57,6 +58,7 @@ const setup = ({
   const rules: RuleRunner = async (agencyId, key, inputs) => {
     ruled.push([agencyId, key, inputs]);
     if (key === MAP_837P_RULE) {
+      if (mapFails) throw new Error('The 837P map is not published');
       return { x837: { placeOfService: '41', lines: [{ code: 'A0427', modifiers: ['RH'] }] } };
     }
     return key === NEXT_CLAIM_STEP_RULE
@@ -242,28 +244,66 @@ describe('claim service', () => {
     const { ledger } = inputs as { ledger: Record<string, unknown> };
     assert.deepEqual([ledger.coverageId, ledger.contacted], [MEDICARE, true]);
     assert.deepEqual(Object.keys(ruled[2]?.[2] ?? {}), ['record']);
-    const paid = await setup({ row: { ...claim, status: 'paid' } }).service.find('t', 'c1');
-    assert.equal(paid.ok && paid.value.progress, null);
-    const draft = await setup({ row: { ...claim, status: 'draft' } }).service.find('t', 'c1');
-    assert.equal(draft.ok && draft.value.progress, null);
     assert.match(failure(await setup({ row: null }).service.find('t', 'c1')), /^not_found/);
-    const page = { page: 1, pageSize: 25, sort: 'when' as const, dir: 'desc' as const };
-    const history = await setup({ events }).service.events('t', 'c1', page);
-    assert.ok(history.ok);
-    assert.equal(history.value.page, 1);
-    assert.match(failure(await setup({ row: null }).service.events('t', 'c1', page)), /^not_found/);
-    assert.equal(
-      (
-        await setup().service.search('t', {
-          status: 'open',
-          page: 1,
-          pageSize: 25,
-          sort: 'created' as const,
-          dir: 'desc' as const
-        })
-      ).ok,
-      true
+  });
+
+  it('neither bills nor advances closed claims and drafts, but still checks them for issues', async () => {
+    for (const status of ['paid', 'draft']) {
+      const { service, ruled } = setup({ row: { ...claim, status } });
+      const found = await service.find('t', 'c1');
+      assert.ok(found.ok);
+      assert.deepEqual([found.value.billing, found.value.progress], [null, null], status);
+      assert.deepEqual(
+        ruled.map(([, key]) => key),
+        [CLAIM_ISSUES_RULE],
+        status
+      );
+    }
+  });
+
+  it('shows a claim without billing details when its 837P map cannot run', async () => {
+    const { service, ruled } = setup({ mapFails: true });
+    const found = await service.find('t', 'c1');
+    assert.ok(found.ok);
+    assert.equal(found.value.billing, null);
+    assert.equal(found.value.progress?.step, 'await');
+    assert.deepEqual(
+      ruled.map(([, key]) => key),
+      [MAP_837P_RULE, NEXT_CLAIM_STEP_RULE, CLAIM_ISSUES_RULE]
     );
+  });
+
+  it('searches the claims of the agency', async () => {
+    const { service, queries } = setup({ row: null });
+    const filters = {
+      status: 'open' as const,
+      page: 1,
+      pageSize: 25,
+      sort: 'created' as const,
+      dir: 'desc' as const
+    };
+    assert.deepEqual(await service.search('t', filters), {
+      ok: true,
+      value: { items: [], total: 0, page: 1, pageSize: 25 }
+    });
+    assert.equal(queries[0]?.parameters.includes('t'), true);
+  });
+
+  it('pages the history of claims of the agency only', async () => {
+    const event = { kind: 'submitted', created_at: new Date('2026-01-01T00:00:00.000Z') };
+    const events = [{ ...event, total: '1' }];
+    const page = { page: 1, pageSize: 25, sort: 'when' as const, dir: 'desc' as const };
+    const { service, queries } = setup({ events });
+    assert.deepEqual(await service.events('t', 'c1', page), {
+      ok: true,
+      value: { items: [event], total: 1, page: 1, pageSize: 25 }
+    });
+    const exists = queries.find((q) => q.sql.startsWith('select "id" from "claims"'));
+    assert.deepEqual(exists?.parameters, ['c1', 't']);
+    assert.deepEqual(await setup({ row: null }).service.events('t', 'c1', page), {
+      ok: false,
+      failure: { code: 'not_found', message: 'Claim not found' }
+    });
   });
 });
 

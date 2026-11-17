@@ -41,7 +41,7 @@ describe('createSignInThrottle', () => {
     const { redis } = memoryRedis();
     const throttle = createSignInThrottle(redis);
     const waits = await Promise.all(Array.from({ length: 10 }, () => throttle.begin(email, ip)));
-    assert.deepEqual(waits.filter((w) => w === 0).length, 1);
+    assert.deepEqual(waits.toSorted(), [0, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
     await throttle.failed(email, ip);
     assert.equal(await throttle.begin(email, ip), 0);
   });

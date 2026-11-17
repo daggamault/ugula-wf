@@ -47,6 +47,28 @@ describe('createMockFiles', () => {
       file?.longname ?? '',
       /^-rw-r--r-- 1 ugula ugula {8}3 \w{3} [ \d]\d \d\d:\d\d R1\.999$/
     );
-    assert.match(entries[2]?.longname ?? '', /^drwxr-xr-x /);
+    assert.match(entries[2]?.longname ?? '', /^drwxr-xr-x 1 ugula ugula {5}4096 /);
+  });
+
+  it('lists the root as its own parent', () => {
+    const fs = createMockFiles('ugula', () => at, ['/upload', '/download']);
+    assert.deepEqual(
+      fs.entriesOf('/').map((e) => [e.filename, e.attrs.mode]),
+      [
+        ['.', 0o040755],
+        ['..', 0o040755],
+        ['upload', 0o040755],
+        ['download', 0o040755]
+      ]
+    );
+  });
+
+  it('replaces a file put twice, keeping the latest time', () => {
+    let now = at;
+    const fs = createMockFiles('ugula', () => now, []);
+    fs.put('/a.txt', 'hello');
+    now = at + 60;
+    fs.put('/a.txt', 'bye');
+    assert.deepEqual(fs.files.get('/a.txt'), { data: Buffer.from('bye'), mtime: at + 60 });
   });
 });

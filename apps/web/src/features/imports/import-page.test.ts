@@ -3,7 +3,8 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
-import type { ImportReport, ImportsClient } from './client.ts';
+import { render, screen, userEvent, waitFor, within } from '../../shared/testing-dom.ts';
+import type { ImportReport, ImportSummary, ImportsClient } from './client.ts';
 import { ImportPage, patientOf, ReportsTable, reportOutcome } from './import-page.tsx';
 
 const report = (over: Partial<ImportReport> = {}): ImportReport => ({
@@ -93,17 +94,101 @@ describe('ReportsTable', () => {
 });
 
 describe('ImportPage', () => {
-  it('loads the import before its PCRs', () => {
-    const html = renderToStaticMarkup(
-      createElement(ImportPage, {
-        client: {
-          find: () => new Promise(() => undefined),
-          reports: () => new Promise(() => undefined)
-        } as unknown as ImportsClient,
-        live: idleLive,
-        importId: 'i1'
-      })
+  const file: ImportSummary = {
+    id: 'i1',
+    file_name: 'october.xml',
+    source: 'sftp',
+    report_count: 2,
+    created_at: '2026-10-20T14:00:00Z',
+    run_id: 'run-1',
+    run_status: 'completed',
+    uploaded_by_email: null,
+    completed: 1,
+    waiting: 1,
+    stuck: 0,
+    failed: 0,
+    processing: 0,
+    claims: 1,
+    charges_cents: 95_000
+  };
+
+  const fakeClient = (over: Partial<ImportsClient> = {}) => {
+    const queries: string[] = [];
+    const client = {
+      find: async () => file,
+      reports: async (_id: string, query: string) => {
+        queries.push(query);
+        return {
+          items: [
+            report({ claim_id: 'c1', total_cents: 95_000, last_name: 'Doe', first_name: 'Jane' }),
+            report({ id: 'r2', position: 1, number: '20261105-0002', task_id: 'k1' })
+          ],
+          total: 2,
+          page: 1,
+          pageSize: 25
+        };
+      },
+      ...over
+    } as ImportsClient;
+    return { client, queries };
+  };
+
+  const show = (client: ImportsClient) =>
+    render(createElement(ImportPage, { client, live: idleLive, importId: 'i1' }));
+
+  it('summarises the file and lists what became of each PCR', async () => {
+    const { client } = fakeClient();
+    show(client);
+    assert.ok(await screen.findByRole('heading', { name: 'october.xml' }));
+    assert.ok(screen.getByText('PCRs in Progress'));
+    assert.equal(
+      screen.getByRole('link', { name: /Open Run/ }).getAttribute('href'),
+      '/runs/run-1'
     );
-    assert.ok(html.includes('aria-label="Loading"'));
+    const table = await screen.findByRole('table', { name: 'PCRs in this file' });
+    const rows = within(table).getAllByRole('row').slice(1);
+    assert.deepEqual(
+      rows.map((r) => within(r).queryByText(/^(Claim Opened|Waiting)$/)?.textContent),
+      ['Claim Opened', 'Waiting']
+    );
+    assert.ok(within(table).getByRole('link', { name: 'Open claim for PCR-1' }));
+    assert.ok(within(table).getByRole('link', { name: 'Work task PCR-1' }));
+    assert.ok(!screen.queryByRole('alert'));
+  });
+
+  it('sorts the PCRs through the address bar', async () => {
+    const { client, queries } = fakeClient();
+    show(client);
+    const table = await screen.findByRole('table', { name: 'PCRs in this file' });
+    await userEvent.setup().click(within(table).getByRole('link', { name: /Charges/ }));
+    assert.match(window.location.search, /pcrSort=total/);
+    await waitFor(() => assert.match(queries.at(-1) ?? '', /&sort=total&dir=desc$/));
+  });
+
+  it('points at the run when the file could not be read', async () => {
+    const { client } = fakeClient({
+      find: async () => ({ ...file, run_status: 'failed' }),
+      reports: async () => ({ items: [], total: 0, page: 1, pageSize: 25 })
+    });
+    show(client);
+    assert.equal(
+      (await screen.findByRole('alert')).textContent,
+      'The file could not be read. Open its run to see why.'
+    );
+    assert.ok(await screen.findByText('No PCRs have been read from this file yet.'));
+  });
+
+  it('says why the PCRs could not load under the summary', async () => {
+    const { client } = fakeClient({ reports: () => Promise.reject(new Error('Timed out')) });
+    show(client);
+    assert.equal((await screen.findByRole('alert')).textContent, 'Timed out');
+    assert.ok(screen.getByRole('heading', { name: 'october.xml' }));
+  });
+
+  it('says why the import could not load', async () => {
+    const { client } = fakeClient({ find: () => Promise.reject(new Error('Import not found')) });
+    show(client);
+    assert.ok(await screen.findByText('Import not found'));
+    assert.ok(!screen.queryByRole('heading', { name: 'october.xml' }));
   });
 });

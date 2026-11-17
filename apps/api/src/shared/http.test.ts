@@ -52,6 +52,11 @@ describe('http helpers', () => {
       error: 'npi: An NPI has 10 digits',
       issues: ['npi: An NPI has 10 digits']
     });
+    const bare = await new Hono()
+      .get('/', (c) => invalidRequest({ success: false }, c) ?? c.json({ ok: true }))
+      .request('/');
+    assert.equal(bare.status, 400);
+    assert.deepEqual(await bare.json(), { error: 'Invalid request', issues: [] });
     assert.equal(describeIssue({ message: 'Bad' }), 'Bad');
     assert.equal(describeIssue({ message: 'Bad', path: [{ key: 'a' }, 0] }), 'a.0: Bad');
   });

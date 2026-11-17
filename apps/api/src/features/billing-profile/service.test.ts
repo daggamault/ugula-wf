@@ -42,4 +42,13 @@ describe('billing profile service', () => {
       failure: { code: 'conflict', message: 'Another agency already uses submitter ID SUB01' }
     });
   });
+
+  it('rethrows other database errors', async () => {
+    const { db } = createRecordingDb(() => {
+      throw Object.assign(new Error('timeout'), { code: '57014' });
+    });
+    await assert.rejects(createBillingProfileService({ db }).save('t-1', profile), {
+      code: '57014'
+    });
+  });
 });

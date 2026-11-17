@@ -3,8 +3,14 @@ import { describe, it } from 'node:test';
 import * as v from 'valibot';
 import { ENTRY_TYPE } from './compile.ts';
 import { actionNode, branchNode, defineNode, next, pin, pureNode } from './define.ts';
-import { documentationIssues, isTitleCase, nodeDocumentationIssues } from './documentation.ts';
-import type { GraphDef } from './types.ts';
+import {
+  documentationIssues,
+  isTitleCase,
+  nameLabel,
+  nodeDocumentationIssues,
+  pathLabel
+} from './documentation.ts';
+import type { ExitDoc, GraphDef } from './types.ts';
 
 const graph = (over: Partial<GraphDef['signature']>, label?: string): GraphDef => ({
   signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [], ...over },
@@ -22,7 +28,9 @@ describe('isTitleCase', () => {
       'IV/IO Medications',
       'Treat, No Transport',
       '837P File',
-      'Of Course'
+      'Of Course',
+      'Follow-Up',
+      '  Spaced  Out  '
     ]) {
       assert.equal(isTitleCase(label), true, label);
     }
@@ -33,7 +41,9 @@ describe('isTitleCase', () => {
       'Loaded miles',
       'level of Service',
       'Destination minus Scene',
-      'of Course'
+      'of Course',
+      'Follow-up',
+      'Pick/drop'
     ]) {
       assert.equal(isTitleCase(label), false, label);
     }
@@ -143,5 +153,39 @@ describe('nodeDocumentationIssues', () => {
     assert.deepEqual(nodeDocumentationIssues(named), [
       { node: 't.named', message: 'Label or describe the exit "found"' }
     ]);
+  });
+
+  it('checks only the exits of a node whose signature cannot be worked out unplaced', () => {
+    const wired = (exits?: Record<string, ExitDoc>) =>
+      defineNode({
+        type: 't.wired',
+        version: 1,
+        title: 'Wired',
+        category: 'T',
+        description: 'Needs a graph.',
+        ...(exits ? { exits } : {}),
+        signature: () => {
+          throw new Error('needs a graph');
+        },
+        run: () => next(null)
+      });
+    assert.deepEqual(nodeDocumentationIssues(wired({ done: { label: 'Done' }, failed: {} })), [
+      { node: 't.wired', message: 'Label or describe the exit "failed"' }
+    ]);
+    assert.deepEqual(nodeDocumentationIssues(wired()), []);
+  });
+});
+
+describe('labels from names', () => {
+  it('splits camelCase, acronyms, underscores and hyphens into capitalised words', () => {
+    assert.deepEqual(
+      ['claimId', 'HCPCSCode', 'ICD10Codes', 'base_rate', 'loaded-miles', 'a', ''].map(nameLabel),
+      ['Claim Id', 'HCPCS Code', 'ICD10 Codes', 'Base Rate', 'Loaded Miles', 'A', '']
+    );
+  });
+
+  it('labels each step of a dotted path', () => {
+    assert.equal(pathLabel('patient.homeAddress.zip'), 'Patient › Home Address › Zip');
+    assert.equal(pathLabel('total'), 'Total');
   });
 });

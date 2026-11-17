@@ -3,37 +3,101 @@ import { describe, it } from 'node:test';
 import { createApi } from '../../shared/api.ts';
 import { BLOCKED_MESSAGES, createUsersClient, fullName } from './client.ts';
 
+type Call = { method: string; url: string; body: unknown; signal: AbortSignal | undefined };
+
+const fakeApi = (reply: unknown = {}) => {
+  const calls: Call[] = [];
+  const client = createUsersClient(
+    createApi(
+      '',
+      async (url, init = {}) => {
+        calls.push({
+          method: String(init.method),
+          url: String(url),
+          body: init.body === undefined ? undefined : JSON.parse(String(init.body)),
+          signal: init.signal ?? undefined
+        });
+        return new Response(JSON.stringify(reply), { status: 200 });
+      },
+      () => undefined,
+      () => null
+    )
+  );
+  return { client, calls };
+};
+
+const route = (c: Call) => `${c.method} ${c.url}`;
+
 describe('createUsersClient', () => {
-  it('calls the user and invitation endpoints and unwraps lists', async () => {
-    const calls: string[] = [];
-    const client = createUsersClient(
-      createApi('', async (url, init = {}) => {
-        calls.push(`${init.method} ${String(url)}`);
-        return new Response(JSON.stringify({ items: [1], link: 'l' }), { status: 200 });
-      })
-    );
-    await client.search('q=ann');
-    await client.user('u/1');
-    assert.deepEqual(await client.roles(), [1]);
-    await client.setRole('u1', { roleId: 'r1', version: 2 });
-    await client.remove('u1');
-    assert.deepEqual(await client.passwordLink('u1'), { items: [1], link: 'l' });
-    assert.deepEqual(await client.invitations('q=ann'), { items: [1], link: 'l' });
-    await client.invite({ email: 'a@b.co', firstName: 'A', lastName: 'B', roleId: 'r1' });
-    await client.resend('i1');
-    await client.removeInvitation('i1');
-    assert.deepEqual(calls, [
-      'GET /api/users?q=ann',
-      'GET /api/users/u%2F1',
-      'GET /api/users/roles',
-      'PUT /api/users/u1',
-      'DELETE /api/users/u1',
-      'POST /api/users/u1/password-link',
-      'GET /api/invitations?q=ann',
-      'POST /api/invitations',
-      'POST /api/invitations/i1/resend',
-      'DELETE /api/invitations/i1'
+  it('searches users and invitations with the query as given', async () => {
+    const { client, calls } = fakeApi({ items: [], total: 0, page: 1, pageSize: 25 });
+    const signal = new AbortController().signal;
+    assert.deepEqual(await client.search('q=ann&page=2', signal), {
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 25
+    });
+    await client.invitations('q=bo', signal);
+    assert.deepEqual(calls.map(route), [
+      'GET /api/users?q=ann&page=2',
+      'GET /api/invitations?q=bo'
     ]);
+    assert.deepEqual(
+      calls.map((c) => c.signal),
+      [signal, signal]
+    );
+  });
+
+  it('reads a user by its encoded id', async () => {
+    const { client, calls } = fakeApi({ id: 'u/1' });
+    assert.deepEqual(await client.user('u/1'), { id: 'u/1' });
+    assert.deepEqual(calls.map(route), ['GET /api/users/u%2F1']);
+  });
+
+  it('unwraps the roles that can be given', async () => {
+    const roles = [{ id: 'r1', name: 'Biller', isGrantable: true }];
+    const { client, calls } = fakeApi({ items: roles });
+    assert.deepEqual(await client.roles(), roles);
+    assert.deepEqual(calls.map(route), ['GET /api/users/roles']);
+  });
+
+  it('sets a role with the version it read', async () => {
+    const { client, calls } = fakeApi();
+    await client.setRole('u1', { roleId: 'r2', version: 4 });
+    assert.deepEqual(
+      calls.map((c) => [route(c), c.body]),
+      [['PUT /api/users/u1', { roleId: 'r2', version: 4 }]]
+    );
+  });
+
+  it('removes a user and makes a password link for one', async () => {
+    const { client, calls } = fakeApi({ link: 'http://app.test/reset?token=t' });
+    await client.remove('u 1');
+    assert.deepEqual(await client.passwordLink('u1'), { link: 'http://app.test/reset?token=t' });
+    assert.deepEqual(
+      calls.map((c) => [route(c), c.body]),
+      [
+        ['DELETE /api/users/u%201', undefined],
+        ['POST /api/users/u1/password-link', undefined]
+      ]
+    );
+  });
+
+  it('invites, renews and deletes invitations', async () => {
+    const { client, calls } = fakeApi({ id: 'i1', link: 'l' });
+    const input = { email: 'a@b.co', firstName: 'A', lastName: 'B', roleId: 'r1' };
+    assert.deepEqual(await client.invite(input), { id: 'i1', link: 'l' });
+    await client.resend('i/1');
+    await client.removeInvitation('i/1');
+    assert.deepEqual(
+      calls.map((c) => [route(c), c.body]),
+      [
+        ['POST /api/invitations', input],
+        ['POST /api/invitations/i%2F1/resend', undefined],
+        ['DELETE /api/invitations/i%2F1', undefined]
+      ]
+    );
   });
 });
 
@@ -45,7 +109,9 @@ describe('fullName', () => {
 
 describe('BLOCKED_MESSAGES', () => {
   it('explains why a user cannot be changed', () => {
-    assert.equal(BLOCKED_MESSAGES.self, "You can't change your own access.");
-    assert.match(BLOCKED_MESSAGES.outranked, /permissions you do not hold/);
+    assert.deepEqual(BLOCKED_MESSAGES, {
+      self: "You can't change your own access.",
+      outranked: 'This user has permissions you do not hold.'
+    });
   });
 });

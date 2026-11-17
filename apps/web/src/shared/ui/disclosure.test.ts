@@ -1,27 +1,44 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { render, screen, userEvent } from '../testing-dom.ts';
 import { Disclosure } from './disclosure.tsx';
 
+const show = (isPanel?: boolean) => {
+  const { container } = render(
+    createElement(Disclosure, { title: 'Functions', isPanel, children: 'Body' })
+  );
+  const details = container.querySelector('details');
+  assert.ok(details);
+  return { details, summary: screen.getByText('Functions'), user: userEvent.setup() };
+};
+
 describe('Disclosure', () => {
-  it('starts collapsed behind a focusable summary', () => {
-    const html = renderToStaticMarkup(
-      createElement(Disclosure, { title: 'Functions', children: 'body' })
-    );
-    assert.ok(html.startsWith('<details') && !html.includes('<details open'));
-    assert.ok(html.includes('<summary') && html.includes('>Functions</summary>'));
-    assert.ok(
-      html.includes('focus-visible:outline-primary') && html.includes('group-open:rotate-90')
-    );
-    assert.ok(html.includes('text-sm font-semibold') && !html.includes('rounded-xl'));
+  it('starts collapsed behind a summary titled by the title', () => {
+    const { details, summary } = show();
+    assert.equal(details.open, false);
+    assert.equal(summary.tagName, 'SUMMARY');
+    assert.equal(summary.textContent, 'Functions');
+    assert.equal(summary.querySelector('svg')?.getAttribute('aria-hidden'), 'true');
   });
 
-  it('stands as its own panel with a section title', () => {
-    const html = renderToStaticMarkup(
-      createElement(Disclosure, { title: 'Advanced', isPanel: true, children: 'body' })
-    );
-    assert.ok(html.includes('bg-surface') && html.includes('rounded-xl border p-5'));
-    assert.ok(html.includes('text-base font-bold'));
+  it('expands and collapses from the summary', async () => {
+    const { details, summary, user } = show();
+    await user.click(summary);
+    assert.equal(details.open, true);
+    await user.click(summary);
+    assert.equal(details.open, false);
+  });
+
+  it('stands as its own bordered panel with a section-sized title', () => {
+    const { details, summary } = show(true);
+    assert.equal(details.classList.contains('border'), true);
+    assert.equal(summary.classList.contains('text-base'), true);
+  });
+
+  it('sits inline without a border by default', () => {
+    const { details, summary } = show();
+    assert.equal(details.classList.contains('border'), false);
+    assert.equal(summary.classList.contains('text-sm'), true);
   });
 });

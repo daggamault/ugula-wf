@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { CLAIM_FIX_FIELDS } from './claim-fix-fields.ts';
+import { CLAIM_FIX_FIELDS, COVERAGE_FIELDS } from './claim-fix-fields.ts';
 import { fixForm } from './claim-fix-form.ts';
 import type { ClaimIssue } from './claim-validation.ts';
 import { completeCheck } from './testing.ts';
@@ -42,10 +42,10 @@ describe('fixForm', () => {
       'removeCoverage',
       'note'
     ]);
-    assert.equal(form.defaults.coverageId, 'cov-Blue');
-    assert.equal(form.defaults.pickupPostalCode, '62702');
-    assert.equal(form.defaults.deceased, false);
-    assert.equal(form.defaults.mspAccident, null);
+    assert.deepEqual(
+      [form.defaults.coverageId, form.defaults.memberId, form.defaults.originCode],
+      ['cov-Blue', null, null]
+    );
     assert.deepEqual(
       fixForm(check, [issue('abn-missing', 'abn'), issue('msp-unanswered', 'msp')], [], false)
         .visible,
@@ -68,11 +68,81 @@ describe('fixForm', () => {
   });
 
   it('offers every field on request, leaving out payer fields with no payers or directory', () => {
-    const form = fixForm({ ...check, payers: [] }, [], [], true);
-    assert.ok(form.visible.includes('loadedMiles') && form.visible.includes('patientCity'));
-    assert.ok(!form.visible.includes('coverageId') && !form.visible.includes('payerId'));
-    assert.deepEqual(form.options, {});
-    assert.equal(CLAIM_FIX_FIELDS.find((f) => f.name === 'serviceDate')?.format, 'date');
+    const names = CLAIM_FIX_FIELDS.map((f) => f.name);
+    const form = fixForm({ ...check, payers: [] }, [], directory, true);
+    assert.deepEqual(
+      form.visible,
+      names.filter((n) => !COVERAGE_FIELDS.includes(n))
+    );
+    assert.deepEqual(Object.keys(form.options), ['payerId']);
+    assert.deepEqual(
+      fixForm(check, [], [], true).visible,
+      names.filter((n) => n !== 'payerId')
+    );
+    assert.deepEqual(fixForm(check, [], [], false).visible, ['note']);
+  });
+
+  it('prefills every field with the claim as it is', () => {
+    const d = check.details.documentation;
+    assert.deepEqual(fixForm(check, [], [], true).defaults, {
+      serviceDate: '2025-12-30',
+      classification: 'emergency',
+      level: 'ALS1',
+      emergency: true,
+      loadedMiles: 7.3,
+      deceased: false,
+      nonCoveredMiles: null,
+      diagnoses: ['R079'],
+      pickupAddressLine: '9 Oak Ave',
+      pickupCity: 'Springfield',
+      pickupState: 'IL',
+      pickupPostalCode: '62702',
+      destinationName: 'Mercy',
+      destinationAddressLine: '9 Oak Ave',
+      destinationCity: 'Springfield',
+      destinationState: 'IL',
+      destinationPostalCode: '62702',
+      originCode: 'R',
+      destinationCode: 'H',
+      transportReason: 'A',
+      signature: 'signed',
+      pcsOnFile: null,
+      pcsSignedOn: null,
+      patientCount: d.patientCount,
+      abnOnFile: d.abnOnFile,
+      abnSignedOn: d.abnSignedOn,
+      denialExpected: d.denialExpected,
+      mspEmployerPlan: d.mspEmployerPlan,
+      mspEsrd: d.mspEsrd,
+      mspDisability: d.mspDisability,
+      mspEmployerSize: d.mspEmployerSize,
+      mspAccident: d.mspAccident,
+      priorAuthorization: d.priorAuthorization,
+      priorAuthorizationExpiresOn: d.priorAuthorizationExpiresOn,
+      pcsType: d.pcsType,
+      roundTrips: d.roundTrips,
+      admissionDate: d.admissionDate,
+      facilityStay: d.facilityStay,
+      patientAddressLine: '9 Oak Ave',
+      patientCity: 'Springfield',
+      patientState: 'IL',
+      patientPostalCode: '62702',
+      coverageId: 'cov-Medicare',
+      payerId: 'p-Medicare',
+      memberId: 'M-Medicare',
+      relationship: '18',
+      insuredFirstName: null,
+      insuredLastName: null,
+      removeCoverage: false
+    });
+  });
+
+  it('prefills no payer details when the issue names a coverage the claim lacks', () => {
+    const form = fixForm(check, [issue('member-id-missing', 'memberId', 'cov-Gone')], [], false);
+    assert.deepEqual(
+      [form.defaults.coverageId, form.defaults.payerId, form.defaults.memberId],
+      ['cov-Gone', null, null]
+    );
   });
 
   it('prefills no classification for a trip not billable, and no patient address without a patient', () => {
@@ -83,7 +153,7 @@ describe('fixForm', () => {
       false
     );
     assert.equal(form.defaults.classification, null);
-    assert.ok(!Object.hasOwn(form.defaults, 'patientCity'));
+    assert.equal(Object.hasOwn(form.defaults, 'patientCity'), false);
     assert.equal(fixForm(check, [], [], true).defaults.patientCity, 'Springfield');
   });
 

@@ -81,14 +81,16 @@ describe('patientNodes', () => {
     );
   });
 
-  it('searches by no last name, and asks for one, when the last name has no letters', async () => {
+  it('searches by no last name, and asks for one, when the last name is missing or has no letters', async () => {
     const { store, calls } = memoryPatients([]);
-    const unnamed = await run(nodeFor(store, 'match-patient'), {
-      demographics: { ...demographics, lastName: '1-2' }
-    });
-    assert.equal(unnamed.pin, 'incomplete');
+    const match = nodeFor(store, 'match-patient');
+    const unnamed = await run(match, { demographics: { ...demographics, lastName: '1-2' } });
+    const missing = await run(match, { demographics: { ...demographics, lastName: null } });
+    assert.deepEqual([unnamed.pin, missing.pin], ['incomplete', 'incomplete']);
+    const search = { birthDate: '1980-01-02', lastNameKey: null, firstName: 'Jane' };
     assert.deepEqual(calls, [
-      ['findCandidates', 'run', { birthDate: '1980-01-02', lastNameKey: null, firstName: 'Jane' }]
+      ['findCandidates', 'run', search],
+      ['findCandidates', 'run', search]
     ]);
   });
 
@@ -126,8 +128,14 @@ describe('patientNodes', () => {
       postalCode: '62701'
     };
     const updated = await run(update, { patient: jane, demographics: moved });
-    assert.equal((updated.outputs.patient as Patient).addressLine, '2 Elm St');
-    assert.deepEqual(calls.at(-1)?.[0], 'updateAddress');
+    const address = {
+      addressLine: '2 Elm St',
+      city: 'Springfield',
+      state: 'IL',
+      postalCode: '62701'
+    };
+    assert.deepEqual(updated.outputs.patient, { ...jane, ...address });
+    assert.deepEqual(calls.at(-1), ['updateAddress', 'run', 'key', 'p1', address]);
     const partial = await run(update, { patient: jane, demographics: { ...moved, city: null } });
     assert.deepEqual(partial.outputs.patient, jane);
     const same = { ...jane, ...moved, addressLine: '2 ELM ST.' };
@@ -136,5 +144,13 @@ describe('patientNodes', () => {
       same
     );
     assert.equal(calls.filter((c) => c[0] === 'updateAddress').length, 1);
+  });
+
+  it('needs the id of the patient to move', async () => {
+    const update = nodeFor(memoryPatients([jane]).store, 'update-patient-address');
+    await assert.rejects(
+      run(update, { patient: { ...jane, id: ' ' }, demographics }),
+      /The patient has no id/
+    );
   });
 });

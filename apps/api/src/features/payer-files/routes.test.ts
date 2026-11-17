@@ -25,7 +25,7 @@ const service = {
   },
   upload: async (agencyId: string, userId: string, file: { name: string; bytes: Uint8Array }) => {
     calls.push(['upload', agencyId, userId, file.name, file.bytes.byteLength]);
-    return ok({ id: ID, kind: '835', items: 1, problems: 0 });
+    return ok({ runId: 'r1', kind: '835' });
   },
   maxBytes: 64
 } as unknown as PayerFileService;
@@ -41,9 +41,12 @@ describe('payer file routes', () => {
       { page: 1, pageSize: 25, sort: 'problems', dir: 'asc' }
     ]);
     assert.equal((await request('/?sort=nope')).status, 400);
-    assert.equal((await request(`/${ID}`)).status, 200);
+    const found = await request(`/${ID}`);
+    assert.deepEqual([found.status, await found.json()], [200, { file: { id: ID }, items: [] }]);
     assert.deepEqual(calls.at(-1), ['find', 't-1', ID]);
     const file = await request(`/${ID}/file`);
+    assert.equal(file.headers.get('content-type'), 'application/edi-x12');
+    assert.equal(file.headers.get('cache-control'), 'private, no-store');
     assert.equal(file.headers.get('content-disposition'), 'attachment; filename="era_1.835"');
     assert.equal(await file.text(), 'ISA*');
     assert.equal((await request('/nope')).status, 400);
@@ -52,7 +55,8 @@ describe('payer file routes', () => {
   it('uploads one file, refusing bodies over the limit', async () => {
     const body = new FormData();
     body.append('file', new File(['ISA*00'], 'era.835'));
-    assert.equal((await request('/', { method: 'POST', body })).status, 201);
+    const uploaded = await request('/', { method: 'POST', body });
+    assert.deepEqual([uploaded.status, await uploaded.json()], [201, { runId: 'r1', kind: '835' }]);
     assert.deepEqual(calls.at(-1), ['upload', 't-1', 'u-1', 'era.835', 6]);
     const missing = new FormData();
     assert.equal((await request('/', { method: 'POST', body: missing })).status, 400);
@@ -73,7 +77,11 @@ describe('payer file routes', () => {
         maxBytes: 64
       } as unknown as PayerFileService)
     );
-    assert.equal((await failing(`/${ID}`)).status, 404);
+    const missing = await failing(`/${ID}`);
+    assert.deepEqual(
+      [missing.status, await missing.json()],
+      [404, { error: 'Payer file not found' }]
+    );
     const download = await failing(`/${ID}/file`);
     assert.equal(download.status, 404);
     assert.equal(download.headers.get('content-disposition'), null);

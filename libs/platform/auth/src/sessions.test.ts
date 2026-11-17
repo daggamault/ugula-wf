@@ -38,7 +38,7 @@ describe('createSessionStore', () => {
     const store = createSessionStore(redis);
 
     const token = await store.create(data);
-    assert.ok(token.length >= 32);
+    assert.match(token, /^[\w-]{43}$/);
     assert.deepEqual(await store.get(token), data);
 
     assert.notEqual(await store.create(data), token);
@@ -98,6 +98,8 @@ describe('readCookie', () => {
     assert.equal(readCookie('a=1', 'ugula_session'), undefined);
     assert.equal(readCookie('ugula_session_x=1;ugula_session=a=b', 'ugula_session'), 'a=b');
     assert.equal(readCookie('ugula_session=', 'ugula_session'), '');
+    assert.equal(readCookie('ugula_session=first; ugula_session=second', 'ugula_session'), 'first');
+    assert.equal(readCookie('', 'ugula_session'), undefined);
     assert.equal(readCookie('ugula_session=%E0%A4%A', 'ugula_session'), undefined);
   });
 });

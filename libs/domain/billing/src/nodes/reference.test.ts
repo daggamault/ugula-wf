@@ -86,15 +86,20 @@ describe('referenceNodes', () => {
       billable: false
     });
     const missing = await run('find-code', { codeSet: 'icd10cm', code: 'R07.9' });
-    assert.deepEqual(missing.outputs, {});
+    assert.deepEqual([missing.pin, missing.outputs], ['notFound', {}]);
     assert.deepEqual(calls, [
       ['code', 'icd10cm', 'R07'],
       ['code', 'icd10cm', 'R079']
     ]);
     await assert.rejects(
       () => run('find-code', { codeSet: 'cpt', code: '99213' }),
-      /not a code set/
+      /cpt is not a code set/
     );
+    await assert.rejects(
+      () => run('find-code', { codeSet: 'icd10cm', code: ' ' }),
+      /No code to find/
+    );
+    assert.equal(calls.length, 2);
   });
 
   it('finds the Medicare locality of a ZIP or ZIP+4, and not of a malformed one', async () => {
@@ -152,6 +157,29 @@ describe('referenceNodes', () => {
         }),
       /not a date of service/
     );
+    await assert.rejects(
+      () =>
+        run('medicare-allowed', {
+          lines: [{ code: 'A0427', units: 1 }],
+          serviceDate: '2026-11-02',
+          carrier: ' ',
+          locality: '01',
+          rurality: 'urban'
+        }),
+      /No Medicare carrier/
+    );
+    await assert.rejects(
+      () =>
+        run('medicare-allowed', {
+          lines: [{ code: 'A0427', units: 1 }],
+          serviceDate: '2026-11-02',
+          carrier: '02102',
+          locality: '',
+          rurality: 'urban'
+        }),
+      /No Medicare locality/
+    );
+    assert.equal(calls.length, 1);
   });
 
   it('finds the place of a ZIP by its first five digits', async () => {

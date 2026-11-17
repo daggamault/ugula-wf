@@ -23,7 +23,7 @@ describe('readLines', () => {
     );
   });
 
-  it('keeps the units it is given', () => {
+  it('keeps the units it is given without rounding them', () => {
     assert.deepEqual(readLines([{ code: 'A0425', units: 12.34 }]), [
       { code: 'A0425', units: 12.34 }
     ]);
@@ -93,16 +93,20 @@ describe('priceLines', () => {
       }
     );
   });
+});
 
+describe('isClassification', () => {
   it('knows the classifications and which of them transport', () => {
-    assert.ok(isClassification('refusal'));
-    assert.ok(!isClassification('transfer'));
+    assert.deepEqual(
+      ['emergency', 'refusal', 'notBillable', 'transfer', null].map(isClassification),
+      [true, true, true, false, false]
+    );
     assert.deepEqual(NO_TRANSPORT_TRIPS, ['treatNoTransport', 'refusal']);
   });
 });
 
 describe('priceLines rounding', () => {
-  it('prices the units it is given', () => {
+  it('prices the units it is given without rounding them first', () => {
     const { lines } = priceLines(readLines([{ code: 'A0425', units: 12.31 }]), { A0425: 1000 });
     assert.deepEqual(lines, [{ code: 'A0425', units: 12.31, unitCents: 1000, totalCents: 12310 }]);
   });
@@ -134,6 +138,10 @@ describe('readPricedLines', () => {
   it('keeps prices and rejects lines that were never priced', () => {
     const priced = [{ code: 'A0427', units: 1, unitCents: 95000, totalCents: 95000 }];
     assert.deepEqual(readPricedLines(priced), priced);
+    assert.deepEqual(
+      readPricedLines([{ code: 'A0998', units: 1, unitCents: 0, totalCents: 0, note: 'x' }]),
+      [{ code: 'A0998', units: 1, unitCents: 0, totalCents: 0 }]
+    );
     assert.throws(
       () => readPricedLines([{ code: 'A0427', units: 1 }]),
       /Line 1 [(]A0427[)] has not been priced/
@@ -157,8 +165,13 @@ describe('readPricedLines', () => {
 
 describe('isServiceLevel', () => {
   it('accepts the four ground ambulance levels only', () => {
-    assert.ok(['BLS', 'ALS1', 'ALS2', 'SCT'].every(isServiceLevel));
-    assert.ok(!isServiceLevel('als1'));
-    assert.ok(!isServiceLevel(null));
+    assert.deepEqual(['BLS', 'ALS1', 'ALS2', 'SCT', 'als1', null].map(isServiceLevel), [
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]);
   });
 });

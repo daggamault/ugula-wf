@@ -3,6 +3,8 @@ import { describe, it } from 'node:test';
 import type { ValueType } from './types.ts';
 import {
   checkValue,
+  fieldPaths,
+  fieldType,
   formatType,
   isAssignable,
   isFileType,
@@ -123,6 +125,12 @@ describe('value types', () => {
     assert.equal(checkValue({ list: 'number' }, { a: 1 }), 'expected list<number>, got object');
     assert.equal(checkValue({ object: { id: 'string' } }, {}), null);
     assert.equal(checkValue({ list: 'number' }, [1, null]), null);
+    assert.equal(
+      checkValue({ object: { id: 'string' } }, [1]),
+      'expected object{id: string}, got list'
+    );
+    assert.equal(checkValue('string', true), 'expected string, got boolean');
+    assert.equal(checkValue('any', { a: [true, 'x'] }), null);
   });
 
   it('rejects values that would change when saved as JSON', () => {
@@ -163,5 +171,36 @@ describe('kinds', () => {
       ['code<hcpc>', 'id<toString>']
     );
     assert.deepEqual(unknownKinds('string', kinds), []);
+    assert.deepEqual(unknownKinds({ code: 'hcpcs' }, kinds), []);
+    assert.deepEqual(unknownKinds({ code: 'icd9' }, STD_KINDS), ['code<icd9>']);
+  });
+});
+
+describe('field paths', () => {
+  const claim = {
+    object: { id: { id: 'claim' }, patient: { object: { name: 'string', meta: 'any' } } }
+  } as const;
+
+  it('finds the type at a dotted path, any below an any, and nothing for unknown or blank keys', () => {
+    assert.deepEqual(fieldType(claim, 'id'), { id: 'claim' });
+    assert.equal(fieldType(claim, 'patient.name'), 'string');
+    assert.equal(fieldType(claim, 'patient.meta.deep.er'), 'any');
+    assert.equal(fieldType('any', 'x'), 'any');
+    assert.equal(fieldType(claim, 'patient.age'), null);
+    assert.equal(fieldType(claim, 'id.value'), null);
+    assert.equal(fieldType(claim, 'patient..name'), null);
+    assert.equal(fieldType(claim, ''), null);
+    assert.equal(fieldType({ object: {} }, 'toString'), null);
+  });
+
+  it('lists every field path of an object type, depth first', () => {
+    assert.deepEqual(fieldPaths(claim), [
+      { path: 'id', type: { id: 'claim' } },
+      { path: 'patient', type: claim.object.patient },
+      { path: 'patient.name', type: 'string' },
+      { path: 'patient.meta', type: 'any' }
+    ]);
+    assert.deepEqual(fieldPaths({ list: claim }), []);
+    assert.deepEqual(fieldPaths('string'), []);
   });
 });

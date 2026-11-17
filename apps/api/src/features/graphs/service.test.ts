@@ -382,9 +382,69 @@ describe('graph service reads', () => {
       dir: 'asc',
       show: 'all'
     });
-    assert.equal(search.ok, true);
-    assert.equal((await service.nodes(admin)).ok, true);
+    assert.deepEqual(search, { ok: true, value: { items: [], total: 0, page: 1, pageSize: 25 } });
+    assert.ok(queries.at(-1)?.parameters.includes('t-1'));
+    assert.deepEqual(await service.nodes(admin), { ok: true, value: { nodes: [] } });
     assert.ok(queries.at(-1)?.parameters.every((p) => p === 't-1'));
+  });
+
+  it('maps every effective graph to the graphs it calls, with the effective tables', async () => {
+    const graphRow = {
+      id: 'g1',
+      key: 'acme.flow',
+      name: 'Flow',
+      kind: 'workflow',
+      role: 'workflow',
+      scope: 'agency',
+      definition: usesComposite
+    };
+    const thingRow = {
+      ...graphRow,
+      id: 'g2',
+      key: 'acme.thing',
+      name: 'Thing',
+      kind: 'node',
+      role: 'rule'
+    };
+    const table = { id: 't1', key: 'acme.rates', name: 'Rates', scope: 'system' };
+    const { db, queries } = createRecordingDb((q) => {
+      const sql = q.sql.trimStart();
+      if (sql.startsWith('select g.id, g.key'))
+        return [graphRow, { ...thingRow, definition: composite }];
+      if (sql.startsWith('select e.id, e.key')) return [table];
+      return [];
+    });
+    const service = createGraphService({ db, nodes, kinds: STD_KINDS });
+    assert.deepEqual(await service.map(admin), {
+      ok: true,
+      value: {
+        graphs: [
+          {
+            id: 'g1',
+            key: 'acme.flow',
+            name: 'Flow',
+            kind: 'workflow',
+            role: 'workflow',
+            scope: 'agency',
+            children: ['acme.thing'],
+            tables: []
+          },
+          {
+            id: 'g2',
+            key: 'acme.thing',
+            name: 'Thing',
+            kind: 'node',
+            role: 'rule',
+            scope: 'agency',
+            children: [],
+            tables: []
+          }
+        ],
+        tables: [table]
+      }
+    });
+    assert.equal(queries.length, 2);
+    assert.ok(queries.every((q) => q.parameters.includes('t-1')));
   });
 
   it('reports graphs hidden from the agency as not found without writing', async () => {
@@ -474,6 +534,14 @@ describe('graph service create', () => {
       await dup.service.create(admin, input),
       failure('conflict', 'A graph with that key exists')
     );
+  });
+
+  it('lets database errors other than a duplicate key surface', async () => {
+    const { service } = createWorld({
+      graphs: [],
+      fail: { sql: 'insert into "graphs"', code: '57014' }
+    });
+    await assert.rejects(service.create(admin, input), { message: 'pg', code: '57014' });
   });
 });
 
@@ -768,6 +836,11 @@ describe('graph service remove', () => {
       await used.service.remove(admin, 'g-agency'),
       failure('conflict', 'Runs still use this graph, so it cannot be removed')
     );
+    const broken = createWorld({
+      graphs: [agency()],
+      fail: { sql: 'delete from "graphs"', code: '57014' }
+    });
+    await assert.rejects(broken.service.remove(admin, 'g-agency'), { code: '57014' });
   });
 
   it('keeps a custom graph that published graphs still call', async () => {

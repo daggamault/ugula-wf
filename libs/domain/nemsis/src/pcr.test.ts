@@ -93,7 +93,6 @@ describe('toPcr', () => {
       '4212033'
     );
     assert.equal(pcr.narrative, 'Pt found sitting.');
-    assert.deepEqual(toPcr(null).insurances, []);
     const payment = pcr.payment as Record<string, unknown>;
     assert.deepEqual(
       [payment.transportReason, payment.ambulanceConditions, payment.priorAuthorization],
@@ -118,6 +117,53 @@ describe('toPcr', () => {
         signedAt: '2026-09-14T08:22:00-04:00',
         lastName: null,
         firstName: null
+      }
+    ]);
+  });
+
+  it('reads an empty report as empty lists and null values', () => {
+    const pcr = toPcr(null);
+    assert.deepEqual(
+      [pcr.pcrNumber, pcr.narrative, pcr.insurances, pcr.medications, pcr.vitals, pcr.crew],
+      [null, null, [], [], [], []]
+    );
+    assert.deepEqual(pcr.injury, { causes: [] });
+    assert.deepEqual(pcr.exam, { weightKg: null });
+  });
+
+  it('reads numeric values as text and ignores values held in attributes', () => {
+    const pcr = toPcr({
+      eRecord: { 'eRecord.01': 42 },
+      eNarrative: { '@meta': { 'eNarrative.01': 'hidden' } }
+    });
+    assert.equal(pcr.pcrNumber, '42');
+    assert.equal(pcr.narrative, null);
+  });
+
+  it('reads every crew member and vital sign group in order', () => {
+    const pcr = toPcr({
+      eCrew: {
+        'eCrew.CrewGroup': [
+          { 'eCrew.01': 'C1', 'eCrew.02': '9925005', 'eCrew.03': '2403001' },
+          { 'eCrew.01': 'C2' }
+        ]
+      },
+      eVitals: { 'eVitals.VitalGroup': { 'eVitals.06': '120', 'eVitals.07': '80' } }
+    });
+    assert.deepEqual(pcr.crew, [
+      { id: 'C1', level: '9925005', role: '2403001' },
+      { id: 'C2', level: null, role: null }
+    ]);
+    assert.deepEqual(pcr.vitals, [
+      {
+        takenAt: null,
+        systolic: 120,
+        diastolic: 80,
+        heartRate: null,
+        pulseOximetry: null,
+        respiratoryRate: null,
+        bloodGlucose: null,
+        glasgowComaScore: null
       }
     ]);
   });
@@ -180,23 +226,63 @@ describe('toPcr', () => {
     const pcr = toPcr({
       ePatient: { 'ePatient.AgeGroup': { 'ePatient.15': '76.5' } },
       eExam: { 'eExam.01': 'heavy' },
-      eResponse: { 'eResponse.19': ' 1042.3 ' }
+      eResponse: { 'eResponse.19': ' 1042.3 ', 'eResponse.20': 'Infinity' },
+      eDisposition: { 'eDisposition.11': '2' }
     });
     assert.equal((pcr.patient as Record<string, unknown>).age, null);
     assert.equal((pcr.exam as Record<string, unknown>).weightKg, null);
     assert.equal((pcr.response as Record<string, unknown>).beginOdometer, 1042.3);
+    assert.equal((pcr.response as Record<string, unknown>).sceneOdometer, null);
+    assert.equal((pcr.disposition as Record<string, unknown>).patientsTransported, 2);
   });
 
   it('describes the report and each section as labelled models', () => {
     const pcr = nemsisModels.find((m) => m.key === 'nemsis.pcr');
-    assert.ok(pcr && typeof PCR_TYPE === 'object' && 'object' in PCR_TYPE);
     assert.deepEqual(
-      pcr.fields.map((f) => f.name),
-      Object.keys((PCR_TYPE as unknown as { object: object }).object)
+      Object.fromEntries((pcr?.fields ?? []).map((f) => [f.name, f.type])),
+      (PCR_TYPE as { object: object }).object
     );
+    assert.deepEqual(
+      nemsisModels.map((m) => m.key),
+      [
+        'nemsis.pcr',
+        'nemsis.response',
+        'nemsis.times',
+        'nemsis.patient',
+        'nemsis.insurance',
+        'nemsis.payment',
+        'nemsis.scene',
+        'nemsis.situation',
+        'nemsis.medication',
+        'nemsis.procedure',
+        'nemsis.vital',
+        'nemsis.exam',
+        'nemsis.injury',
+        'nemsis.arrest',
+        'nemsis.disposition',
+        'nemsis.signature',
+        'nemsis.crew-member'
+      ]
+    );
+    assert.deepEqual(nemsisModels.find((m) => m.key === 'nemsis.situation')?.fields.slice(3), [
+      {
+        name: 'primaryImpression',
+        type: { code: 'icd10' },
+        label: 'Primary impression · eSituation.11'
+      },
+      {
+        name: 'secondaryImpressions',
+        type: { list: { code: 'icd10' } },
+        label: 'Secondary impressions · eSituation.12'
+      },
+      {
+        name: 'workRelated',
+        type: 'string',
+        label: 'Work-related illness or injury · eSituation.14'
+      }
+    ]);
     const patient = nemsisModels.find((m) => m.key === 'nemsis.patient');
     assert.equal(patient?.fields[0]?.label, 'Last name · ePatient.02');
-    assert.equal(new Set(nemsisModels.map((m) => m.key)).size, nemsisModels.length);
   });
 
   it('collects GNIS city codes once and swaps them for place names', () => {
@@ -217,6 +303,25 @@ describe('toPcr', () => {
       .find((m) => m.key === 'nemsis.scene')
       ?.fields.find((f) => f.name === 'cityCode');
     assert.equal(label?.label, 'Incident city GNIS code · eScene.17');
+  });
+
+  it('keeps an unknown GNIS code with no place name and handles missing sections', () => {
+    const pcr = toPcr({ ePatient: { 'ePatient.06': '999' } });
+    const named = resolvePlaces(pcr, {});
+    assert.deepEqual(
+      [
+        (named.patient as Record<string, unknown>).city,
+        (named.patient as Record<string, unknown>).cityCode
+      ],
+      [null, '999']
+    );
+    assert.deepEqual(placeCodes({}), []);
+    assert.deepEqual(resolvePlaces({ narrative: 'x' }, {}), {
+      narrative: 'x',
+      patient: { cityCode: null },
+      scene: { cityCode: null },
+      disposition: { cityCode: null }
+    });
   });
 });
 

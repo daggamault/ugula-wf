@@ -43,17 +43,23 @@ describe('VENDOR_PRESETS', () => {
     });
     assert.equal(VENDOR_PRESETS.waystar.receiverId, 'WAYSTAR');
     assert.equal(VENDOR_PRESETS.mock.extensions, WAYSTAR_EXTENSIONS);
-    assert.ok(VENDOR_PRESETS.mock.realtimeUrl?.endsWith('/core/realtime'));
+    assert.equal(VENDOR_PRESETS.mock.realtimeUrl, 'http://localhost:2224/core/realtime');
     assert.deepEqual(
       [VENDOR_PRESETS.waystar.hostKey, VENDOR_PRESETS['custom-sftp'].hostKey],
       [null, null]
     );
     assert.match(VENDOR_PRESETS.mock.hostKey ?? '', new RegExp(HOST_KEY_PATTERN));
     const pattern = new RegExp(FILE_EXTENSION_PATTERN);
-    for (const preset of Object.values(VENDOR_PRESETS)) {
-      assert.ok(Object.values(preset.extensions).every((e) => pattern.test(e)));
-    }
-    assert.ok(!pattern.test('CLP') && !pattern.test('.C.P'));
+    assert.deepEqual(
+      Object.values(VENDOR_PRESETS).flatMap((p) =>
+        Object.values(p.extensions).filter((e) => !pattern.test(e))
+      ),
+      []
+    );
+    assert.deepEqual(
+      ['CLP', '.C.P', '.', '.CLP'].map((e) => pattern.test(e)),
+      [false, false, false, true]
+    );
   });
 });
 
@@ -77,7 +83,9 @@ describe('createClearinghouse', () => {
     assert.equal(ch.checkEligibility, null);
     assert.equal(ch.checkClaimStatus, null);
     assert.equal(ch.afterDownload, 'keep');
-    assert.equal((await ch.inbox((inbox) => inbox.list()))[0]?.name, 'a.999');
+    assert.deepEqual(await ch.inbox((inbox) => inbox.list()), [
+      { path: '/download/a.999', name: 'a.999', size: 3, modifiedAt: new Date(0) }
+    ]);
   });
 
   it('sends real-time requests as CORE payloads and accepts only the matching answer', async () => {

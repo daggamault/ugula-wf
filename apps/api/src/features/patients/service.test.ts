@@ -9,8 +9,10 @@ describe('patient service', () => {
     const service = createPatientService({ db });
     const list = await service.search('t-1', { page: 1, pageSize: 25, sort: 'name', dir: 'asc' });
     assert.deepEqual(list, { ok: true, value: { items: [], total: 0, page: 1, pageSize: 25 } });
-    const missing = await service.find('t-1', 'p-1');
-    assert.equal(!missing.ok && missing.failure.code, 'not_found');
+    assert.deepEqual(await service.find('t-1', 'p-1'), {
+      ok: false,
+      failure: { code: 'not_found', message: 'Patient not found' }
+    });
     await db.destroy();
   });
 

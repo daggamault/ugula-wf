@@ -36,8 +36,22 @@ describe('public fetch', () => {
         resolveTo({ address: '93.184.216.34', family: 4 }, { address, family: 6 }),
         true
       );
-      assert.match(String(err), /private address/);
+      assert.equal(err?.message, `api.example.test resolves to the private address ${address}`);
     }
+  });
+
+  it('passes resolver errors through and refuses names that resolve to nothing', async () => {
+    const failure = Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' });
+    const failing: Resolve = (_host, _options, cb) => cb(failure, []);
+    assert.deepEqual(await lookupOf(failing, false), {
+      err: failure,
+      address: '',
+      family: undefined
+    });
+    const { err, address } = await lookupOf(resolveTo(), false);
+    assert.equal(err?.message, 'api.example.test resolves to the private address none');
+    assert.equal((err as NodeJS.ErrnoException | null)?.code, 'EPRIVATEADDRESS');
+    assert.equal(address, '');
   });
 
   it('never connects when a public-looking name points at an internal server', async () => {

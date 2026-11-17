@@ -12,7 +12,7 @@ import {
   sampleSubmitter,
   sampleX837
 } from '../testing.ts';
-import type { PendingSubmission } from '../x837.ts';
+import { build837, type PendingSubmission } from '../x837.ts';
 import { cycleNodes } from './cycle.ts';
 
 const run = (node: NodeDef, inputs: Values) =>
@@ -313,8 +313,13 @@ describe('cycleNodes', () => {
     assert.deepEqual([filed.pin, filed.outputs.controlNumber], ['filed', 1]);
     const [file] = claims.filed;
     assert.deepEqual([file?.coverageId, file?.resubmission], ['cov-Medicare', false]);
-    assert.ok(file?.file.startsWith('ISA*'));
-    assert.ok(file?.file.includes('CLM*c-1*'));
+    assert.equal(
+      file?.file,
+      build837(sampleSubmitter, [sampleX837], {
+        controlNumber: 1,
+        createdAt: new Date('2026-01-01T00:00:00.000Z')
+      })
+    );
   });
 
   it('says why an approved claim cannot be filed instead of faulting', async () => {

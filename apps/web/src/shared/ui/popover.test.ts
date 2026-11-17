@@ -1,34 +1,59 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import '../testing-dom.ts';
 import { hidePopover, showPopover } from './popover.ts';
 
 const popover = (open: boolean) => {
-  const calls: string[] = [];
-  const el = {
-    matches: () => open,
-    showPopover: () => calls.push('show'),
-    hidePopover: () => calls.push('hide')
-  } as unknown as HTMLElement;
-  return { el, calls };
+  const el = document.createElement('div');
+  el.popover = 'auto';
+  document.body.append(el);
+  if (open) el.showPopover();
+  const toggles: string[] = [];
+  el.addEventListener('toggle', (e) => toggles.push((e as ToggleEvent).newState));
+  return { el, toggles };
 };
 
-describe('popover', () => {
-  it('only shows a closed popover and only hides an open one', () => {
-    const closed = popover(false);
-    showPopover(closed.el);
-    hidePopover(closed.el);
-    assert.deepEqual(closed.calls, ['show']);
+describe('showPopover', () => {
+  it('opens a closed popover', () => {
+    const { el, toggles } = popover(false);
+    showPopover(el);
+    assert.equal(el.matches(':popover-open'), true);
+    assert.deepEqual(toggles, ['open']);
+    el.remove();
+  });
 
-    const open = popover(true);
-    showPopover(open.el);
-    hidePopover(open.el);
-    assert.deepEqual(open.calls, ['hide']);
+  it('leaves an open popover alone', (t) => {
+    const { el } = popover(true);
+    const show = t.mock.method(el, 'showPopover');
+    showPopover(el);
+    assert.equal(show.mock.callCount(), 0);
+    assert.equal(el.matches(':popover-open'), true);
+    el.remove();
   });
 
   it('ignores a missing element', () => {
-    assert.doesNotThrow(() => {
-      showPopover(null);
-      hidePopover(null);
-    });
+    assert.doesNotThrow(() => showPopover(null));
+  });
+});
+
+describe('hidePopover', () => {
+  it('closes an open popover', () => {
+    const { el, toggles } = popover(true);
+    hidePopover(el);
+    assert.equal(el.matches(':popover-open'), false);
+    assert.deepEqual(toggles, ['closed']);
+    el.remove();
+  });
+
+  it('leaves a closed popover alone', (t) => {
+    const { el } = popover(false);
+    const hide = t.mock.method(el, 'hidePopover');
+    hidePopover(el);
+    assert.equal(hide.mock.callCount(), 0);
+    el.remove();
+  });
+
+  it('ignores a missing element', () => {
+    assert.doesNotThrow(() => hidePopover(null));
   });
 });

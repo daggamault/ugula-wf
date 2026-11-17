@@ -35,13 +35,14 @@ describe('notification service', () => {
     const { db, queries } = createRecordingDb(() => [row, { ...row, id: 'n2', read: true }]);
     const { publish, events } = recordAnnouncements();
     const service = createNotificationService({ db, publish });
-    const list = await service.list('t', 'u');
-    assert.ok(list.ok);
-    assert.equal(list.value.unread, 1);
-    assert.deepEqual(
-      list.value.items.map((n) => n.id),
-      ['n1', 'n2']
-    );
+    assert.deepEqual(await service.list('t', 'u'), {
+      ok: true,
+      value: {
+        items: [toNotification(row), toNotification({ ...row, id: 'n2', read: true })],
+        unread: 1
+      }
+    });
+    assert.deepEqual(queries[0]?.parameters.slice(0, 4), ['u', 't', 't', 'u']);
     assert.deepEqual(
       await service.create('t', 'u', {
         intent: 'success',
@@ -51,9 +52,11 @@ describe('notification service', () => {
       }),
       { ok: true, value: { status: 'ok' } }
     );
-    assert.equal(queries[1]?.parameters[4], null);
-    assert.ok((await service.read('t', 'u')).ok);
-    assert.ok((await service.clear('t', 'u')).ok);
+    assert.deepEqual(queries[1]?.parameters, ['t', 'u', 'success', 'Saved', null, null, null]);
+    assert.deepEqual(await service.read('t', 'u'), { ok: true, value: { status: 'ok' } });
+    assert.doesNotMatch(queries[2]?.sql ?? '', /"cleared_at" = now()/);
+    assert.deepEqual(await service.clear('t', 'u'), { ok: true, value: { status: 'ok' } });
+    assert.match(queries[3]?.sql ?? '', /"cleared_at" = now()/);
     assert.deepEqual(
       events,
       Array.from({ length: 3 }, () => ({

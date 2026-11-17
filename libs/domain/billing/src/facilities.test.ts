@@ -1,12 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import {
-  FACILITY_KINDS,
-  type Hospital,
-  isFacilityKind,
-  isResponsibleParty,
-  pickHospital
-} from './facilities.ts';
+import { type Hospital, isFacilityKind, isResponsibleParty, pickHospital } from './facilities.ts';
 
 const hospital = (ccn: string, postalCode: string, similarity: number): Hospital => ({
   ccn,
@@ -23,14 +17,16 @@ const hospital = (ccn: string, postalCode: string, similarity: number): Hospital
 
 describe('facilities', () => {
   it('names each kind of facility and who a claim is billed to', () => {
-    assert.equal(FACILITY_KINDS.snf, 'Skilled nursing facility');
-    assert.deepEqual(['hospital', 'snf', 'clinic', 1].map(isFacilityKind), [
+    assert.deepEqual(
+      ['hospital', 'snf', 'dialysis', 'other', 'clinic', 'toString', 1].map(isFacilityKind),
+      [true, true, true, true, false, false, false]
+    );
+    assert.deepEqual(['payer', 'facility', 'patient', null].map(isResponsibleParty), [
       true,
       true,
       false,
       false
     ]);
-    assert.deepEqual(['payer', 'facility', 'patient'].map(isResponsibleParty), [true, true, false]);
   });
 
   it('picks a hospital only when its name stands out, or the ZIP code singles it out', () => {
@@ -42,5 +38,22 @@ describe('facilities', () => {
     const sameZip = [hospital('1', '36360', 0.75), hospital('2', '36360', 0.7)];
     assert.equal(pickHospital(sameZip, '36360'), null);
     assert.equal(pickHospital([], '36360'), null);
+  });
+
+  it('counts a hospital as tied when its name scores within a tenth of the best', () => {
+    const near = [hospital('1', '36301', 0.79), hospital('2', '36360', 0.7)];
+    assert.equal(pickHospital(near, null), null);
+    assert.equal(pickHospital(near, '36301')?.ccn, '1');
+    const far = [hospital('1', '36301', 0.81), hospital('2', '36360', 0.7)];
+    assert.equal(pickHospital(far, '36360')?.ccn, '1');
+  });
+
+  it('picks the one tied hospital in the ZIP code, ignoring a closer name outside the tie', () => {
+    const three = [
+      hospital('1', '36301', 0.9),
+      hospital('2', '36360', 0.85),
+      hospital('3', '36360', 0.5)
+    ];
+    assert.equal(pickHospital(three, '36360')?.ccn, '2');
   });
 });

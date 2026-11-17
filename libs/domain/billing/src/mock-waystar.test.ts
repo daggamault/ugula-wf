@@ -16,6 +16,7 @@ import { sampleSubmitter, sampleX837 } from './testing.ts';
 import { build270, type EligibilityRequest } from './x270.ts';
 import { read271 } from './x271.ts';
 import { build276 } from './x276.ts';
+import { read277 } from './x277.ts';
 import { readClaimStatus } from './x277-status.ts';
 import { read835 } from './x835.ts';
 import { build837 } from './x837.ts';
@@ -62,6 +63,16 @@ describe('buildTA1', () => {
     assert.match(ta1, /ISA\*00\* {10}\*00\* {10}\*ZZ\*WAYSTAR {8}\*ZZ\*SUB01 {10}\*/);
     assert.match(ta1, /TA1\*000000042\*261104\*1530\*R\*008~/);
     assert.match(ta1, /IEA\*0\*000000042~/);
+    assert.match(ta1, /\*00501\*000000042\*0\*T\*:~/);
+  });
+
+  it('keeps the usage indicator of a production interchange', () => {
+    const ta1 = buildTA1(
+      { sender: 'SUB01', receiver: '', controlNumber: '7', production: true },
+      '008',
+      now
+    );
+    assert.match(ta1, /\*00501\*000000007\*0\*P\*:~/);
   });
 });
 
@@ -71,11 +82,18 @@ describe('respondToClaims', () => {
 
   it('answers a TA1 and nothing else when ISA08 is not Waystar', () => {
     const r = respondToClaims(claims('DEMOCH'), now);
-    assert.ok(r.ta1?.includes('*R*008'));
+    assert.match(r.ta1 ?? '', /TA1\*000000042\*261104\*1530\*R\*008~/);
     assert.equal(r.ack999, '');
     assert.equal(r.ack277, null);
     assert.equal(r.remit835, null);
-    assert.match(r.error ?? '', /ISA08 must be WAYSTAR or ZIRMED, not DEMOCH/);
+    assert.equal(r.error, 'ISA08 must be WAYSTAR or ZIRMED, not DEMOCH');
+  });
+
+  it('names a blank ISA08 in the error', () => {
+    assert.equal(
+      respondToClaims(claims(''), now).error,
+      'ISA08 must be WAYSTAR or ZIRMED, not blank'
+    );
   });
 
   it('accepts ZIRMED as the receiver of older accounts', () => {
@@ -83,12 +101,18 @@ describe('respondToClaims', () => {
   });
 
   it('acknowledges Waystar claims and pays only payers enrolled for ERA', () => {
-    const paid = respondToClaims(claims('WAYSTAR'), now);
+    const paid = respondToClaims(claims('WAYSTAR'), now, (id) => id === 'DEMOMCR');
     assert.equal(paid.ta1, null);
     assert.equal(read999(paid.ack999)[0]?.accepted, true);
-    assert.equal(read835(paid.remit835 ?? '').length, 1);
-    const unenrolled = respondToClaims(claims('WAYSTAR'), now, () => false);
-    assert.ok(unenrolled.ack277);
+    assert.deepEqual(
+      read835(paid.remit835 ?? '').map((m) => [m.payerId, m.claims.map((c) => c.claimNumber)]),
+      [['DEMOMCR', ['c-1']]]
+    );
+    const unenrolled = respondToClaims(claims('WAYSTAR'), now, (id) => id !== 'DEMOMCR');
+    assert.deepEqual(
+      read277(unenrolled.ack277 ?? '').map((c) => [c.claimNumber, c.status]),
+      [['c-1', 'accepted']]
+    );
     assert.equal(unenrolled.remit835, null);
   });
 });
@@ -151,11 +175,17 @@ describe('Medicare Advantage', () => {
       ]
     );
   });
+
+  it('reports no stay when the inquiry has no date of service', () => {
+    const file = build270(waystar, [inquiry('INPATIENT1')], envelope).replace(/DTP\*291[^~]*~/, '');
+    assert.equal(read270(file).inquiries[0]?.serviceDate, null);
+    assert.equal(read271(respondToEligibility(file, now)[0] ?? '')[0]?.stay, null);
+  });
 });
 
 describe('claim status', () => {
   const status = (claimNumber: string, payerClaimNumber: string | null = null) => ({
-    trace: claimNumber,
+    trace: `T-${claimNumber}`,
     payer: { name: 'MEDICARE', payerId: 'MCR' },
     subscriber: { ...inquiry('A1').subscriber },
     patient: null,
@@ -174,7 +204,7 @@ describe('claim status', () => {
     const { interchange, queries } = read276(file);
     assert.equal(interchange?.sender, waystar.submitterId);
     assert.deepEqual(queries[1], {
-      trace: '12',
+      trace: 'T-12',
       claimNumber: '12',
       payerClaimNumber: 'PCN-12',
       chargeCents: 100_000,

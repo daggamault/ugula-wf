@@ -61,12 +61,36 @@ describe('claimTaskNodes', () => {
       reasonCodes: ['CO-45 20']
     });
     assert.equal(read.pin, 'read');
-    assert.deepEqual(
-      [(read.outputs.line as { claimId: string }).claimId, read.outputs.reason],
-      ['c1', null]
-    );
+    assert.deepEqual(read.outputs, {
+      line: {
+        position: 0,
+        reference: '',
+        claimId: 'c1',
+        coverageId: 'cov-1',
+        payerName: null,
+        status: '',
+        remarks: [],
+        crossoverPayer: null,
+        denied: false,
+        reversal: false,
+        reversesPosted: false,
+        takeback: false,
+        paidCents: 8_000,
+        adjustments: [{ group: 'CO', reason: '45', cents: 2_000 }]
+      },
+      reason: null
+    });
     const bad = await run('payment-line', { claimId: 'c1', paid: 1, reasonCodes: ['45'] });
-    assert.equal(bad.pin, 'refused');
+    assert.deepEqual(
+      [bad.pin, bad.outputs],
+      [
+        'refused',
+        {
+          line: null,
+          reason: 'Write each reason code as a group, code and amount, like CO-45 12.50 (not "45")'
+        }
+      ]
+    );
     assert.equal(calls.length, 0);
   });
 

@@ -22,6 +22,11 @@ describe('logic nodes', () => {
     assert.equal(await run('std.logic.greater', { a: 2, b: 2 }), false);
     assert.equal(await run('std.logic.greater-or-equal', { a: 2, b: 2 }), true);
     assert.equal(await run('std.logic.less-or-equal', { a: 'b', b: 'a' }), false);
+    assert.equal(await run('std.logic.less-or-equal', { a: 'a', b: 'a' }), true);
+    assert.equal(await run('std.logic.greater', { a: 3, b: 2 }), true);
+    assert.equal(await run('std.logic.greater-or-equal', { a: 1, b: 2 }), false);
+    assert.equal(await run('std.logic.less', { a: 2, b: 2 }), false);
+    assert.equal(await run('std.logic.less', { a: '10', b: '9' }), true);
     await assert.rejects(
       () => run('std.logic.less', { a: 1, b: 'x' }),
       /Less Than: needs two numbers or two strings/

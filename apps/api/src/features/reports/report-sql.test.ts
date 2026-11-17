@@ -27,15 +27,27 @@ describe('report sql', () => {
     assert.deepEqual(UNRECOVERED, ['written_off', 'collections']);
   });
 
-  it('sums and counts as numbers, never null', () => {
+  it('sums cents as a number that is zero, never null, for no rows', () => {
     assert.equal(compile(cents(sql.ref('x'))).sql, 'select coalesce(sum("x"), 0)::float8 as "v"');
+  });
+
+  it('sums cents only over rows matching a filter', () => {
     assert.equal(
       compile(centsWhere(sql.ref('x'), sql`y`)).sql,
       'select coalesce(sum("x") filter (where y), 0)::float8 as "v"'
     );
-    assert.equal(compile(countWhere(sql`y`)).sql, 'select (count(*) filter (where y))::int as "v"');
+  });
+
+  it('counts rows, or rows matching a filter, as integers', () => {
     assert.equal(compile(count).sql, 'select count(*)::int as "v"');
+    assert.equal(compile(countWhere(sql`y`)).sql, 'select (count(*) filter (where y))::int as "v"');
+  });
+
+  it('fills unused union columns with zero', () => {
     assert.equal(compile(zero).sql, 'select 0 as "v"');
+  });
+
+  it('joins the adjustment group and reason into one code', () => {
     assert.equal(compile(reasonCode).sql, `select a.group_code || '-' || a.reason_code as "v"`);
   });
 

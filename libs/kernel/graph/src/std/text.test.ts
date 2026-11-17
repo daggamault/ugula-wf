@@ -28,6 +28,10 @@ describe('text nodes', () => {
     });
     assert.deepEqual((await run('std.text.template', {}, optional)).outputs, { text: 'Payer' });
     assert.deepEqual(
+      (await run('std.text.template', { m: { id: 0 }, due: false }, optional)).outputs,
+      { text: 'Payer (member 0), due false' }
+    );
+    assert.deepEqual(
       (await run('std.text.template', {}, { template: 'plain {} {1a}' })).signature.inputs,
       []
     );
@@ -78,6 +82,13 @@ describe('text nodes', () => {
       await out('std.text.count', { count: 0, singular: 'person', plural: 'people' }),
       { text: '0 people' }
     );
+    assert.deepEqual(
+      await out('std.text.count', { count: 1, singular: 'person', plural: 'people' }),
+      { text: '1 person' }
+    );
+    assert.deepEqual(await out('std.text.count', { count: 1.5, singular: 'mile' }), {
+      text: '1.5 miles'
+    });
     assert.deepEqual(await out('std.text.count', { singular: 'warning' }), { text: null });
     assert.deepEqual(await out('std.text.capitalize', { text: 'two claims' }), {
       result: 'Two claims'
@@ -136,6 +147,19 @@ describe('text nodes', () => {
     });
     assert.deepEqual(await out('std.text.contains', { text: 'A0427', part: '04' }), {
       result: true
+    });
+    assert.deepEqual(await out('std.text.contains', { text: 'A0427', part: 'a0' }), {
+      result: false
+    });
+    assert.deepEqual(await out('std.text.starts-with', { text: 'A0427', part: '04' }), {
+      result: false
+    });
+    assert.deepEqual(await out('std.text.ends-with', { text: 'A0427', part: '27' }), {
+      result: true
+    });
+    assert.deepEqual(await out('std.text.join', {}), { text: '' });
+    assert.deepEqual(await out('std.text.pad', { text: '1234', length: 2, fill: '0' }), {
+      result: '1234'
     });
   });
 });

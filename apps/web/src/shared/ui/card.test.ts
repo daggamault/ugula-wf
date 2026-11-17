@@ -1,17 +1,31 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { render, screen } from '../testing-dom.ts';
 import { Card } from './card.tsx';
 
 describe('Card', () => {
-  it('renders a flat labelled container section', () => {
-    const html = renderToStaticMarkup(
-      createElement(Card, { labelledBy: 'title', children: 'Body' })
+  it('is a region named by its heading', () => {
+    render(
+      createElement(Card, {
+        labelledBy: 'title',
+        children: [
+          createElement('h2', { key: 'h', id: 'title' }, 'Sign In'),
+          createElement('p', { key: 'p' }, 'Body')
+        ]
+      })
     );
-    assert.ok(html.startsWith('<section aria-labelledby="title"'));
-    assert.ok(html.includes('bg-surface') && html.includes('border-border'));
-    assert.ok(html.includes('rounded-xl') && !html.includes('shadow'));
-    assert.ok(html.includes('Body'));
+    const card = screen.getByRole('region', { name: 'Sign In' });
+    assert.equal(card.tagName, 'SECTION');
+    assert.equal(card.textContent, 'Sign InBody');
+  });
+
+  it('is drawn flat, without a shadow', () => {
+    render(createElement(Card, { labelledBy: 'x', children: 'Body' }));
+    const card = screen.getByText('Body');
+    assert.deepEqual(
+      [...card.classList].filter((c) => c.includes('shadow')),
+      []
+    );
   });
 });

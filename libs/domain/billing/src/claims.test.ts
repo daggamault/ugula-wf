@@ -5,8 +5,11 @@ import {
   type ClaimEvent,
   claimProgress,
   claimSignalKey,
+  isAdjustmentGroup,
   isClaimStep,
   isClosedStatus,
+  isCycleEventKind,
+  isDenialRoute,
   ledgerFactsOf,
   MIN_WAIT_MS,
   mergedAdjustments,
@@ -141,6 +144,46 @@ describe('ledgerFactsOf', () => {
       3
     );
     assert.deepEqual([rejected.contacted, rejected.rejection], [false, 'Bad ID']);
+    const unexplained = facts([e('submitted', 'Medicare', 1), e('rejected', 'Medicare', 2)], 3);
+    assert.equal(unexplained.rejection, 'The payer or clearinghouse rejected the last submission');
+    const resent = facts([e('rejected', 'Medicare', 1), e('resubmitted', 'Medicare', 2)], 4);
+    assert.deepEqual([resent.rejection, resent.sinceContactMs], [null, 2 * DAY]);
+  });
+
+  it('counts an approval only when it follows the last contact and the last edit', () => {
+    assert.equal(facts([e('approved', 'Medicare', 1)], 2).approved, true);
+    assert.equal(facts([e('approved', 'Medicare', 1), e('edited', null, 2)], 3).approved, false);
+    assert.equal(
+      facts([e('approved', 'Medicare', 1), e('submitted', 'Medicare', 2)], 3).approved,
+      false
+    );
+    assert.equal(
+      facts([e('submitted', 'Medicare', 1), e('approved', 'Medicare', 2)], 3).approved,
+      true
+    );
+    assert.equal(facts([e('approved', 'Blue Plan', 1)], 2).approved, false);
+  });
+
+  it('counts a patient approval only when no edit follows it', () => {
+    assert.equal(facts([e('approved', null, 1)], 2, []).patientApproved, true);
+    assert.equal(
+      facts([e('approved', null, 1), e('edited', null, 2)], 3, []).patientApproved,
+      false
+    );
+    assert.equal(
+      facts([e('edited', null, 1), e('approved', null, 2)], 3, []).patientApproved,
+      true
+    );
+  });
+
+  it('measures the last statement even when statements are recorded out of order', () => {
+    const late = facts([e('statement', null, 20), e('statement', null, 10)], 30, []);
+    assert.deepEqual([late.statements, late.sinceStatementMs], [2, 10 * DAY]);
+  });
+
+  it('reads a payer without a claim filing code as an unknown kind', () => {
+    const ledger = { totalCents: 1, coverages: [{ id: 'c1', payer: 'Acme' }], events: [] };
+    assert.equal(ledgerFactsOf(ledger, day(0)).payerKind, 'unknown');
   });
 });
 
@@ -185,6 +228,38 @@ describe('readClaimStep', () => {
     });
   });
 
+  it('waits the minimum and numbers the next statement when the decision leaves them out', () => {
+    assert.deepEqual(readClaimStep({ step: 'await', waitMs: Number.NaN }, ledger), {
+      step: 'await',
+      coverage: { id: 'cov-Medicare', payer: 'Medicare', claimFiling: 'MB' },
+      waitMs: MIN_WAIT_MS,
+      balanceCents: 100_000
+    });
+    const sent = facts([e('statement', null, 1)], 2);
+    assert.deepEqual(readClaimStep({ step: 'statement', statementNumber: '3' }, sent), {
+      step: 'statement',
+      statement: 2,
+      balanceCents: 100_000
+    });
+  });
+
+  it('gives no claim filing code for a payer of unknown kind and a blank name for none', () => {
+    const unknown = ledgerFactsOf(
+      { totalCents: 5, coverages: [{ id: 'c1', payer: 'Acme', claimFiling: null }], events: [] },
+      day(0)
+    );
+    assert.deepEqual(readClaimStep({ step: 'submit' }, unknown), {
+      step: 'submit',
+      coverage: { id: 'c1', payer: 'Acme', claimFiling: null },
+      balanceCents: 5
+    });
+    assert.deepEqual(readClaimStep({ step: 'followUp' }, { ...unknown, payer: null }), {
+      step: 'followUp',
+      coverage: { id: 'c1', payer: '', claimFiling: null },
+      balanceCents: 5
+    });
+  });
+
   it('reconciles the payer whose response waits, and refuses unknown or payerless steps', () => {
     const answered = facts([e('submitted', 'Medicare', 1), e('response', 'Medicare', 2, 1)], 3);
     assert.deepEqual(readClaimStep({ step: 'workDenial' }, answered), {
@@ -197,7 +272,12 @@ describe('readClaimStep', () => {
       coverage: { id: 'cov-Medicare', payer: 'Medicare', claimFiling: null },
       balanceCents: 99_999
     });
-    assert.throws(() => readClaimStep({ step: 'appeal' }, ledger), /Unknown claim step/);
+    assert.throws(() => readClaimStep({ step: 'appeal' }, ledger), /Unknown claim step "appeal"/);
+    assert.throws(() => readClaimStep({}, ledger), /Unknown claim step "undefined"/);
+    assert.throws(
+      () => readClaimStep({ step: 'reconcile' }, ledger),
+      /The reconcile step needs a payer/
+    );
     assert.throws(() => readClaimStep({ step: 'submit' }, facts([], 0, [])), /needs a payer/);
   });
 });
@@ -226,7 +306,7 @@ describe('claim statuses', () => {
         null
       ]
     );
-    assert.ok(isClaimStep('followUp') && !isClaimStep('appeal'));
+    assert.deepEqual(['followUp', 'appeal', null].map(isClaimStep), [true, false, false]);
     assert.deepEqual(['paid', 'void', 'ready'].map(isClosedStatus), [true, true, false]);
   });
 });
@@ -319,6 +399,56 @@ describe('claimProgress', () => {
     ]);
   });
 
+  it('dates a prior payer by the paid date the payer gave, over when it was posted', () => {
+    const ledger = {
+      totalCents: 100_000,
+      coverages: [cov('Medicare'), cov('Blue Plan')],
+      events: [
+        { ...e('response', 'Medicare', 9, 1_000), paidOn: '2026-01-03' },
+        e('response', 'Medicare', 1, 1_000)
+      ]
+    };
+    assert.equal(claimProgress(ledger).priorCoverages[0]?.paidOn, '2026-01-03');
+  });
+
+  it('moves past a skipped payer until it is reopened', () => {
+    const coverages = [cov('Medicare'), cov('Blue Plan')];
+    const skipped = claimProgress({
+      totalCents: 100_000,
+      coverages,
+      events: [e('payer_skipped', 'Medicare', 1)]
+    });
+    assert.deepEqual([skipped.coverage?.id, skipped.skipped], ['cov-Blue Plan', ['cov-Medicare']]);
+    const reopened = claimProgress({
+      totalCents: 100_000,
+      coverages,
+      events: [e('payer_skipped', 'Medicare', 1), e('reopening_requested', 'Medicare', 2)]
+    });
+    assert.deepEqual([reopened.coverage?.id, reopened.skipped], ['cov-Medicare', []]);
+  });
+
+  it('knows whether the current payer was ever sent the claim', () => {
+    const sentBefore = (events: ClaimEvent[]) =>
+      claimProgress({ totalCents: 1, coverages: [cov('Medicare')], events }).submittedBefore;
+    assert.equal(sentBefore([]), false);
+    assert.equal(sentBefore([e('follow_up', 'Medicare', 1)]), false);
+    assert.equal(sentBefore([e('submitted', 'Medicare', 1)]), true);
+    assert.equal(sentBefore([e('resubmitted', 'Medicare', 1)]), true);
+  });
+
+  it('keeps the claim status note only until the payer is contacted again', () => {
+    const status = { ...e('claim_status', 'Medicare', 2), note: 'In process' };
+    const statusOf = (events: ClaimEvent[], coverages = [cov('Medicare')]) =>
+      claimProgress({ totalCents: 1, coverages, events }).claimStatus;
+    assert.equal(statusOf([e('submitted', 'Medicare', 1), status]), 'In process');
+    assert.equal(
+      statusOf([e('submitted', 'Medicare', 1), status, e('follow_up', 'Medicare', 3)]),
+      null
+    );
+    assert.equal(statusOf([e('submitted', 'Medicare', 1)]), null);
+    assert.equal(statusOf([status], []), null);
+  });
+
   it('keeps the claim number the current payer last adjudicated the claim under', () => {
     const numbered = (kind: ClaimEvent['kind'], n: string | null, onDay: number) => ({
       ...e(kind, 'Medicare', onDay),
@@ -351,6 +481,27 @@ describe('claimProgress', () => {
       ).adjudicatedClaimNumber,
       null
     );
+  });
+});
+
+describe('claim kind guards', () => {
+  it('knows the cycle event kinds, denial routes and adjustment groups', () => {
+    assert.deepEqual(['approved', 'response', 'nope'].map(isCycleEventKind), [true, false, false]);
+    assert.deepEqual(['denial', 'appeal', 'fix', 'void', null].map(isDenialRoute), [
+      true,
+      true,
+      true,
+      false,
+      false
+    ]);
+    assert.deepEqual(['CO', 'CR', 'co', 'XX', 1, 'toString'].map(isAdjustmentGroup), [
+      true,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]);
   });
 });
 

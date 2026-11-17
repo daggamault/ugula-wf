@@ -54,9 +54,31 @@ describe('field nodes', () => {
     );
   });
 
+  it('reads and writes any path of an untyped record', async () => {
+    const got = await run('std.object.get-field', { record: { a: { b: 2 } } }, { path: 'a.b' });
+    assert.deepEqual(got.outputs, { value: 2 });
+    assert.equal(got.signature.outputs[0]?.type, 'any');
+    const set = await run('std.object.set-field', { value: 3 }, { path: 'a.b' });
+    assert.deepEqual(set.outputs, { record: { a: { b: 3 } } });
+  });
+
+  it('gives no value pin until a field is chosen, and passes the record through', async () => {
+    const unchosen = await run('std.object.get-field', { record: { a: 1 } }, { record: FACTS });
+    assert.deepEqual([unchosen.signature.outputs, unchosen.outputs], [[], {}]);
+    const passed = await run('std.object.set-field', { record: { a: 1 } }, {});
+    assert.deepEqual(
+      passed.signature.inputs.map((p) => p.name),
+      ['record']
+    );
+    assert.deepEqual(passed.outputs, { record: { a: 1 } });
+    assert.deepEqual((await run('std.object.set-field', {}, {})).outputs, { record: null });
+  });
+
   it('summarizes the field in words', () => {
-    const def = fieldNodes.find((d) => d.type === 'std.object.set-field');
-    assert.equal(def?.summary?.({ record: FACTS, path: 'pickupState' }), 'Pickup State');
+    for (const def of fieldNodes) {
+      assert.equal(def.summary?.({ record: FACTS, path: 'pickupState' }), 'Pickup State');
+      assert.equal(def.summary?.({ record: FACTS, path: '' }), 'Choose a field');
+    }
   });
 
   it('rejects a path the record type does not have', async () => {
@@ -64,10 +86,6 @@ describe('field nodes', () => {
       () => run('std.object.get-field', {}, { record: FACTS, path: 'dropoffState' }),
       /no field "dropoffState"/
     );
-    const unchosen = await run('std.object.get-field', {}, { record: FACTS });
-    assert.deepEqual(unchosen.signature.outputs, []);
-    const passed = await run('std.object.set-field', { record: { a: 1 } }, {});
-    assert.deepEqual(passed.outputs, { record: { a: 1 } });
     const def: GraphDef = {
       signature: { execIn: [], execOut: [], inputs: [], outputs: [] },
       variables: [],

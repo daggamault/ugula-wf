@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { describe, it } from 'node:test';
 import { build835, build999, buildTA1 } from '@ugula/billing/testing';
 import { createRecordingDb, type RowsFor } from '@ugula/db/testing';
@@ -8,10 +9,17 @@ import { createPayerFileStore } from './payer-files.ts';
 
 const document = { bucket: 'ugula', key: 'clearinghouse/t1/1-a.999' };
 
-const rejected = build999({
-  groupControlNumber: '7',
-  transactions: [{ controlNumber: '0001', accepted: false }]
-});
+const envelope = { controlNumber: 900, createdAt: new Date('2026-11-03T12:00:00Z') };
+
+const rejected = build999(
+  { groupControlNumber: '7', transactions: [{ controlNumber: '0001', accepted: false }] },
+  envelope
+);
+
+const digestOf = (text: string) => createHash('sha256').update(text).digest('hex');
+
+const UNREADABLE =
+  'This is not a remittance (835), acknowledgment (TA1, 999 or 277CA), claim status (277) or eligibility (271) file';
 
 const batch = [
   { claim_id: 'c1', coverage_id: 'cov-1', number: '20261105-1001' },
@@ -34,13 +42,19 @@ const earlier: {
 };
 
 const rowsFor =
-  (imported: boolean | Partial<typeof earlier>): RowsFor =>
+  (imported: boolean | Partial<typeof earlier>, sent = batch): RowsFor =>
   (q) => {
     if (q.sql.startsWith('select "agency_id", "started_by_id" from "workflow_runs"'))
       return [{ agency_id: 't1', started_by_id: 'u1' }];
     if (q.sql.includes('from "payer_files" where')) {
       return imported
-        ? [{ ...earlier, ...(imported === true ? {} : imported), created_at: new Date() }]
+        ? [
+            {
+              ...earlier,
+              ...(imported === true ? {} : imported),
+              created_at: new Date('2026-11-01T12:00:00Z')
+            }
+          ]
         : [];
     }
     if (q.sql.includes('from "payer_file_items"')) {
@@ -49,7 +63,7 @@ const rowsFor =
       ];
     }
     if (q.sql.startsWith('insert into "payer_files"')) return [{ id: 'f1' }];
-    if (q.sql.includes('from "claim_batches" as "b"')) return batch;
+    if (q.sql.includes('from "claim_batches" as "b"')) return sent;
     if (q.sql.startsWith('insert into "claim_events"')) return [{ id: 'e1' }];
     return [];
   };
@@ -72,7 +86,7 @@ describe('createPayerFileStore', () => {
   it('reads a file without applying it: the kind, and for an 835 each claim payment', async () => {
     const remittance = build835(
       [{ claims: [{ claimNumber: '20261105-1001', chargeCents: 1_000, paidCents: 800 }] }],
-      { createdAt: new Date('2026-11-03T12:00:00Z') }
+      envelope
     );
     const { store, queries } = storeFor(remittance, rowsFor(false));
     const read = await store.read('r1', { document, fileName: 'a.835' });
@@ -96,7 +110,7 @@ describe('createPayerFileStore', () => {
       document,
       fileName: 'a.txt'
     });
-    assert.equal(junk.status, 'unreadable');
+    assert.deepEqual(junk, { status: 'unreadable', reason: UNREADABLE });
   });
 
   it("applies a file for the run's agency and announces it and each claim it touched once", async () => {
@@ -115,17 +129,43 @@ describe('createPayerFileStore', () => {
       ['r1', { kind: 'payerFile', id: 'f1' }]
     ]);
     const file = queries.find((q) => q.sql.startsWith('insert into "payer_files"'));
-    assert.ok(file?.parameters.includes('t1') && file.parameters.includes('a.999'));
-    assert.ok(file?.parameters.includes(JSON.stringify(document)));
-    assert.ok(file?.parameters.includes('u1'), 'the uploader who started the run');
-    assert.ok(file?.parameters.includes('r1') && file.parameters.includes('k'));
+    assert.equal(
+      file?.sql,
+      'insert into "payer_files" ("agency_id", "kind", "file_name", "digest", "document", "control_number", "uploaded_by_id", "run_id", "source_key") values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning "id"'
+    );
+    assert.deepEqual(file?.parameters, [
+      't1',
+      '999',
+      'a.999',
+      digestOf(rejected),
+      JSON.stringify(document),
+      '000000900',
+      'u1',
+      'r1',
+      'k'
+    ]);
+  });
+
+  it('looks for an earlier copy of the file by its digest within the run agency', async () => {
+    const { store, queries } = storeFor(rejected, rowsFor(false));
+    await store.read('r1', { document, fileName: 'a.999' });
+    assert.deepEqual(
+      queries.map((q) => [q.sql, q.parameters]),
+      [
+        ['select "agency_id", "started_by_id" from "workflow_runs" where "id" = $1', ['r1']],
+        [
+          'select "id", "kind", "run_id", "source_key", "envelope_rejection", "created_at" from "payer_files" where "agency_id" = $1 and "digest" = $2',
+          ['t1', digestOf(rejected)]
+        ]
+      ]
+    );
   });
 
   it('lists only the lines a biller has to look at', async () => {
-    const accepted = build999({
-      groupControlNumber: '7',
-      transactions: [{ controlNumber: '0001', accepted: true }]
-    });
+    const accepted = build999(
+      { groupControlNumber: '7', transactions: [{ controlNumber: '0001', accepted: true }] },
+      envelope
+    );
     const { store, announced } = storeFor(accepted, rowsFor(false));
     assert.deepEqual(await store.apply('r1', 'k', { document, fileName: 'a.999', postings: [] }), {
       status: 'applied',
@@ -134,7 +174,30 @@ describe('createPayerFileStore', () => {
       envelopeRejection: null,
       reviews: []
     });
-    assert.equal(announced.length, 3);
+    assert.deepEqual(announced, [
+      ['r1', { kind: 'claim', id: 'c1' }],
+      ['r1', { kind: 'claim', id: 'c2' }],
+      ['r1', { kind: 'payerFile', id: 'f1' }]
+    ]);
+    const { store: unknown, announced: told } = storeFor(rejected, rowsFor(false, []));
+    assert.deepEqual(
+      await unknown.apply('r1', 'k', { document, fileName: 'a.999', postings: [] }),
+      {
+        status: 'applied',
+        fileId: 'f1',
+        kind: '999',
+        envelopeRejection: null,
+        reviews: [
+          {
+            reference: '7',
+            claimId: null,
+            outcome: 'unmatched',
+            message: 'No 837P file has control number 7'
+          }
+        ]
+      }
+    );
+    assert.deepEqual(told, [['r1', { kind: 'payerFile', id: 'f1' }]]);
   });
 
   it('applies the same file only once per agency', async () => {
@@ -144,7 +207,7 @@ describe('createPayerFileStore', () => {
       fileId: 'f0'
     });
     const lookup = queries.find((q) => q.sql.includes('from "payer_files"'));
-    assert.equal(lookup?.parameters[0], 't1');
+    assert.deepEqual(lookup?.parameters, ['t1', digestOf(rejected)]);
     assert.equal(
       queries.some((q) => q.sql.startsWith('insert')),
       false
@@ -176,7 +239,7 @@ describe('createPayerFileStore', () => {
       document,
       fileName: 'a.999'
     });
-    assert.equal(read.status, 'read');
+    assert.deepEqual(read, { status: 'read', kind: '999', lines: [] });
   });
 
   it('says why a file cannot be read without writing anything', async () => {
@@ -190,7 +253,8 @@ describe('createPayerFileStore', () => {
     );
     const text = storeFor('hello', rowsFor(false));
     const unread = await text.store.apply('r1', 'k', { document, fileName: 'a.txt', postings: [] });
-    assert.equal(unread.status, 'unreadable');
+    assert.deepEqual(unread, { status: 'unreadable', reason: UNREADABLE });
+
     assert.equal(text.queries.length, 1);
   });
 

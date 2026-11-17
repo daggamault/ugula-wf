@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { once } from 'node:events';
-import { createServer } from 'node:http';
+import { EventEmitter, once } from 'node:events';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { describe, it } from 'node:test';
 import { createHub } from '../../shared/hub.ts';
@@ -156,5 +156,89 @@ describe('events handler', () => {
       server.closeAllConnections();
       server.close();
     }
+  });
+});
+
+describe('events handler stream lifecycle', () => {
+  const request = () =>
+    Object.assign(new EventEmitter(), {
+      url: `/events?agency=${A1}`,
+      headers: { cookie: 'ugula_session=t' }
+    }) as unknown as IncomingMessage;
+
+  const response = () => {
+    const seen: unknown[] = [];
+    const res = {
+      destroyed: false,
+      writableNeedDrain: false,
+      writeHead: (...args: unknown[]) => void seen.push(['head', ...args]),
+      write: (chunk: string) => void seen.push(chunk),
+      end: (...args: unknown[]) => void seen.push(['end', ...args]),
+      destroy: () => void seen.push('destroyed')
+    };
+    return { seen, res: res as unknown as ServerResponse & { destroyed: boolean } };
+  };
+
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+  it('keeps streaming through a session outage and stops once the client leaves', async (t) => {
+    t.mock.timers.enable({ apis: ['setInterval'] });
+    const hub = createHub();
+    let available = true;
+    const handler = createEventsHandler({
+      hub,
+      origins: [],
+      heartbeatMs: 50,
+      sessions: {
+        get: async () => {
+          if (!available) throw new Error('redis down');
+          return { userId: 'u-1', email: 'dev@example.com' };
+        }
+      },
+      canOpenAgency: async () => true
+    });
+    const req = request();
+    const { seen, res } = response();
+    await handler(req, res);
+    available = false;
+    t.mock.timers.tick(50);
+    await flush();
+    hub.broadcast(A1, '1');
+    req.emit('close');
+    hub.broadcast(A1, '2');
+    t.mock.timers.tick(50);
+    await flush();
+    assert.deepEqual(seen, [
+      [
+        'head',
+        200,
+        {
+          'content-type': 'text/event-stream',
+          'cache-control': 'no-cache',
+          connection: 'keep-alive'
+        }
+      ],
+      ': connected\n\n',
+      PING,
+      'data: 1\n\n'
+    ]);
+  });
+
+  it('writes nothing to a client that left during the session lookup', async () => {
+    const hub = createHub();
+    const req = request();
+    const { seen, res } = response();
+    const handler = createEventsHandler({
+      hub,
+      origins: [],
+      sessions: { get: async () => ({ userId: 'u-1', email: 'dev@example.com' }) },
+      canOpenAgency: async () => {
+        res.destroyed = true;
+        return true;
+      }
+    });
+    await handler(req, res);
+    hub.broadcast(A1, '1');
+    assert.deepEqual(seen, []);
   });
 });

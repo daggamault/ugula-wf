@@ -30,7 +30,24 @@ describe('parseMockConfig', () => {
     assert.deepEqual(c.eraUnenrolled, new Set(['MCR', 'BCBS']));
   });
 
+  it('takes the host, remit delay and real-time port from the environment', () => {
+    const c = parseMockConfig({
+      ...required,
+      CLEARINGHOUSE_SFTP_HOST: '0.0.0.0',
+      CHOUSE_REMIT_DELAY_SECONDS: '5',
+      CHOUSE_REALTIME_PORT: '3224'
+    });
+    assert.deepEqual([c.host, c.remitDelayMs, c.realtimePort], ['0.0.0.0', 5000, 3224]);
+  });
+
+  it('requires the remit delay to be whole non-negative seconds', () => {
+    for (const delay of ['-1', '1.5', 'soon', '']) {
+      assert.throws(() => parseMockConfig({ ...required, CHOUSE_REMIT_DELAY_SECONDS: delay }));
+    }
+  });
+
   it('requires the SFTP port and credentials and a non-empty host', () => {
+    assert.throws(() => parseMockConfig({ ...required, CLEARINGHOUSE_SFTP_USERNAME: undefined }));
     assert.throws(() => parseMockConfig({ ...required, CLEARINGHOUSE_SFTP_PASSWORD: '' }));
     assert.throws(() => parseMockConfig({ ...required, CLEARINGHOUSE_SFTP_PORT: undefined }));
     assert.throws(() => parseMockConfig({ ...required, CLEARINGHOUSE_SFTP_HOST: '' }));

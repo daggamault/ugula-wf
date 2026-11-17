@@ -70,11 +70,18 @@ type Directory = {
   published?: boolean;
   owners?: string[] | null;
   seen?: Record<string, Seen>;
+  taken?: string[];
 };
 
 const poll = async (
   clearinghouse: Clearinghouse,
-  { profiles = { DEVEMS01: ['t1'] }, published = true, owners = null, seen = {} }: Directory = {}
+  {
+    profiles = { DEVEMS01: ['t1'] },
+    published = true,
+    owners = null,
+    seen = {},
+    taken = []
+  }: Directory = {}
 ) => {
   const { db, queries } = createRecordingDb((q: CompiledQuery) => {
     if (q.sql.includes('from "billing_profiles"')) {
@@ -94,7 +101,7 @@ const poll = async (
     }
     if (q.sql.startsWith('insert into "clearinghouse_downloads"')) {
       const name = String(q.parameters[1]).split('/').at(-1) ?? '';
-      return seen[name]?.run_id ? [] : [{ id: `d-${name}` }];
+      return seen[name]?.run_id || taken.includes(name) ? [] : [{ id: `d-${name}` }];
     }
     if (q.sql.includes('select v.version')) return published ? [{ version: 1 }] : [];
     if (q.sql.includes('from unnest')) return published ? [{ id: 'v1', version: 1 }] : [];
@@ -138,20 +145,30 @@ describe('createClearinghousePoll', () => {
     assert.deepEqual(stored, [
       `clearinghouse/t1/${Date.parse('2026-11-03T12:00:00Z')}-${createHash('sha256').update('/outbound/999/a.999').digest('hex').slice(0, 8)}-a.999`
     ]);
-    assert.ok(run?.parameters.includes('t1') && run.parameters.includes('v1'));
-    assert.ok(
-      run?.parameters.some((p) => typeof p === 'string' && p.includes('"fileName":"a.999"'))
-    );
+    assert.deepEqual(run?.parameters, [
+      't1',
+      'v1',
+      'running',
+      JSON.stringify({
+        file: { bucket: 'b', key: stored[0], size: 112, contentType: 'application/edi-x12' },
+        fileName: 'a.999'
+      }),
+      null
+    ]);
     assert.deepEqual(jobs, [{ runId: 'r1', command: { type: 'advance' } }]);
-    assert.deepEqual(downloads[0]?.parameters.slice(0, 6), [
+    assert.deepEqual(downloads[0]?.parameters, [
       SOURCE,
       '/outbound/999/a.999',
       10,
       new Date('2026-11-03T12:00:00Z'),
       't1',
-      ''
+      '',
+      NOW
     ]);
-    assert.ok(downloads[0]?.sql.includes('where "clearinghouse_downloads"."run_id" is null'));
+    assert.equal(
+      downloads[0]?.sql,
+      'insert into "clearinghouse_downloads" ("source", "remote_path", "size", "modified_at", "agency_id", "note", "tried_at") values ($1, $2, $3, $4, $5, $6, $7) on conflict on constraint "clearinghouse_downloads_file_unique" do update set "agency_id" = "excluded"."agency_id", "note" = "excluded"."note", "tried_at" = "excluded"."tried_at" where "clearinghouse_downloads"."run_id" is null returning "id"'
+    );
     assert.deepEqual(linked[0]?.parameters, ['r1', 'd-a.999']);
     assert.deepEqual(removed, ['/outbound/999/a.999']);
     assert.deepEqual(reports, ['Clearinghouse: received /outbound/999/a.999, run r1']);
@@ -225,7 +242,16 @@ describe('createClearinghousePoll', () => {
       downloads.map((q) => q.parameters[1]),
       ['/outbound/999/b.999']
     );
-    assert.ok(downloads[0]?.parameters.includes(NOW));
+    assert.equal(downloads[0]?.parameters[6], NOW);
+  });
+
+  it('starts no run for a file another poller claimed first, and leaves it to that poller', async () => {
+    const { clearinghouse, removed } = fakeClearinghouse({ 'a.999': isa('DEVEMS01') });
+    const { downloads, linked, run, jobs, reports } = await poll(clearinghouse, {
+      taken: ['a.999']
+    });
+    assert.equal(downloads.length, 1);
+    assert.deepEqual([linked, run, jobs, removed, reports], [[], undefined, [], [], []]);
   });
 
   it('keeps received files on the server when configured to', async () => {
@@ -289,8 +315,16 @@ describe('createClearinghousePoll', () => {
       now: () => NOW
     })();
     assert.deepEqual(removed, []);
-    assert.equal(queries.length, 1);
-    assert.ok(queries[0]?.parameters.includes(SOURCE));
+    assert.deepEqual(
+      queries.map((q) => [q.sql, q.parameters]),
+      [
+        [
+          'select "remote_path", "size", "modified_at", "run_id", "note", "tried_at" from "clearinghouse_downloads" where "source" = $1 and "remote_path" in ($2)',
+          [SOURCE, '/outbound/999/a.999']
+        ]
+      ]
+    );
+
     await db.destroy();
   });
 

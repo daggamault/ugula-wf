@@ -121,9 +121,7 @@ describe('announceClaims', () => {
       'announce',
       'link'
     ]);
-    assert.ok(
-      announced.every(([runId, e]) => runId === 'r1' && e.kind === 'claim' && e.id === 'c1')
-    );
+    assert.deepEqual(announced, Array(12).fill(['r1', { kind: 'claim', id: 'c1' }]));
   });
 
   it('announces nothing when the store refuses the change', async () => {

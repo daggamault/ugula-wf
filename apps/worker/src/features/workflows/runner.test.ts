@@ -249,7 +249,7 @@ describe('runner', () => {
     assert.equal(row.status, 'faulted');
     assert.match(JSON.stringify(log.saves.at(-1)?.error), /steps cannot be saved/);
     assert.equal(row.state?.status, 'suspended');
-    assert.notEqual(log.tasks[0]?.waitId.split(':')[1], '0');
+    assert.equal(log.tasks[0]?.waitId, 'fault:3:2026-01-01T00:00:00.000Z');
   });
 
   it('hands transient failures back for retry and fails runs on permanent ones', async () => {
@@ -399,7 +399,10 @@ describe('runner', () => {
     await runner.process(job({ type: 'skip', pin: 'nope', outputs: {} }));
     assert.equal(row.status, 'faulted');
     assert.equal(log.tasks.length, 2);
-    assert.notEqual(log.tasks[1]?.waitId, log.tasks[0]?.waitId);
+    assert.deepEqual(
+      log.tasks.map((t) => t.waitId),
+      ['fault:2', 'fault:2:2026-01-01T00:00:00.000Z']
+    );
     assert.match(log.tasks[1]?.instructions ?? '', /^Could not skip: .*no exec output "nope"/);
     assert.match(log.tasks[1]?.instructions ?? '', /Payer down/);
   });
@@ -529,6 +532,138 @@ describe('runner', () => {
       job({ type: 'cancel' })
     );
     assert.equal(busy.row.status, 'cancelled');
+  });
+
+  it('checkpoints a long drive as it goes, then hands a transient failure back as running', async () => {
+    const tick = actionNode({
+      type: 'test.tick',
+      title: 'Tick',
+      category: 'Test',
+      description: 'Does a little.',
+      inputs: [],
+      outputs: [],
+      compute: async () => ({})
+    });
+    const chain: GraphDef = {
+      signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] },
+      variables: [],
+      nodes: [
+        { id: 'entry', type: ENTRY_TYPE, version: 1 },
+        { id: 'a', type: 'test.tick', version: 1 },
+        { id: 'b', type: 'test.tick', version: 1 },
+        { id: 'c', type: 'test.tick', version: 1 }
+      ],
+      edges: [
+        { from: 'entry', fromPin: 'exec', to: 'a', toPin: 'exec' },
+        { from: 'a', fromPin: 'then', to: 'b', toPin: 'exec' },
+        { from: 'b', fromPin: 'then', to: 'c', toPin: 'exec' }
+      ]
+    };
+    const chainEngines: EngineSource = async () => ({
+      engine: createEngine({ nodes: [...createStdNodes({ fetch }), tick], graphs: () => chain }),
+      root
+    });
+    const { store, row, log } = fakeStore({});
+    store.transaction = async () => {
+      throw Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' });
+    };
+    const seen: string[] = [];
+    await assert.rejects(
+      () =>
+        createRunner({
+          store,
+          engines: chainEngines,
+          now: () => now,
+          flushSize: 1,
+          publish: async (_, event) => void seen.push(event.kind === 'run' ? event.status : 'task')
+        }).process(job({ type: 'advance' })),
+      /socket hang up/
+    );
+    assert.equal(log.checkpoints, 3);
+    assert.deepEqual(seen, ['running', 'running', 'running']);
+    assert.deepEqual(
+      [log.released, row.status, row.state?.status],
+      [['running'], 'running', 'running']
+    );
+  });
+
+  it('settles a run even when the live feed cannot be reached', async () => {
+    const { store, row } = fakeStore({ ms: 1500 });
+    await createRunner({
+      store,
+      engines,
+      now: () => now,
+      publish: async () => {
+        throw new Error('redis down');
+      }
+    }).process(job({ type: 'advance' }));
+    assert.equal(row.status, 'suspended');
+  });
+
+  it('retries a faulted node from where it failed', async () => {
+    let calls = 0;
+    const once = actionNode({
+      type: 'test.once',
+      title: 'Once',
+      category: 'Test',
+      description: 'Fails the first time.',
+      inputs: [],
+      outputs: [],
+      compute: async () => {
+        calls++;
+        if (calls === 1) throw new Error('payer down');
+        return {};
+      }
+    });
+    const graph: GraphDef = {
+      signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] },
+      variables: [],
+      nodes: [
+        { id: 'entry', type: ENTRY_TYPE, version: 1 },
+        { id: 'once', type: 'test.once', version: 1 }
+      ],
+      edges: [{ from: 'entry', fromPin: 'exec', to: 'once', toPin: 'exec' }]
+    };
+    const onceEngines: EngineSource = async () => ({
+      engine: createEngine({ nodes: [...createStdNodes({ fetch }), once], graphs: () => graph }),
+      root
+    });
+    const { store, row, log } = fakeStore({});
+    const runner = createRunner({ store, engines: onceEngines, now: () => now, publish });
+    await runner.process(job({ type: 'advance' }));
+    assert.equal(row.status, 'faulted');
+    assert.equal(log.tasks[0]?.title, 'Stuck at Once');
+    await runner.process(job({ type: 'retry' }));
+    assert.deepEqual([row.status, calls], ['completed', 2]);
+  });
+
+  it('puts an interrupted retry back as faulted when its run is advanced', async () => {
+    const { store, row, log } = fakeStore({});
+    const runner = createRunner({ store, engines: failingEngines, now: () => now, publish });
+    await runner.process(job({ type: 'advance' }));
+    assert.equal(row.status, 'faulted');
+    row.status = 'running';
+    await runner.process(job({ type: 'advance' }));
+    assert.deepEqual([log.released, row.status, log.saves.length], [['faulted'], 'faulted', 1]);
+  });
+
+  it('stalls a run whose resume no longer matches the wait it is suspended on', async () => {
+    const { store, row, log } = fakeStore({ ms: 1500 });
+    const claim = store.claim;
+    const runner = createRunner({ store, engines, now: () => now, publish });
+    await runner.process(job({ type: 'advance' }));
+    store.claim = async (job, leaseMs) =>
+      claim(
+        {
+          ...job,
+          command: { type: 'resume', suspensionId: row.state?.suspension?.id ?? '', payload: null }
+        },
+        leaseMs
+      );
+    await runner.process(job({ type: 'resume', suspensionId: 'gone', payload: null }));
+    assert.equal(row.status, 'faulted');
+    assert.deepEqual(log.saves.at(-1)?.error, { message: 'Run is not waiting on suspension gone' });
+    assert.deepEqual(log.tasks.at(-1)?.outcomes, ['retry', 'cancel']);
   });
 });
 

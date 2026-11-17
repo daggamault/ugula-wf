@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { ClaimEventKind } from '@ugula/billing';
+import { NoResultError } from 'kysely';
+import { documentationOf } from './claim-documentation.ts';
 import {
   allocateControlNumber,
   batchKey,
   detailsOf,
+  findClaimToBill,
   findProfile,
   findReadyClaim,
   insertBatch,
@@ -18,27 +21,98 @@ import {
 } from './submissions.ts';
 import { createRecordingDb } from './testing.ts';
 
+const claimColumns = [
+  'id',
+  'number',
+  'pcr_number',
+  'is_emergency',
+  'loaded_miles',
+  'is_deceased',
+  'total_cents',
+  'service_date',
+  'origin_code',
+  'destination_code',
+  'pickup_address_line',
+  'pickup_city',
+  'pickup_state',
+  'pickup_postal_code',
+  'destination_name',
+  'destination_address_line',
+  'destination_city',
+  'destination_state',
+  'destination_postal_code',
+  'signature',
+  'signature_note',
+  'has_pcs',
+  'pcs_signed_on',
+  'transport_reason',
+  'condition_codes',
+  'prior_authorization',
+  'weight_kg',
+  'at_scene_at',
+  'left_scene_at',
+  'at_destination_at',
+  'patient_count',
+  'closest_facility_miles',
+  'has_abn',
+  'abn_signed_on',
+  'is_denial_expected',
+  'has_msp_employer_plan',
+  'has_msp_esrd',
+  'has_msp_disability',
+  'msp_employer_size',
+  'msp_accident',
+  'prior_authorization_expires_on',
+  'pcs_type',
+  'round_trips',
+  'admitted_on',
+  'facility_stay',
+  'created_at'
+];
+
+const patientColumns = [
+  'first_name',
+  'last_name',
+  'birth_date',
+  'gender',
+  'address_line',
+  'city',
+  'state',
+  'postal_code'
+];
+
+const claimToBillSql = [
+  'select',
+  [
+    ...claimColumns.map((c) => `"c"."${c}"`),
+    ...patientColumns.map((c) => `"p"."${c}"`),
+    `(select coalesce(json_agg(agg), '[]') from (select "cc"."id", coalesce(dp.name, cc.payer_name) as "payer", "dp"."payer_code", "dp"."claim_filing", "dp"."correction_method", "cc"."member_id", "cc"."group_id", cc.relationship as "relationship", "cc"."insured_first_name", "cc"."insured_last_name" from "claim_coverages" as "cc" left join "payers" as "dp" on "dp"."id" = "cc"."payer_id" where "cc"."claim_id" = "c"."id" order by "cc"."position") as agg) as "coverages"`,
+    `(select coalesce(json_agg(agg), '[]') from (select "l"."code", "l"."units", "l"."unit_cents", "l"."total_cents" from "claim_lines" as "l" where "l"."claim_id" = "c"."id" order by "l"."position") as agg) as "lines"`,
+    'array((select "d"."code" from "claim_diagnoses" as "d" where "d"."claim_id" = "c"."id" order by "d"."position")) as "diagnoses"'
+  ].join(', '),
+  'from "claims" as "c" inner join "patients" as "p" on "p"."id" = "c"."patient_id" where "c"."agency_id" = $1 and "c"."id" = $2'
+].join(' ');
+
 describe('submission queries', () => {
-  it('read one claim of the agency a payer can be filed from, locking it when submitting', async () => {
+  it('read one claim of the agency with its coverages, lines and diagnoses in order', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    assert.equal(await findClaimToBill(db, 't1', 'c1'), undefined);
+    assert.equal(queries[0]?.sql, claimToBillSql);
+    assert.deepEqual(queries[0]?.parameters, ['t1', 'c1']);
+    await db.destroy();
+  });
+
+  it('read only a claim a payer can be filed from, locking it when submitting', async () => {
     const { db, queries } = createRecordingDb(() => []);
     assert.equal(await findReadyClaim(db, 't1', 'c1'), undefined);
-    await lockReadyClaim(db, 't1', 'c1');
+    assert.equal(await lockReadyClaim(db, 't1', 'c1'), undefined);
     const [find, lock] = queries;
-    assert.ok(
-      find?.sql.includes(
-        'where "c"."agency_id" = $1 and "c"."id" = $2 and "c"."status" in ($3, $4, $5, $6)'
-      )
-    );
-    assert.deepEqual(find?.parameters.slice(-6), [
-      't1',
-      'c1',
-      'ready',
-      'denied',
-      'reconcile',
-      'follow_up'
-    ]);
-    assert.ok(find?.sql.includes('coalesce(dp.name, cc.payer_name)'));
-    assert.ok(lock?.sql.endsWith('for update of "c"'));
+    const ready = `${claimToBillSql} and "c"."status" in ($3, $4, $5, $6)`;
+    assert.equal(find?.sql, ready);
+    assert.equal(lock?.sql, `${ready} for update of "c"`);
+    for (const q of [find, lock]) {
+      assert.deepEqual(q?.parameters, ['t1', 'c1', 'ready', 'denied', 'reconcile', 'follow_up']);
+    }
     await db.destroy();
   });
 
@@ -53,19 +127,31 @@ describe('submission queries', () => {
     const used = createRecordingDb(() => []);
     assert.equal(await allocateControlNumber(used.db, 't1'), null);
     await db.destroy();
+    await used.db.destroy();
   });
 
   it('write the batch, its submission event and move the claim on', async () => {
-    const { db, queries } = createRecordingDb(() => [{ id: 'b1' }]);
-    await insertBatch(db, {
+    const row = {
       id: 'b1',
-      agencyId: 't1',
-      controlNumber: 7,
-      totalCents: 100,
-      production: false,
-      document: { key: 'k' },
-      createdBy: 'u1'
-    });
+      control_number: 7,
+      claim_count: 1,
+      total_cents: 100,
+      is_production: false,
+      created_at: new Date('2026-10-02T00:00:00Z')
+    };
+    const { db, queries } = createRecordingDb(() => [row]);
+    assert.deepEqual(
+      await insertBatch(db, {
+        id: 'b1',
+        agencyId: 't1',
+        controlNumber: 7,
+        totalCents: 100,
+        production: false,
+        document: { key: 'k' },
+        createdBy: 'u1'
+      }),
+      row
+    );
     await insertSubmissionEvent(
       db,
       { batchId: 'b1', note: '837P file #7', createdBy: null, sourceKey: 'run:step' },
@@ -73,7 +159,15 @@ describe('submission queries', () => {
     );
     await markSubmitted(db, 'c1');
     const [batch, event, status] = queries;
-    assert.deepEqual(batch?.parameters.slice(0, 4), ['b1', 't1', 7, 1]);
+    assert.equal(
+      batch?.sql,
+      'insert into "claim_batches" ("id", "agency_id", "control_number", "claim_count", "total_cents", "is_production", "document", "created_by_id") values ($1, $2, $3, $4, $5, $6, $7, $8) returning "id", "control_number", "claim_count", "total_cents", "is_production", "created_at"'
+    );
+    assert.deepEqual(batch?.parameters, ['b1', 't1', 7, 1, 100, false, '{"key":"k"}', 'u1']);
+    assert.equal(
+      event?.sql,
+      'insert into "claim_events" ("agency_id", "claim_id", "kind", "coverage_id", "note", "batch_id", "created_by_id", "source_key") values ($1, $2, $3, $4, $5, $6, $7, $8)'
+    );
     assert.deepEqual(event?.parameters, [
       't1',
       'c1',
@@ -84,8 +178,28 @@ describe('submission queries', () => {
       null,
       'run:step'
     ]);
-    assert.ok(status?.sql.startsWith('update "claims" set "status" = $1'));
+    assert.equal(
+      status?.sql,
+      'update "claims" set "status" = $1, "updated_at" = now() where "id" = $2 and "status" = $3'
+    );
     assert.deepEqual(status?.parameters, ['submitted', 'c1', 'ready']);
+    await db.destroy();
+  });
+
+  it('fail when the batch is not written', async () => {
+    const { db } = createRecordingDb(() => []);
+    await assert.rejects(
+      insertBatch(db, {
+        id: 'b1',
+        agencyId: 't1',
+        controlNumber: 7,
+        totalCents: 100,
+        production: true,
+        document: {},
+        createdBy: null
+      }),
+      NoResultError
+    );
     await db.destroy();
   });
 });
@@ -322,8 +436,34 @@ describe('pendingClaim lines', () => {
       [none?.loadedMiles, none?.correctionMethod, none?.lines.map((l) => l.units)],
       [null, 'reopening', [1, 7.3]]
     );
-    const some = pending(claimRow(C1), [event(C1, 'approved', MEDICARE)])?.claim;
-    assert.equal(some?.loadedMiles, 7.3);
+  });
+
+  it('files a non-emergency trip of a deceased patient without a correction method', () => {
+    const claim = pending(
+      claimRow(C1, {
+        is_emergency: null,
+        is_deceased: true,
+        coverages: [{ ...medicare, correction_method: null }]
+      }),
+      [event(C1, 'approved', MEDICARE)]
+    )?.claim;
+    assert.deepEqual(
+      [claim?.emergency, claim?.deceased, claim?.correctionMethod],
+      [false, true, null]
+    );
+  });
+
+  it('describes the patient as on the claim', () => {
+    assert.deepEqual(pending(claimRow(C1), [event(C1, 'approved', MEDICARE)])?.claim.patient, {
+      firstName: 'Jane',
+      lastName: 'Doe',
+      birthDate: '1950-02-03',
+      sex: 'F',
+      addressLine: '1 Main St',
+      city: 'Springfield',
+      state: 'IL',
+      postalCode: '62704'
+    });
   });
 });
 
@@ -345,6 +485,7 @@ describe('manual submission events', () => {
       'u1',
       null
     ]);
+    await db.destroy();
   });
 });
 
@@ -377,6 +518,10 @@ describe('billing profile', () => {
     };
     const { db, queries } = createRecordingDb(() => [profile]);
     const found = await findProfile(db, 't1');
+    assert.equal(
+      queries[0]?.sql,
+      'select "organization_name", "npi", "tax_id", "address_line", "city", "state", "postal_code", "phone", "submitter_id", "receiver_id", "receiver_name", "is_production" from "billing_profiles" where "agency_id" = $1'
+    );
     assert.deepEqual(queries[0]?.parameters, ['t1']);
     assert.deepEqual(found && toSubmitter(found), {
       organizationName: 'Metro EMS',
@@ -395,6 +540,12 @@ describe('billing profile', () => {
     await db.destroy();
   });
 
+  it('finds no profile for an agency that has none', async () => {
+    const { db } = createRecordingDb(() => []);
+    assert.equal(await findProfile(db, 't1'), undefined);
+    await db.destroy();
+  });
+
   it('stores each batch under its agency with a zero-padded control number', () => {
     assert.equal(batchKey('t1', 'b1', 42), 'batches/t1/b1/837P-000000042.txt');
   });
@@ -402,13 +553,32 @@ describe('billing profile', () => {
 
 describe('detailsOf', () => {
   it('rebuilds 837P claim details from the claim columns', () => {
-    const details = detailsOf(claimRow(C1));
-    assert.equal(details.originDestination, 'RH');
-    assert.equal(details.pickup.name, null);
-    assert.equal(details.destination.name, 'Mercy');
-    assert.deepEqual(details.diagnoses, ['R079']);
-    const partial = claimRow(C1, { destination_code: null });
-    assert.equal(detailsOf(partial).originDestination, null);
+    const row = claimRow(C1);
+    assert.deepEqual(detailsOf(row), {
+      serviceDate: '2026-10-01',
+      pickup: {
+        name: null,
+        addressLine: '9 Oak Ave',
+        city: 'Springfield',
+        state: 'IL',
+        postalCode: '62702'
+      },
+      destination: {
+        name: 'Mercy',
+        addressLine: '9 Oak Ave',
+        city: 'Springfield',
+        state: 'IL',
+        postalCode: '62702'
+      },
+      diagnoses: ['R079'],
+      originDestination: 'RH',
+      documentation: documentationOf(row)
+    });
+  });
+
+  it('sends no origin and destination unless both codes are known', () => {
+    assert.equal(detailsOf(claimRow(C1, { destination_code: null })).originDestination, null);
+    assert.equal(detailsOf(claimRow(C1, { origin_code: null })).originDestination, null);
   });
 });
 
@@ -417,10 +587,7 @@ describe('nextBatchClaim', () => {
     const sent = [event(C1, 'approved', MEDICARE), event(C1, 'submitted', MEDICARE)];
     const next = nextBatchClaim(claimRow(C1), ledgerOf(sent));
     assert.equal(next?.payer, 'Medicare');
-    assert.equal(
-      next?.claim.payer.name,
-      pending(claimRow(C1), [event(C1, 'approved', MEDICARE)])?.claim.payer.name
-    );
+    assert.deepEqual(next?.claim, pending(claimRow(C1), [event(C1, 'approved', MEDICARE)])?.claim);
     assert.equal(nextBatchClaim(claimRow(C1, { coverages: [] }), []), null);
   });
 });

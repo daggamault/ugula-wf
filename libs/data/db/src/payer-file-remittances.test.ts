@@ -11,11 +11,10 @@ const boss: RunQueueClient = { insert: async () => undefined };
 
 const text = build835(
   [
+    { claims: [{ claimNumber: '20261105-1001', chargeCents: 1_000, paidCents: 800 }] },
     {
-      claims: [
-        { claimNumber: '20261105-1001', chargeCents: 1_000, paidCents: 800 },
-        { claimNumber: '20261105-1002', chargeCents: 1_000, paidCents: 900 }
-      ]
+      checkNumber: 'CHK-2',
+      claims: [{ claimNumber: '20261105-1002', chargeCents: 1_000, paidCents: 900 }]
     }
   ],
   { createdAt: new Date('2026-11-01T00:00:00Z') }
@@ -37,8 +36,19 @@ describe('payer file remittances', () => {
         [2, '20261105-1002', 'c2']
       ]
     );
-    assert.ok(queries.every((q) => q.sql.startsWith('select')));
-    assert.equal(queries.length, 2);
+    assert.deepEqual(
+      queries.map((q) => [q.sql, q.parameters]),
+      [
+        [
+          'select "id", "number", "status" from "claims" where "agency_id" = $1 and "number" in ($2, $3)',
+          ['t1', '20261105-1001', '20261105-1002']
+        ],
+        [
+          'select "cc"."claim_id", "cc"."id", "dp"."payer_code" as "payerId" from "claim_coverages" as "cc" left join "payers" as "dp" on "dp"."id" = "cc"."payer_id" where "cc"."claim_id" in ($1) order by "cc"."claim_id", "cc"."position"',
+          ['c2']
+        ]
+      ]
+    );
   });
 
   it('refuses to post a payment the remittance rules decided nothing for', async () => {
@@ -179,9 +189,22 @@ describe('posting remittances', () => {
         'd:1:crossed_over'
       ]
     ]);
-    const response = insertedOfKind(recording.queries, 'response')[0];
-    assert.ok(response?.includes('Denied from Medicare in a.835'));
-    assert.ok(response?.includes('d:1'));
+    assert.deepEqual(insertedOfKind(recording.queries, 'response'), [
+      [
+        't1',
+        'c1',
+        'response',
+        'cov1',
+        0,
+        100,
+        'PCN-1',
+        '2026-11-01',
+        'CHK-1',
+        'Denied from Medicare in a.835',
+        'u1',
+        'd:1'
+      ]
+    ]);
   });
 
   it('keeps the rule message on a denial and names no crossover payer it was not told', async () => {
@@ -198,8 +221,9 @@ describe('posting remittances', () => {
       insertedOfKind(recording.queries, 'crossed_over').map((p) => p[4]),
       ['The payer forwarded the claim; wait for its payment before billing it']
     );
-    assert.ok(
-      insertedOfKind(recording.queries, 'response')[0]?.includes('Denied from the payer in a.835')
+    assert.deepEqual(
+      insertedOfKind(recording.queries, 'response').map((p) => p[9]),
+      ['Denied from the payer in a.835']
     );
   });
 
@@ -252,9 +276,7 @@ describe('posting remittances', () => {
       ]
     );
     assert.deepEqual(
-      insertedOfKind(recording.queries, 'response').map((p) =>
-        p.find((v) => typeof v === 'string' && v.endsWith('a.835'))
-      ),
+      insertedOfKind(recording.queries, 'response').map((p) => p[9]),
       ['Reversal from Medicare in a.835', 'Remittance from Medicare in a.835']
     );
   });
@@ -286,7 +308,27 @@ describe('posting remittances', () => {
         ['unmatched', 'c1', 'Not ours']
       ]
     );
-    assert.equal(insertedOfKind(recording.queries, 'response').length, 0);
+    assert.deepEqual(
+      recording.queries.map((q) => [q.sql, q.parameters]),
+      [
+        [
+          'select "id", "number", "status" from "claims" where "agency_id" = $1 and "number" in ($2)',
+          ['t1', '20261105-1001']
+        ],
+        [
+          'select "cc"."claim_id", "cc"."id", "dp"."payer_code" as "payerId" from "claim_coverages" as "cc" left join "payers" as "dp" on "dp"."id" = "cc"."payer_id" where "cc"."claim_id" in ($1) order by "cc"."claim_id", "cc"."position"',
+          ['c1']
+        ],
+        [
+          'select "coverage_id", "payer_claim_number" from "claim_events" where "coverage_id" in ($1, $2) and "kind" = $3 and "payer_claim_number" is not null',
+          ['cov1', 'cov2', 'response']
+        ],
+        [
+          'select "claim_id", "position", "code", "total_cents" as "chargeCents" from "claim_lines" where "claim_id" in ($1) order by "claim_id", "position"',
+          ['c1']
+        ]
+      ]
+    );
   });
 
   it('lists each non-zero provider adjustment for review, on the claim its reference names', async () => {
@@ -320,8 +362,13 @@ describe('posting remittances', () => {
     assert.deepEqual(
       recording.queries
         .filter((q) => q.sql.startsWith('select "e"."claim_id"'))
-        .map((q) => q.parameters),
-      [['t1', 'PCN-9', 'response', 1]]
+        .map((q) => [q.sql, q.parameters]),
+      [
+        [
+          'select "e"."claim_id" from "claim_events" as "e" inner join "claims" as "c" on "c"."id" = "e"."claim_id" where "c"."agency_id" = $1 and "e"."payer_claim_number" = $2 and "e"."kind" = $3 limit $4',
+          ['t1', 'PCN-9', 'response', 1]
+        ]
+      ]
     );
   });
 

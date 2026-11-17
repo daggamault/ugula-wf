@@ -54,20 +54,35 @@ const REMITTANCE = file(
 describe('read835', () => {
   const [medicare, blue] = read835(REMITTANCE);
 
-  it('reads the payment, payer and check of each remittance', () => {
-    assert.deepEqual(
-      [medicare?.payerName, medicare?.payerId, medicare?.checkNumber, medicare?.paidOn],
-      ['MEDICARE PART B', 'DEMOMCR', 'EFT0042', '2026-10-30']
-    );
-    assert.equal(medicare?.totalCents, 61_235);
-    assert.deepEqual(medicare?.providerAdjustments, [
-      { reason: 'WO', reference: 'ICN999', cents: 2550 },
-      { reason: 'L6', reference: 'INTEREST', cents: -125 }
-    ]);
-    assert.deepEqual(
-      [blue?.payerName, blue?.payerId, blue?.checkNumber, blue?.totalCents, blue?.claims],
-      ['BLUE PLAN', 'BCBS1', 'NOPAY77', 0, []]
-    );
+  it('reads one remittance per 835 transaction', () => {
+    assert.equal(read835(REMITTANCE).length, 2);
+  });
+
+  it('reads the payment, payer, check and provider adjustments of a remittance', () => {
+    const { claims: _claims, ...header } = medicare ?? { claims: [] };
+    assert.deepEqual(header, {
+      payerName: 'MEDICARE PART B',
+      payerId: 'DEMOMCR',
+      checkNumber: 'EFT0042',
+      paidOn: '2026-10-30',
+      totalCents: 61_235,
+      providerAdjustments: [
+        { reason: 'WO', reference: 'ICN999', cents: 2550 },
+        { reason: 'L6', reference: 'INTEREST', cents: -125 }
+      ]
+    });
+  });
+
+  it('reads a remittance that pays nothing, taking the payer ID from REF*2U', () => {
+    assert.deepEqual(blue, {
+      payerName: 'BLUE PLAN',
+      payerId: 'BCBS1',
+      checkNumber: 'NOPAY77',
+      paidOn: '2026-10-30',
+      totalCents: 0,
+      providerAdjustments: [],
+      claims: []
+    });
   });
 
   it('collects claim and line adjustments for each paid claim', () => {
@@ -123,37 +138,42 @@ describe('read835', () => {
     });
   });
 
-  it('flags denials and reversals, keeping negative amounts and skipping unknown groups', () => {
-    const [, denied, reversed] = medicare?.claims ?? [];
-    assert.deepEqual(
-      [denied?.denied, denied?.paidCents, denied?.adjustments],
-      [true, 0, [{ group: 'CO', reason: '50', cents: 50_000 }]]
-    );
-    assert.deepEqual([denied?.remarks, reversed?.remarks], [['M25'], []]);
-    assert.deepEqual(
-      [
-        reversed?.claimNumber,
-        reversed?.reversal,
-        reversed?.denied,
-        reversed?.chargeCents,
-        reversed?.paidCents,
-        reversed?.patientCents,
-        reversed?.adjustments
+  it('flags a denial and reads its inpatient remarks upper-cased', () => {
+    assert.deepEqual(medicare?.claims[1], {
+      claimNumber: '1002',
+      status: '4',
+      chargeCents: 50_000,
+      paidCents: 0,
+      patientCents: 0,
+      payerClaimNumber: 'ICN222',
+      adjustments: [{ group: 'CO', reason: '50', cents: 50_000 }],
+      remarks: ['M25'],
+      crossoverPayer: null,
+      denied: true,
+      reversal: false,
+      services: []
+    });
+  });
+
+  it('flags a reversal, keeping negative amounts and skipping unknown adjustment groups', () => {
+    assert.deepEqual(medicare?.claims[2], {
+      claimNumber: '1001',
+      status: '22',
+      chargeCents: -94_250,
+      paidCents: -61_235,
+      patientCents: -15_309,
+      payerClaimNumber: 'ICN111',
+      adjustments: [
+        { group: 'CO', reason: '45', cents: -17_706 },
+        { group: 'PR', reason: '1', cents: -10_000 },
+        { group: 'PR', reason: '2', cents: -5309 }
       ],
-      [
-        '1001',
-        true,
-        false,
-        -94_250,
-        -61_235,
-        -15_309,
-        [
-          { group: 'CO', reason: '45', cents: -17_706 },
-          { group: 'PR', reason: '1', cents: -10_000 },
-          { group: 'PR', reason: '2', cents: -5309 }
-        ]
-      ]
-    );
+      remarks: [],
+      crossoverPayer: null,
+      denied: false,
+      reversal: true,
+      services: []
+    });
   });
 
   it('balances each claim: charge equals payment plus every adjustment', () => {
@@ -306,6 +326,38 @@ describe('read835', () => {
         denied: false,
         reversal: false,
         services: []
+      }
+    ]);
+  });
+
+  it('keeps at most four modifiers, line numbers only on services and each remark once', () => {
+    const [r] = read835(
+      file(
+        'ST*835*0001',
+        'BPR*I*1*C*ACH*CCP*01*1*DA*1*1**01*1*DA*1*20261030',
+        'N1*PR*MEDICARE',
+        'CLP*3001*1*1*1*0*MB',
+        'REF*6R*CLAIM-LEVEL',
+        'MOA***ma01*MA01',
+        'LQ*HE*ma01',
+        'LQ*HE*N130',
+        'SVC*HC:A0425:RH:GY:QM:QN:GA*1*1**1',
+        'REF*6R*7',
+        'SE*11*0001'
+      )
+    );
+    const [claim] = r?.claims ?? [];
+    assert.deepEqual(claim?.remarks, ['MA01', 'N130']);
+    assert.deepEqual(claim?.services, [
+      {
+        code: 'A0425',
+        modifiers: ['RH', 'GY', 'QM', 'QN'],
+        chargeCents: 100,
+        paidCents: 100,
+        units: 1,
+        originalCode: null,
+        lineNumber: '7',
+        adjustments: []
       }
     ]);
   });

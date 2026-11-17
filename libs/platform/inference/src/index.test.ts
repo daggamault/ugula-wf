@@ -31,13 +31,20 @@ describe('createEmbedder', () => {
     const { fetch, calls } = fakeFetch((b) => json((b.inputs as string[]).map((t) => [t.length])));
     const texts = Array.from({ length: EMBED_BATCH_SIZE + 1 }, (_, i) => 'x'.repeat(i + 1));
     const vectors = await createEmbedder({ url: 'http://tei', fetch }).embed(texts);
-    assert.equal(vectors.length, texts.length);
-    assert.deepEqual(vectors.at(-1), [EMBED_BATCH_SIZE + 1]);
     assert.deepEqual(
-      calls.map((c) => [c.url, (c.body.inputs as string[]).length, c.body.normalize]),
+      vectors,
+      texts.map((t) => [t.length])
+    );
+    assert.deepEqual(
+      calls.map((c) => [
+        c.url,
+        (c.body.inputs as string[]).length,
+        c.body.normalize,
+        c.body.truncate
+      ]),
       [
-        ['http://tei/embed', EMBED_BATCH_SIZE, true],
-        ['http://tei/embed', 1, true]
+        ['http://tei/embed', EMBED_BATCH_SIZE, true, true],
+        ['http://tei/embed', 1, true, true]
       ]
     );
   });
@@ -128,16 +135,35 @@ describe('createCompleter', () => {
       /ran past 50 tokens/
     );
     await assert.rejects(
-      run(() => json({ choices: [] })),
-      /returned no answer/
+      run(() => answer('{"ok":true}', 'length')),
+      /ran past 50 tokens/
     );
+    for (const out of [
+      { choices: [] },
+      { choices: {} },
+      [],
+      null,
+      { choices: ['text'] },
+      { choices: [{ message: 'text' }] },
+      { choices: [{ message: { content: { ok: true } } }] }
+    ]) {
+      await assert.rejects(
+        run(() => json(out)),
+        /returned no answer/,
+        JSON.stringify(out)
+      );
+    }
     await assert.rejects(
       run(() => json({ choices: [{ message: { content: null } }] })),
       /returned no answer/
     );
     await assert.rejects(
       run(() => json({ error: 'x' }, 500)),
-      /answered 500/
+      { message: 'u/v1/chat/completions answered 500: {"error":"x"}' }
+    );
+    await assert.rejects(
+      run(() => answer('not json')),
+      SyntaxError
     );
   });
 });
@@ -155,11 +181,13 @@ describe('createCompletionLimiter', () => {
       3
     );
     assert.equal(await limit(async () => 'done'), 'done');
-    const [acquire, release] = calls;
-    assert.equal(acquire?.[0], 'ugula:completions:leases');
-    assert.equal(acquire?.[2], 3);
-    assert.ok(Number(acquire?.[3]) > 120_000);
-    assert.deepEqual(release, [acquire?.[0], acquire?.[1]]);
+    const [acquire] = calls;
+    const id = acquire?.[1];
+    assert.match(String(id), /^[0-9a-f-]{36}$/);
+    assert.deepEqual(calls, [
+      ['ugula:completions:leases', id, 3, 150_000],
+      ['ugula:completions:leases', id]
+    ]);
   });
 
   it('reports lease release failures without failing the completion', async () => {
@@ -175,6 +203,9 @@ describe('createCompletionLimiter', () => {
       (err) => errors.push(err)
     );
     assert.equal(await limit(async () => 'done'), 'done');
-    assert.equal(errors.length, 1);
+    assert.deepEqual(
+      errors.map((e) => (e as Error).message),
+      ['redis down']
+    );
   });
 });

@@ -33,7 +33,9 @@ const post = (path: string, body: unknown) =>
 
 describe('submission routes', () => {
   it('builds an eligibility request for one claim', async () => {
-    assert.equal((await post('/eligibility', { claimId: ID })).status, 201);
+    const res = await post('/eligibility', { claimId: ID });
+    assert.equal(res.status, 201);
+    assert.deepEqual(await res.json(), { name: 'eligibility-1-7.x12', file: 'ISA*', payers: [] });
     assert.deepEqual(calls.splice(0), [['eligibility', 't-1', ID]]);
     assert.equal((await post('/eligibility', {})).status, 400);
   });
@@ -56,7 +58,11 @@ describe('submission routes', () => {
     const res = await request(`/batches/${ID}/file`);
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('content-type'), 'application/edi-x12');
-    assert.match(res.headers.get('content-disposition') ?? '', /attachment; filename="837P-/);
+    assert.equal(
+      res.headers.get('content-disposition'),
+      'attachment; filename="837P-000000001.txt"'
+    );
+    assert.equal(res.headers.get('cache-control'), 'private, no-store');
     assert.equal(await res.text(), 'ISA*00');
   });
 });

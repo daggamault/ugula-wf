@@ -25,6 +25,11 @@ const task: TaskInsert = {
   permission: null
 };
 
+const COLUMNS =
+  'insert into "tasks" ("agency_id", "run_id", "wait_id", "kind", "queue", "title", "subject", "summary", "instructions", "context", "fields", "outcomes", "hints", "defaults", "prefill", "priority", "due_at", "permission", "assignee_id") values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, ';
+
+const UPSERT = ' on conflict ("run_id", "wait_id") do nothing returning "id"';
+
 const insertedDb = () =>
   createRecordingDb((q) => (q.sql.startsWith('insert into "tasks"') ? [{ id: 'new-1' }] : []));
 
@@ -39,56 +44,120 @@ describe('taskNotification', () => {
       link_label: 'Open task',
       link_to: '/tasks/k1'
     });
-    const fault = taskNotification({ ...task, kind: 'fault', title: 'Stuck at Price' }, 'k2');
-    assert.equal(fault.intent, 'danger');
-    assert.equal(fault.title, 'Stuck run: Stuck at Price');
+    assert.deepEqual(taskNotification({ ...task, kind: 'fault', title: 'Stuck at Price' }, 'k2'), {
+      agency_id: 't',
+      intent: 'danger',
+      title: 'Stuck run: Stuck at Price',
+      description: 'PCR-1',
+      link_label: 'Open task',
+      link_to: '/tasks/k2'
+    });
   });
 });
 
 describe('insertTask', () => {
-  it('upserts tasks idempotently and announces only new ones', async () => {
+  it('inserts a task once per run wait and announces nothing when it already exists', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    await insertTask(db, { ...task, subject: 'PCR-1' });
-    assert.ok(
-      queries[0]?.sql.includes('on conflict ("run_id", "wait_id") do nothing returning "id"')
+    await insertTask(db, {
+      ...task,
+      subject: 'PCR-1',
+      summary: 'S',
+      instructions: 'Do it',
+      context: { claim: 'c1' },
+      fields: [{ name: 'note' }],
+      hints: { ok: 'Fine' },
+      defaults: { note: '' },
+      prefill: 'current',
+      priority: 2,
+      permission: 'claims:approve'
+    });
+    assert.deepEqual(
+      queries.map((q) => ({ sql: q.sql, parameters: q.parameters })),
+      [
+        {
+          sql: `${COLUMNS}$17, $18, $19)${UPSERT}`,
+          parameters: [
+            't',
+            'r',
+            '7',
+            'task',
+            'q',
+            'T',
+            'PCR-1',
+            'S',
+            'Do it',
+            '{"claim":"c1"}',
+            '[{"name":"note"}]',
+            ['ok'],
+            '{"ok":"Fine"}',
+            '{"note":""}',
+            'current',
+            2,
+            null,
+            'claims:approve',
+            null
+          ]
+        }
+      ]
     );
-    assert.equal(queries.length, 1);
     await db.destroy();
   });
 
-  it('assigns tasks only to agency members and links the notification to the task', async () => {
+  it('announces a newly inserted task with a link to it', async () => {
+    const { db, queries } = insertedDb();
+    await insertTask(db, { ...task, subject: 'PCR-1' });
+    assert.equal(queries.length, 2);
+    assert.equal(
+      queries[1]?.sql,
+      'insert into "notifications" ("agency_id", "intent", "title", "description", "link_label", "link_to") values ($1, $2, $3, $4, $5, $6)'
+    );
+    assert.deepEqual(queries[1]?.parameters, [
+      't',
+      'info',
+      'New task: T',
+      'PCR-1',
+      'Open task',
+      '/tasks/new-1'
+    ]);
+    await db.destroy();
+  });
+
+  it('assigns a task only to a member of its agency and stores a timestamp due date as given', async () => {
+    const { db, queries } = insertedDb();
+    await insertTask(db, { ...task, assigneeId: USER, dueAt: '2026-12-01T00:00:00.000Z' });
+    assert.equal(
+      queries[0]?.sql,
+      `${COLUMNS}$17, $18, (select "user_id" from "memberships" where "agency_id" = $19 and "user_id" = $20))${UPSERT}`
+    );
+    assert.deepEqual(queries[0]?.parameters.slice(12), [
+      '{}',
+      'null',
+      null,
+      0,
+      '2026-12-01T00:00:00.000Z',
+      null,
+      't',
+      USER
+    ]);
+    await db.destroy();
+  });
+
+  it('leaves a task unassigned when the assignee is not a user id', async () => {
     const { db, queries } = insertedDb();
     await insertTask(db, { ...task, assigneeId: 'u1' });
-    assert.ok(!queries[0]?.sql.includes('"memberships"'));
-    queries.length = 0;
-    await insertTask(db, {
-      ...task,
-      assigneeId: USER,
-      dueAt: '2026-12-01T00:00:00.000Z',
-      permission: 'claims:approve'
-    });
-    const inserted = queries.find((q) => q.sql.startsWith('insert into "tasks"'));
-    assert.match(
-      inserted?.sql ?? '',
-      /\(select "user_id" from "memberships" where "agency_id" = \$\d+ and "user_id" = \$\d+\)/
-    );
-    assert.ok(inserted?.parameters.includes(USER));
-    assert.ok(inserted?.parameters.includes('2026-12-01T00:00:00.000Z'));
-    const note = queries.find((q) => q.sql.startsWith('insert into "notifications"'));
-    assert.ok(note?.parameters.includes('/tasks/new-1'));
+    assert.equal(queries[0]?.sql, `${COLUMNS}$17, $18, $19)${UPSERT}`);
+    assert.equal(queries[0]?.parameters.at(-1), null);
     await db.destroy();
   });
 
   it('makes a date-only due date the end of that day in the agency time zone', async () => {
     const { db, queries } = insertedDb();
     await insertTask(db, { ...task, dueAt: '2026-11-10' });
-    const inserted = queries.find((q) => q.sql.startsWith('insert into "tasks"'));
-    assert.ok(
-      inserted?.sql.includes(
-        "::date + interval '1 day' - interval '1 second') at time zone coalesce((select bp.time_zone from billing_profiles bp where bp.agency_id = $"
-      )
+    assert.equal(
+      queries[0]?.sql,
+      `${COLUMNS}($17::date + interval '1 day' - interval '1 second') at time zone coalesce((select bp.time_zone from billing_profiles bp where bp.agency_id = $18::uuid), 'UTC'), $19, $20)${UPSERT}`
     );
-    assert.ok(inserted?.parameters.includes('2026-11-10'));
+    assert.deepEqual(queries[0]?.parameters.slice(16), ['2026-11-10', 't', null, null]);
     await db.destroy();
   });
 });
@@ -97,7 +166,10 @@ describe('cancelTasks', () => {
   it('cancels only open tasks of the run', async () => {
     const { db, queries } = createRecordingDb(() => []);
     await cancelTasks(db, 'r1');
-    assert.ok(queries[0]?.sql.startsWith('update "tasks" set "status" = $1'));
+    assert.equal(
+      queries[0]?.sql,
+      'update "tasks" set "status" = $1, "updated_at" = now() where "run_id" = $2 and "status" = $3'
+    );
     assert.deepEqual(queries[0]?.parameters, ['cancelled', 'r1', 'open']);
     await db.destroy();
   });

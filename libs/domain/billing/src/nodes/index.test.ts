@@ -6,10 +6,9 @@ import { billingStores, memoryClaims } from '../testing.ts';
 import { createBillingNodes } from './index.ts';
 
 describe('createBillingNodes', () => {
-  it('describes signatures without storage for validation in other apps', async () => {
-    const nodes = createBillingNodes(null);
+  it('describes signatures without storage for validation in other apps', () => {
     assert.deepEqual(
-      nodes.map((n) => `${n.type}@${n.version}`),
+      createBillingNodes(null).map((n) => `${n.type}@${n.version}`),
       [
         'billing.match-patient@1',
         'billing.create-patient@1',
@@ -75,17 +74,25 @@ describe('createBillingNodes', () => {
         'billing.issue-facility-invoices@1'
       ]
     );
-    const [match] = nodes;
+  });
+
+  it('fails a node that needs storage when none was given', async () => {
+    const match = createBillingNodes(null).find((n) => n.type === 'billing.match-patient');
     if (!match) throw new Error('No match-patient node');
     await assert.rejects(
       () => invokeNode(match, { inputs: { demographics: { lastName: 'Doe' } } }),
-      /only the worker provides/
+      { message: 'Billing nodes need storage, which only the worker provides' }
     );
-    const setFee = nodes.find((n) => n.type === 'billing.set-fee') ?? match;
+  });
+
+  it('runs a node that needs no storage when none was given', async () => {
+    const setFee = createBillingNodes(null).find((n) => n.type === 'billing.set-fee');
+    if (!setFee) throw new Error('No set-fee node');
     const { signature, outputs } = await invokeNode(setFee, {
       inputs: { code: 'A0999', unitPrice: 10 }
     });
-    assert.deepEqual([signature.execOut, outputs.fees], [['then'], { A0999: 1000 }]);
+    assert.deepEqual(signature.execOut, ['then']);
+    assert.deepEqual(outputs, { fees: { A0999: 1000 } });
   });
 
   it('runs every node against the storage it is given', async () => {
@@ -98,18 +105,25 @@ describe('createBillingNodes', () => {
     assert.deepEqual(claims.attached, ['claim:c1']);
   });
 
-  it('documents every pin and exit and tags every node with a level', () => {
-    const nodes = createBillingNodes(null);
-    assert.deepEqual(nodes.flatMap(nodeDocumentationIssues), []);
+  it('documents every pin and exit', () => {
+    assert.deepEqual(createBillingNodes(null).flatMap(nodeDocumentationIssues), []);
+  });
+
+  it('marks only the cycle plumbing nodes advanced', () => {
     assert.deepEqual(
-      nodes.filter((n) => n.level !== 'basic').map((n) => [n.type, n.level]),
+      createBillingNodes(null)
+        .filter((n) => n.level !== 'basic')
+        .map((n) => [n.type, n.level]),
       [
         ['billing.attach-cycle', 'advanced'],
         ['billing.record-claim-step', 'advanced'],
         ['billing.with-frequency', 'advanced']
       ]
     );
-    const match = nodes.find((n) => n.type === 'billing.match-patient');
+  });
+
+  it('gives match-patient an exit for each way a match can end', () => {
+    const match = createBillingNodes(null).find((n) => n.type === 'billing.match-patient');
     assert.deepEqual(Object.keys(match?.exits ?? {}), [
       'matched',
       'unmatched',

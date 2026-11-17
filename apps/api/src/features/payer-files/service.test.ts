@@ -128,39 +128,64 @@ describe('payer file service', () => {
 
   it('reads acknowledgments and eligibility files before starting their run', async () => {
     const { service } = setup();
-    const ack = await upload(service, CLAIM_ACK, 'ack.277');
-    assert.equal(ack.ok && ack.value.kind, '277');
-    const elig = await upload(service, ELIGIBILITY, 'elig.271');
-    assert.equal(elig.ok && elig.value.kind, '271');
+    assert.deepEqual(await upload(service, CLAIM_ACK, 'ack.277'), {
+      ok: true,
+      value: { runId: 'r1', kind: '277' }
+    });
+    assert.deepEqual(await upload(service, ELIGIBILITY, 'elig.271'), {
+      ok: true,
+      value: { runId: 'r1', kind: '271' }
+    });
+  });
+
+  it('names an upload without a usable name safely', async () => {
+    const { service, queries, stored } = setup();
+    await upload(service, REMITTANCE, '   ');
+    assert.match(stored[0] ?? '', /payer-files\/.+\/upload$/);
+    const run = queries.find((q) => q.sql.startsWith('insert into "workflow_runs"'));
+    assert.ok(run?.parameters.some((p) => String(p).includes('"fileName":"upload"')));
   });
 
   it('refuses files that are not inbound X12 or were already imported', async () => {
     const { service, stored } = setup();
     const bad = await upload(service, 'not edi');
     assert.equal(bad.ok ? null : bad.failure.code, 'invalid');
-    assert.equal(((await upload(service, '')) as { ok: boolean }).ok, false);
-    const again = await upload(setup({ imported: true }).service, REMITTANCE);
-    assert.equal(again.ok ? null : again.failure.code, 'conflict');
-    assert.match(again.ok ? '' : again.failure.message, /already imported on 2026-10-01/);
-    assert.equal(stored.length, 0);
+    const empty = await upload(service, '');
+    assert.equal(empty.ok ? null : empty.failure.code, 'invalid');
+    const again = setup({ imported: true });
+    assert.deepEqual(await upload(again.service, REMITTANCE), {
+      ok: false,
+      failure: {
+        code: 'conflict',
+        message: 'This file was already imported on 2026-10-01',
+        details: { id: 'f0' }
+      }
+    });
+    assert.deepEqual([...stored, ...again.stored], []);
   });
 
   it('refuses an upload when the workflow is not published', async () => {
     const { service, stored } = setup({ published: false });
-    const res = await upload(service, REMITTANCE);
-    assert.equal(res.ok ? null : res.failure.code, 'conflict');
-    assert.match(res.ok ? '' : res.failure.message, /billing\.receive-payer-file workflow/);
+    assert.deepEqual(await upload(service, REMITTANCE), {
+      ok: false,
+      failure: {
+        code: 'conflict',
+        message: 'The billing.receive-payer-file workflow is not published'
+      }
+    });
     assert.equal(stored.length, 0);
   });
 
   it('lists, finds and downloads files of the agency only', async () => {
     const { service, queries } = setup();
-    await service.search('t1', { page: 1, pageSize: 25, sort: 'received', dir: 'desc' });
+    assert.deepEqual(
+      await service.search('t1', { page: 1, pageSize: 25, sort: 'received', dir: 'desc' }),
+      { ok: true, value: { items: [], total: 0, page: 1, pageSize: 25 } }
+    );
     assert.ok(queries[0]?.sql.includes('"f"."agency_id" = $1'));
-    const missing = await service.find('t1', 'f9');
-    assert.equal(missing.ok ? null : missing.failure.code, 'not_found');
-    const gone = await service.download('t1', 'f9');
-    assert.equal(gone.ok ? null : gone.failure.code, 'not_found');
+    const notFound = { ok: false, failure: { code: 'not_found', message: 'Payer file not found' } };
+    assert.deepEqual(await service.find('t1', 'f9'), notFound);
+    assert.deepEqual(await service.download('t1', 'f9'), notFound);
   });
 
   it('opens a file with its items without exposing where it is stored', async () => {
@@ -187,7 +212,10 @@ describe('payer file service', () => {
       type: '',
       bytes: new Uint8Array(1_000_001)
     });
-    assert.equal(big.ok ? null : big.failure.code, 'invalid');
+    assert.deepEqual(big, {
+      ok: false,
+      failure: { code: 'invalid', message: 'The file is larger than 1000000 bytes' }
+    });
     assert.equal(queries.length, 0);
     assert.equal(stored.length, 0);
   });

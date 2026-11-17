@@ -172,16 +172,18 @@ const setup = ({
 describe('checkEligibility', () => {
   it('asks in real time and applies the 271 answer like a payer file', async () => {
     const s = setup({ realtime: { ok: true, text: 'ISA*271~' } });
-    const r = await s.store.checkEligibility('r1', CLAIM, 'k', false);
-    assert.equal(r.status, 'answered');
-    assert.equal(r.status === 'answered' && r.fileName, '271-270-000000007-01a16617.x12');
-    assert.equal(r.status === 'answered' && r.reviews.length, 1);
+    assert.deepEqual(await s.store.checkEligibility('r1', CLAIM, 'k', false), {
+      status: 'answered',
+      fileName: '271-270-000000007-01a16617.x12',
+      reviews: [{ reference: COVERAGE, claimId: CLAIM, outcome: 'review', message: 'MA' }]
+    });
     assert.ok(s.sent[0]?.includes('ST*270*0001*005010X279A1'));
     assert.ok(s.sent[0]?.includes(`TRN*1*${COVERAGE}`));
     assert.match(
       s.stored[0] ?? '',
       /^clearinghouse\/t1\/\d+-[0-9a-f]{8}-271-270-000000007-01a16617\.x12$/
     );
+    assert.deepEqual(s.applied, [`271-270-000000007-01a16617.x12@${s.stored[0]}`]);
     assert.equal(s.uploads.length, 0);
   });
 
@@ -233,23 +235,47 @@ describe('checkEligibility', () => {
     assert.equal(s.stamped(), 1);
   });
 
-  it('records what it sent, together with the payers it asked about', async () => {
+  it('records the request for the run agency and step before asking, then what it sent', async () => {
+    const requests = (s: ReturnType<typeof setup>) =>
+      s.queries
+        .filter((q) => q.sql.includes('"eligibility_requests"'))
+        .map((q) => [q.sql, q.parameters]);
+    const lookup = [
+      'select "control_number", "status", "note", "sent_as", "file_name", "reviews" from "eligibility_requests" where "agency_id" = $1 and "source_key" = $2',
+      ['t1', 'k']
+    ];
+    const insert = [
+      'insert into "eligibility_requests" ("agency_id", "claim_id", "source_key", "control_number") values ($1, $2, $3, $4) on conflict ("agency_id", "source_key") do nothing',
+      ['t1', CLAIM, 'k', 7]
+    ];
     const s = setup({ realtime: { ok: false, error: 'Timed out' } });
     await s.store.checkEligibility('r1', CLAIM, 'k', false);
-    const sql = s.queries.map((q) => q.sql);
-    const insert = sql.findIndex((q) => q.startsWith('insert into "eligibility_requests"'));
-    const settle = sql.findIndex((q) => q.startsWith('update "eligibility_requests"'));
-    assert.ok(insert >= 0 && settle > insert);
-    assert.deepEqual(s.queries[settle]?.parameters.slice(0, 3), [
-      'sent',
-      '270-000000007-01a16617.ELG',
-      'Timed out'
+    assert.deepEqual(requests(s), [
+      lookup,
+      insert,
+      [
+        'update "eligibility_requests" set "status" = $1, "sent_as" = $2, "note" = $3 where "agency_id" = $4 and "source_key" = $5',
+        ['sent', '270-000000007-01a16617.ELG', 'Timed out', 't1', 'k']
+      ]
     ]);
     const answered = setup({ realtime: { ok: true, text: 'ISA*271~' } });
     await answered.store.checkEligibility('r1', CLAIM, 'k', false);
-    const saved = answered.queries.find((q) => q.sql.startsWith('update "eligibility_requests"'));
-    assert.equal(saved?.parameters[0], 'answered');
-    assert.equal(saved?.parameters[1], '271-270-000000007-01a16617.x12');
+    assert.deepEqual(requests(answered), [
+      lookup,
+      insert,
+      [
+        'update "eligibility_requests" set "status" = $1, "file_name" = $2, "reviews" = $3 where "agency_id" = $4 and "source_key" = $5',
+        [
+          'answered',
+          '271-270-000000007-01a16617.x12',
+          JSON.stringify([
+            { reference: COVERAGE, claimId: CLAIM, outcome: 'review', message: 'MA' }
+          ]),
+          't1',
+          'k'
+        ]
+      ]
+    ]);
   });
 
   it('returns what a retried step already sent instead of asking again', async () => {
@@ -279,33 +305,16 @@ describe('checkEligibility', () => {
     assert.ok(!pending.queries.some((q) => q.sql.startsWith('insert into "eligibility_requests"')));
   });
 
-  it('says why it cannot ask', async () => {
-    const offline = await setup({ connected: false }).store.checkEligibility(
-      'r1',
-      CLAIM,
-      'k',
-      false
-    );
-    assert.match(
-      offline.status === 'unavailable' ? offline.reason : '',
-      /no clearinghouse connection/
-    );
-    const noProfile = await setup({ withProfile: false }).store.checkEligibility(
-      'r1',
-      CLAIM,
-      'k',
-      false
-    );
-    assert.equal(noProfile.status, 'unavailable');
-    const bad = await setup().store.checkEligibility('r1', 'not-a-claim', 'k', false);
-    assert.equal(bad.status, 'unavailable');
-  });
-
   it('names each reason it cannot ask about eligibility', async () => {
-    const reasonOf = async (options: Options) => {
-      const r = await setup(options).store.checkEligibility('r1', CLAIM, 'k', false);
+    const reasonOf = async (options: Options, claimId = CLAIM) => {
+      const r = await setup(options).store.checkEligibility('r1', claimId, 'k', false);
       return r.status === 'unavailable' ? r.reason : r.status;
     };
+    assert.equal(await reasonOf({}, 'not-a-claim'), 'The claim has no patient to ask about yet');
+    assert.equal(
+      await reasonOf({ connected: false }),
+      'The agency has no clearinghouse connection, or it is paused; set one up in Settings or download the request from the claim'
+    );
     assert.equal(
       await reasonOf({ eligibilityOf: null }),
       'The claim has no patient to ask about yet'
@@ -440,7 +449,14 @@ describe('checkClaimStatus', () => {
       'Add the clearinghouse submitter ID in Settings'
     );
     assert.equal(await reasonOf({ withProfile: false }), 'Add a billing profile in Settings');
-    assert.match(await reasonOf({ connected: false }), /no clearinghouse connection/);
+    assert.equal(
+      await reasonOf({ connected: false }),
+      'The agency has no clearinghouse connection, or it is paused; set one up in Settings or download the request from the claim'
+    );
+    assert.equal(
+      await reasonOf({ submitted: false }),
+      'The claim has not been submitted to this payer'
+    );
   });
 
   it('looks up only ids that are UUIDs and records the request before asking', async () => {
@@ -459,13 +475,12 @@ describe('checkClaimStatus', () => {
 
   it('counts no claim signals seen when none were ever received', async () => {
     const s = setup({ statusOf: { received: null } });
-    const r = await s.store.checkClaimStatus('r1', CLAIM, 'k', COVERAGE);
-    assert.equal(r.status === 'sent' && r.signalsSeen, 0);
-  });
-
-  it('asks only about claims submitted to the payer', async () => {
-    const r = await setup({ submitted: false }).store.checkClaimStatus('r1', CLAIM, 'k', COVERAGE);
-    assert.match(r.status === 'unavailable' ? r.reason : '', /not been submitted/);
+    assert.deepEqual(await s.store.checkClaimStatus('r1', CLAIM, 'k', COVERAGE), {
+      status: 'sent',
+      sentAs: '276-000000007-01a16617.CLS',
+      reason: null,
+      signalsSeen: 0
+    });
   });
 });
 

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { formatDateTime } from '../format.ts';
+import { render, screen, userEvent, waitFor, within } from '../testing-dom.ts';
 import type { ClaimCoverage } from './claim-detail.ts';
 import {
   abnText,
@@ -67,77 +68,230 @@ const coverage: ClaimCoverage = {
   stay_discharged_on: null
 };
 
-describe('claim documentation', () => {
-  it('describes certification, weight and conditions in words', () => {
-    assert.match(pcsText(documented), /^On file, signed /);
-    assert.equal(pcsText({ has_pcs: false, pcs_signed_on: null }), 'Not on file');
-    assert.equal(pcsText({ has_pcs: null, pcs_signed_on: null }), 'Not recorded');
-    assert.equal(weightText('81.6'), '81.6 kg (180 lb)');
-    assert.equal(weightText(null), null);
-    assert.equal(
-      conditionsText(['06', 'ZZ']),
-      '06 · Patient was transported in an emergency situation; ZZ'
-    );
+describe('pcsText', () => {
+  it('says the certification is on file and when it was signed', () => {
+    assert.equal(pcsText(documented), 'On file, signed Sep 20, 2026');
+    assert.equal(pcsText({ has_pcs: true, pcs_signed_on: null }), 'On file');
   });
 
-  it('describes the MSP answers, ABN, authorization, stay and miles', () => {
-    assert.equal(mspText(documented), 'Medicare pays first');
-    assert.equal(
-      mspText({ ...documented, msp_accident: 'workersComp', has_msp_esrd: true }),
-      "Medicare pays second: Workers' compensation; End-stage renal disease"
-    );
-    assert.equal(mspText({ ...documented, has_msp_esrd: null }), 'Not answered');
-    assert.equal(
-      mspText({ ...documented, has_msp_employer_plan: true, msp_employer_size: 12 }),
-      'Medicare pays first'
-    );
-    assert.equal(
-      mspText({ ...documented, has_msp_employer_plan: true, msp_employer_size: 40 }),
-      'Medicare pays second: Employer group health plan (40 employees)'
-    );
-    assert.match(abnText(documented), /^On file, signed .+ \(GA\)$/);
+  it('tells a missing certification from an unrecorded one', () => {
+    assert.equal(pcsText({ has_pcs: false, pcs_signed_on: null }), 'Not on file');
+    assert.equal(pcsText({ has_pcs: null, pcs_signed_on: null }), 'Not recorded');
+  });
+});
+
+describe('abnText', () => {
+  it('says the notice is on file, when it was signed, with the GA modifier', () => {
+    assert.equal(abnText(documented), 'On file, signed Sep 30, 2026 (GA)');
+    assert.equal(abnText({ ...documented, abn_signed_on: null }), 'On file (GA)');
+  });
+
+  it('adds the GZ modifier when Medicare is expected to deny without a notice', () => {
     assert.equal(
       abnText({ ...documented, has_abn: null }),
       'Not recorded, and Medicare is expected to deny (GZ)'
     );
     assert.equal(
+      abnText({ ...documented, has_abn: false }),
+      'Not on file, and Medicare is expected to deny (GZ)'
+    );
+  });
+
+  it('says only whether the notice is on file when no denial is expected', () => {
+    assert.equal(
+      abnText({ ...documented, has_abn: null, is_denial_expected: false }),
+      'Not recorded'
+    );
+    assert.equal(
       abnText({ ...documented, has_abn: false, is_denial_expected: false }),
       'Not on file'
     );
-    assert.match(authorizationText(documented) ?? '', /^PA-1, expires .+ · round trip 4$/);
+  });
+});
+
+describe('mspText', () => {
+  it('says Medicare pays first once every question is answered no', () => {
+    assert.equal(mspText(documented), 'Medicare pays first');
+  });
+
+  it('is not answered while any question is open', () => {
+    assert.equal(mspText({ ...documented, has_msp_esrd: null }), 'Not answered');
+    assert.equal(mspText({ ...documented, msp_accident: null }), 'Not answered');
+  });
+
+  it('lists the accident and every reason Medicare pays second', () => {
+    assert.equal(
+      mspText({ ...documented, msp_accident: 'workersComp', has_msp_esrd: true }),
+      "Medicare pays second: Workers' compensation; End-stage renal disease"
+    );
+  });
+
+  it('counts an employer plan only from 20 employees', () => {
+    assert.equal(
+      mspText({ ...documented, has_msp_employer_plan: true, msp_employer_size: 19 }),
+      'Medicare pays first'
+    );
+    assert.equal(
+      mspText({ ...documented, has_msp_employer_plan: true, msp_employer_size: 20 }),
+      'Medicare pays second: Employer group health plan (20 employees)'
+    );
+  });
+
+  it('counts a disability plan only from 100 employees', () => {
+    assert.equal(
+      mspText({ ...documented, has_msp_disability: true, msp_employer_size: 99 }),
+      'Medicare pays first'
+    );
+    assert.equal(
+      mspText({ ...documented, has_msp_disability: true, msp_employer_size: 100 }),
+      'Medicare pays second: Disability with a large group plan (100 employees)'
+    );
+  });
+});
+
+describe('authorizationText', () => {
+  it('writes the authorization, when it expires and the round trip', () => {
+    assert.equal(authorizationText(documented), 'PA-1, expires Dec 1, 2026 · round trip 4');
+    assert.equal(
+      authorizationText({ ...documented, prior_authorization_expires_on: null, round_trips: null }),
+      'PA-1'
+    );
+    assert.equal(authorizationText({ ...documented, prior_authorization: null }), 'round trip 4');
+  });
+
+  it('is null with neither', () => {
     assert.equal(
       authorizationText({ ...documented, prior_authorization: null, round_trips: null }),
       null
     );
-    assert.match(
-      stayText({ facility_stay: 'snf', admitted_on: '2026-09-29' }) ?? '',
-      /^Skilled nursing facility stay \(Part A\), admitted /
+  });
+});
+
+describe('stayText', () => {
+  it('names the stay and when the patient was admitted', () => {
+    assert.equal(
+      stayText({ facility_stay: 'snf', admitted_on: '2026-09-29' }),
+      'Skilled nursing facility stay (Part A), admitted Sep 29, 2026'
     );
+    assert.equal(
+      stayText({ facility_stay: 'inpatient', admitted_on: null }),
+      'Hospital inpatient stay (Part A)'
+    );
+  });
+
+  it('is null with neither', () => {
     assert.equal(stayText(documented), null);
+  });
+});
+
+describe('milesText', () => {
+  it('writes the miles to the closest hospital and those not covered', () => {
     assert.equal(
       milesText(documented),
       '4.6 mi to the closest hospital, 2.4 mi non-covered (A0888)'
     );
-    assert.match(milesText({ ...documented, is_deceased: true }) ?? '', /QL, no mileage/);
+    assert.equal(
+      milesText({ ...documented, closest_facility_miles: null }),
+      '2.4 mi non-covered (A0888)'
+    );
   });
 
+  it('bills no mileage for a patient pronounced dead before loading', () => {
+    assert.equal(
+      milesText({ ...documented, is_deceased: true }),
+      'Pronounced dead before loading: BLS with QL, no mileage'
+    );
+  });
+
+  it('is null with neither', () => {
+    assert.equal(
+      milesText({ ...documented, closest_facility_miles: null, non_covered_miles: null }),
+      null
+    );
+  });
+});
+
+describe('weightText', () => {
+  it('writes the weight in kilograms and pounds', () => {
+    assert.equal(weightText('81.6'), '81.6 kg (180 lb)');
+  });
+
+  it('is null without a weight', () => {
+    assert.equal(weightText(null), null);
+  });
+});
+
+describe('conditionsText', () => {
+  it('names each known condition code and keeps unknown ones bare', () => {
+    assert.equal(
+      conditionsText(['06', 'ZZ']),
+      '06 · Patient was transported in an emergency situation; ZZ'
+    );
+  });
+});
+
+const details = (region: string) =>
+  within(screen.getByRole('region', { name: region }))
+    .getAllByRole('term')
+    .map((t) => [t.textContent, t.nextElementSibling?.textContent]);
+
+describe('DocumentationPanel', () => {
   it('shows the signature with why, and every documented field', () => {
-    const html = renderToStaticMarkup(createElement(DocumentationPanel, { claim: documented }));
-    assert.ok(html.includes('Not signed, with a documented reason the patient could not sign'));
-    assert.ok(html.includes('the patient was unconscious') && html.includes('PA-1'));
-    assert.ok(html.includes('A · Nearest facility'));
-    assert.ok(html.includes('81.6 kg (180 lb)') && html.includes('06 · Patient was transported'));
-    assert.ok(html.includes('text-warning'));
+    render(createElement(DocumentationPanel, { claim: documented }));
+    assert.deepEqual(details('Documentation'), [
+      [
+        'Billing Signature',
+        'Not signed, with a documented reason the patient could not signNot signed because the patient was unconscious'
+      ],
+      [
+        'Physician Certification',
+        'On file, signed Sep 20, 2026 · Repetitive scheduled transports (valid 60 days)'
+      ],
+      ['Medicare Secondary Payer', 'Medicare pays first'],
+      ['Advance Beneficiary Notice', 'On file, signed Sep 30, 2026 (GA)'],
+      ['Transport Reason', 'A · Nearest facility for care of symptoms or complaints'],
+      [
+        'Ambulance Conditions',
+        '06 · Patient was transported in an emergency situation; 09 · Ambulance service was medically necessary'
+      ],
+      ['Prior Authorization', 'PA-1, expires Dec 1, 2026 · round trip 4'],
+      ['Facility Stay', '—'],
+      ['Patients Transported', '2'],
+      ['Mileage', '4.6 mi to the closest hospital, 2.4 mi non-covered (A0888)'],
+      ['Weight', '81.6 kg (180 lb)'],
+      ['On Scene', formatDateTime('2026-10-01T10:05:00Z')],
+      ['Left Scene', '—'],
+      ['At Destination', '—']
+    ]);
   });
 
-  it('shows an empty value for anything the report left out', () => {
-    const html = renderToStaticMarkup(
+  it('colors the signature by how far it can be billed', () => {
+    const cases = [
+      ['signed', 'bg-success/10'],
+      ['exception', 'bg-warning/10'],
+      ['refused', 'bg-danger/10'],
+      ['missing', 'bg-danger/10']
+    ] as const;
+    for (const [signature, tint] of cases) {
+      const { unmount } = render(
+        createElement(DocumentationPanel, { claim: { ...documented, signature } })
+      );
+      const [signed] = screen.getAllByRole('definition');
+      const badge = signed?.querySelector('.rounded-full');
+      assert.equal(badge?.classList.contains(tint), true, signature);
+      unmount();
+    }
+  });
+
+  it('shows a dash for anything the report left out', () => {
+    render(
       createElement(DocumentationPanel, {
         claim: {
           ...documented,
           signature: 'missing',
           signature_note: null,
           has_pcs: null,
+          pcs_type: null,
           transport_reason: null,
           condition_codes: [],
           prior_authorization: null,
@@ -146,39 +300,131 @@ describe('claim documentation', () => {
           patient_count: null,
           closest_facility_miles: null,
           non_covered_miles: null,
-          weight_kg: null
+          weight_kg: null,
+          at_scene_at: null
         }
       })
     );
-    assert.ok(html.includes('text-danger') && html.includes('Not recorded'));
-    for (const label of [
-      'Transport Reason',
-      'Ambulance Conditions',
-      'Prior Authorization',
-      'Facility Stay',
-      'Patients Transported',
-      'Mileage',
-      'Weight'
-    ]) {
-      assert.match(html, new RegExp(`${label}</dt><dd[^>]*>—</dd>`));
-    }
+    assert.deepEqual(details('Documentation'), [
+      ['Billing Signature', 'No billing signature'],
+      ['Physician Certification', 'Not recorded'],
+      ['Medicare Secondary Payer', 'Medicare pays first'],
+      ['Advance Beneficiary Notice', 'On file, signed Sep 30, 2026 (GA)'],
+      ['Transport Reason', '—'],
+      ['Ambulance Conditions', '—'],
+      ['Prior Authorization', '—'],
+      ['Facility Stay', '—'],
+      ['Patients Transported', '—'],
+      ['Mileage', '—'],
+      ['Weight', '—'],
+      ['On Scene', '—'],
+      ['Left Scene', '—'],
+      ['At Destination', '—']
+    ]);
   });
+});
 
-  it('lists each payer with its eligibility and offers its 270 to download', () => {
-    assert.deepEqual(eligibilityStyle(coverage), { intent: 'danger', label: 'Not Active' });
-    assert.equal(eligibilityStyle({ eligibility: null }).label, 'Not Checked');
+describe('eligibilityStyle', () => {
+  it('marks active coverage as success, inactive as danger and unchecked as neutral', () => {
     assert.deepEqual(eligibilityStyle({ eligibility: 'active' }), {
       intent: 'success',
       label: 'Active'
     });
-    const html = renderToStaticMarkup(
-      createElement(EligibilityPanel, { coverages: [coverage], onDownload: async () => undefined })
+    assert.deepEqual(eligibilityStyle(coverage), { intent: 'danger', label: 'Not Active' });
+    assert.deepEqual(eligibilityStyle({ eligibility: null }), { label: 'Not Checked' });
+  });
+});
+
+describe('EligibilityPanel', () => {
+  it("lists each payer with its eligibility, when it was checked and the payer's note", () => {
+    render(
+      createElement(EligibilityPanel, {
+        coverages: [
+          coverage,
+          {
+            ...coverage,
+            id: 'cov-b',
+            payer: 'Blue Plan',
+            eligibility: null,
+            eligibility_note: null,
+            eligibility_checked_at: null
+          }
+        ],
+        onDownload: async () => undefined
+      })
     );
-    assert.ok(!html.includes('Check Eligibility') && html.includes('Not covered after 2026-09-30'));
-    assert.ok(html.includes('Download 270'));
-    const empty = renderToStaticMarkup(
-      createElement(EligibilityPanel, { coverages: [], onDownload: async () => undefined })
+    const panel = screen.getByRole('region', { name: 'Eligibility' });
+    assert.ok(within(panel).getByText("From each payer's 271 eligibility answer."));
+    assert.deepEqual(
+      within(within(panel).getByRole('table', { name: 'Eligibility by payer' }))
+        .getAllByRole('row')
+        .slice(1)
+        .map((row) =>
+          within(row)
+            .getAllByRole('cell')
+            .map((c) => c.lastElementChild?.textContent)
+        ),
+      [
+        [
+          'Medicare',
+          'Not Active',
+          formatDateTime('2026-10-31T12:00:00Z'),
+          'Not covered after 2026-09-30'
+        ],
+        ['Blue Plan', 'Not Checked', '—', '—']
+      ]
     );
-    assert.ok(empty.includes('No payer is on this claim.') && empty.includes('disabled'));
+  });
+
+  it('downloads the 270 and shows it is busy until the download finishes', async () => {
+    let finish: () => void = () => undefined;
+    let downloads = 0;
+    render(
+      createElement(EligibilityPanel, {
+        coverages: [coverage],
+        onDownload: () =>
+          new Promise<void>((resolve) => {
+            downloads += 1;
+            finish = resolve;
+          })
+      })
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Download 270' }));
+    assert.equal(downloads, 1);
+    assert.equal(
+      screen.getByRole('button', { name: 'Download 270' }).getAttribute('aria-busy'),
+      'true'
+    );
+    await user.click(screen.getByRole('button', { name: 'Download 270' }));
+    assert.equal(downloads, 1);
+    finish();
+    await waitFor(() =>
+      assert.equal(
+        screen.getByRole('button', { name: 'Download 270' }).getAttribute('aria-busy'),
+        null
+      )
+    );
+  });
+
+  it('says there is no payer and offers no 270 to download', async () => {
+    let downloads = 0;
+    render(
+      createElement(EligibilityPanel, {
+        coverages: [],
+        onDownload: async () => {
+          downloads += 1;
+        }
+      })
+    );
+    assert.ok(screen.getByText('No payer is on this claim.'));
+    assert.ok(!screen.queryByRole('table'));
+    const download = screen.getByRole('button', {
+      name: 'Download 270',
+      description: 'The claim has no payers.'
+    });
+    assert.equal(download.getAttribute('aria-disabled'), 'true');
+    await userEvent.setup().click(download);
+    assert.equal(downloads, 0);
   });
 });

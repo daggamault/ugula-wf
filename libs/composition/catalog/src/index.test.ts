@@ -1,15 +1,19 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { billingKinds, billingModels } from '@ugula/billing';
+import { PERMISSIONS } from '@ugula/access';
+import { billingKinds, billingModels, createBillingNodes } from '@ugula/billing';
 import {
+  createModelNodes,
   createRegistry,
+  createStdNodes,
   type GraphDef,
   nodeDocumentationIssues,
+  STD_KINDS,
   stdGraphInfo,
   stdGraphSource,
   unknownKinds
 } from '@ugula/graph';
-import { nemsisKinds, nemsisModels } from '@ugula/nemsis';
+import { createNemsisNodes, nemsisKinds, nemsisModels } from '@ugula/nemsis';
 import { createNodeCatalog, valueKinds } from './index.ts';
 
 const UNWIRED: GraphDef = {
@@ -49,20 +53,30 @@ const lowerWordOf = (title: string) =>
     .find((w, i) => /^[a-z]/.test(w) && !(i > 0 && MINOR_WORDS.has(w)));
 
 describe('createNodeCatalog', () => {
-  it('registers the standard, NEMSIS, billing and model nodes without clashes', () => {
-    const nodes = createNodeCatalog({ fetch });
-    const registry = createRegistry(nodes, stdGraphSource);
-    const types = registry.nodes().map((n) => n.type);
-    for (const type of [
-      'std.text.length',
-      'nemsis.split',
-      'billing.match-patient',
-      'nemsis.pcr.break',
-      'billing.claim.make'
-    ]) {
-      assert.ok(types.includes(type), type);
-    }
-    assert.equal(new Set(types).size, types.length);
+  it('lists the standard, NEMSIS, billing and model nodes in that order', () => {
+    const typesOf = (nodes: { type: string }[]) => nodes.map((n) => n.type);
+    assert.deepEqual(typesOf(createNodeCatalog({ fetch })), [
+      ...typesOf(createStdNodes({ fetch, permissions: PERMISSIONS })),
+      ...typesOf(createNemsisNodes(null)),
+      ...typesOf(createBillingNodes(null)),
+      ...typesOf(createModelNodes([...nemsisModels, ...billingModels]))
+    ]);
+  });
+
+  it('registers every node next to the standard graphs without a type clash', () => {
+    const types = createRegistry(createNodeCatalog({ fetch }), stdGraphSource)
+      .nodes()
+      .map((n) => n.type);
+    assert.deepEqual(
+      types.filter((t, i) => types.indexOf(t) !== i),
+      []
+    );
+    assert.deepEqual(
+      ['std.text.length', 'nemsis.split', 'billing.match-patient', 'nemsis.pcr.break'].filter(
+        (t) => !types.includes(t)
+      ),
+      []
+    );
   });
 
   it('titles every node in Title Case', () => {
@@ -98,7 +112,14 @@ describe('createNodeCatalog', () => {
     assert.deepEqual(unleveled, []);
   });
 
-  it('uses only the kinds the domains declare, with one label per kind', () => {
+  it('merges the standard, NEMSIS and billing value kinds', () => {
+    assert.deepEqual(valueKinds, {
+      id: { ...STD_KINDS.id, ...nemsisKinds.id, ...billingKinds.id },
+      code: { ...STD_KINDS.code, ...nemsisKinds.code, ...billingKinds.code }
+    });
+  });
+
+  it('uses only the kinds the domains declare', () => {
     const registry = createRegistry(createNodeCatalog({ fetch }), stdGraphSource, valueKinds);
     const types = [
       ...registry.nodes().flatMap((n) => {
@@ -112,8 +133,12 @@ describe('createNodeCatalog', () => {
       ...[...nemsisModels, ...billingModels].flatMap((m) => m.fields.map((f) => f.type))
     ];
     assert.deepEqual([...new Set(types.flatMap((t) => unknownKinds(t, valueKinds)))], []);
-    for (const [kind, label] of Object.entries(nemsisKinds.code)) {
-      assert.equal(billingKinds.code[kind] ?? label, label, kind);
-    }
+  });
+
+  it('labels a code kind the same in every domain that declares it', () => {
+    const clashes = Object.entries(nemsisKinds.code).filter(
+      ([kind, label]) => (billingKinds.code[kind] ?? label) !== label
+    );
+    assert.deepEqual(clashes, []);
   });
 });

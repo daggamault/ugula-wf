@@ -85,6 +85,8 @@ describe('payerNodes', () => {
     assert.deepEqual([...payers.aliases], [['BCBS', 'p-blue']]);
     assert.equal((await run(link, { name: 'BCBS', payerId: ' ' })).pin, 'invalid');
     assert.equal((await run(link, { name: 'BCBS', payerId: 'p-gone' })).pin, 'invalid');
+    assert.equal((await run(link, { name: ' ', payerId: 'p-medicare' })).pin, 'invalid');
+    assert.deepEqual([...payers.aliases], [['BCBS', 'p-blue']]);
     const second = await run(match, { coverages, suggest: false, exclude: ['self pay|'] });
     assert.equal((second.outputs.coverages as { payerId: string }[])[1]?.payerId, 'p-blue');
     assert.deepEqual(

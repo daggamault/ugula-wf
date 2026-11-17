@@ -55,9 +55,12 @@ describe('expression node', () => {
 describe('expression summary', () => {
   it('shows the formula on one line, shortened when long', () => {
     assert.equal(expressionNode.summary?.({ expression: 'a +\n  b' }), 'a + b');
-    const long = expressionNode.summary?.({ expression: `x + ${'y'.repeat(100)}` }) ?? '';
-    assert.equal(long.length, 80);
-    assert.ok(long.endsWith('…'));
+    assert.equal(
+      expressionNode.summary?.({ expression: `x + ${'y'.repeat(100)}` }),
+      `x + ${'y'.repeat(75)}…`
+    );
+    assert.equal(oneLine('z'.repeat(80)), 'z'.repeat(80));
+    assert.equal(oneLine('z'.repeat(81)), `${'z'.repeat(79)}…`);
     assert.equal(oneLine('  '), null);
   });
 });

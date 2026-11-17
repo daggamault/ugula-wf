@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { act, render, screen, userEvent } from './testing-dom.ts';
 import { runPending, usePending } from './use-pending.ts';
 
 const recorder = () => {
@@ -32,11 +32,30 @@ describe('runPending', () => {
 });
 
 describe('usePending', () => {
-  it('starts idle without an error', () => {
-    const Probe = () => {
-      const { busy, error } = usePending();
-      return createElement('p', null, `${busy}|${error}`);
-    };
-    assert.equal(renderToStaticMarkup(createElement(Probe)), '<p>false|</p>');
+  const Probe = ({ work }: { work: () => Promise<void> }) => {
+    const { busy, error, run } = usePending();
+    return createElement(
+      'div',
+      null,
+      createElement('button', { type: 'button', onClick: () => void run(work) }, 'Save'),
+      createElement('output', null, `${busy}|${error}`)
+    );
+  };
+
+  it('is busy while the work runs, then shows its failure until the next try', async () => {
+    const settle: { resolve: () => void; reject: (err: Error) => void }[] = [];
+    const work = () => new Promise<void>((resolve, reject) => settle.push({ resolve, reject }));
+    render(createElement(Probe, { work }));
+    const status = screen.getByRole('status');
+    assert.equal(status.textContent, 'false|');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    assert.equal(status.textContent, 'true|');
+    await act(async () => settle[0]?.reject(new Error('Fee code taken')));
+    assert.equal(status.textContent, 'false|Fee code taken');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    assert.equal(status.textContent, 'true|');
+    await act(async () => settle[1]?.resolve());
+    assert.equal(status.textContent, 'false|');
   });
 });

@@ -1,26 +1,49 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { createElement } from 'react';
+import { render, screen } from '../testing-dom.ts';
 import { Badge } from './badge.tsx';
 
+const badgeClasses = (props: Parameters<typeof Badge>[0]) => {
+  render(createElement(Badge, props));
+  const badge = screen.getByText(String(props.children));
+  assert.equal(badge.tagName, 'SPAN');
+  return [...badge.classList];
+};
+
+const tinted = (classes: string[]) =>
+  classes.filter((c) => /^(text|bg|border)-(?!xs)/.test(c)).sort();
+
 describe('Badge', () => {
-  it('renders a span with semantic intent classes', () => {
-    const el = Badge({ intent: 'success', children: 'Healthy' });
-    assert.equal(el.type, 'span');
-    const classes = String(el.props.className);
-    assert.ok(classes.includes('text-success'));
-    assert.ok(classes.includes('bg-success/10') && classes.includes('border-success/30'));
-    assert.ok(classes.includes('rounded-full') && classes.includes('text-xs/5'));
-    assert.ok(classes.includes('items-center'));
+  it('tints border, background and text by intent', () => {
+    assert.deepEqual(tinted(badgeClasses({ intent: 'success', children: 'Healthy' })), [
+      'bg-success/10',
+      'border-success/30',
+      'text-success'
+    ]);
+  });
+
+  it('uses the readable warning text color', () => {
+    assert.deepEqual(tinted(badgeClasses({ intent: 'warning', children: 'Late' })), [
+      'bg-warning/10',
+      'border-warning/30',
+      'text-warning-text'
+    ]);
   });
 
   it('marks customized things with the custom accent', () => {
-    const classes = String(Badge({ intent: 'custom', children: 'Custom' }).props.className);
-    assert.ok(classes.includes('text-custom') && classes.includes('border-custom/30'));
+    assert.deepEqual(tinted(badgeClasses({ intent: 'custom', children: 'Custom' })), [
+      'bg-custom/10',
+      'border-custom/30',
+      'text-custom'
+    ]);
   });
 
   it('falls back to a neutral badge without an intent', () => {
-    assert.ok(
-      String(Badge({ children: 'Default' }).props.className).includes('text-surface-fg-muted')
-    );
+    assert.deepEqual(tinted(badgeClasses({ children: 'Default' })), [
+      'bg-surface-fg/6',
+      'border-border',
+      'text-surface-fg-muted'
+    ]);
   });
 });

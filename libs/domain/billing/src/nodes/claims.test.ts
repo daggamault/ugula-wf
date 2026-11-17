@@ -97,6 +97,20 @@ describe('claimNodes', () => {
       async () => run(node('set-fee'), { code: 'A0999', unitPrice: -1 }),
       /cannot be negative/
     );
+    assert.deepEqual(fees.saved, [[null, 'A0999', 2000]]);
+    await assert.rejects(
+      async () => run(node('set-fee'), { code: ' ', unitPrice: 1 }),
+      /No code to price/
+    );
+  });
+
+  it('adds a price to those already set for the claim, a free one included', async () => {
+    const set = await run(nodesFor()('set-fee'), {
+      code: 'A0425',
+      unitPrice: 0,
+      fees: { A0427: 50000 }
+    });
+    assert.deepEqual(set.outputs.fees, { A0427: 50000, A0425: 0 });
   });
 
   it('opens a draft claim before the patient is known, or works an existing one again', async () => {
@@ -112,6 +126,8 @@ describe('claimNodes', () => {
     assert.deepEqual([again.pin, again.outputs], ['duplicate', { claimId: 'c1' }]);
     const restarted = await run(node('open-claim'), { ...draftInputs, claimId: 'c7' });
     assert.deepEqual([restarted.pin, restarted.outputs], ['opened', { claimId: 'c7' }]);
+    await run(node('open-claim'), {});
+    assert.deepEqual(claims.drafts.at(-1), { pcrNumber: null, reportKey: null, claimId: null });
     await run(node('assign-patient'), { claimId: 'c1', patient: jane });
     assert.deepEqual(claims.patients, [jane.id]);
     await assert.rejects(
@@ -179,6 +195,15 @@ describe('claimNodes', () => {
     assert.equal(last.outputs.payerId, null);
   });
 
+  it('refuses to patch a claim that does not exist', async () => {
+    const claims = memoryClaims();
+    await assert.rejects(
+      async () => run(nodesFor(claims.store)('patch-claim'), { claimId: 'c9', note: 'x' }),
+      /Claim c9 does not exist/
+    );
+    assert.deepEqual(claims.events, []);
+  });
+
   it('lays out the fix form from the fields the issues name, or every field', async () => {
     const node = nodesFor(memoryClaims({ check: completeCheck() }).store);
     const issue = {
@@ -189,7 +214,16 @@ describe('claimNodes', () => {
       coverageId: 'cov-Blue'
     };
     const form = await run(node('fix-claim-form'), { claimId: 'c1', issues: [issue] });
-    assert.ok((form.outputs.visible as string[]).includes('memberId'));
+    assert.deepEqual(form.outputs.visible, [
+      'coverageId',
+      'payerId',
+      'memberId',
+      'relationship',
+      'insuredFirstName',
+      'insuredLastName',
+      'removeCoverage',
+      'note'
+    ]);
     assert.equal((form.outputs.defaults as { coverageId: string }).coverageId, 'cov-Blue');
     assert.deepEqual((form.outputs.options as { payerId: unknown }).payerId, [
       { value: 'p-Medicare', label: 'Medicare (Medicare Part B)' }
@@ -296,9 +330,16 @@ describe('claimNodes', () => {
       facilityId: 'f1'
     });
     await run(node('record-responsibility'), { claimId: 'c1', party: 'payer', facilityId: 'f1' });
+    await run(node('record-responsibility'), {
+      claimId: 'c1',
+      party: 'facility',
+      facilityId: 'f2',
+      note: ' Part A stay '
+    });
     assert.deepEqual(claims.responsibilities, [
       { party: 'facility', facilityId: 'f1', note: 'Billed to the facility' },
-      { party: 'payer', facilityId: null, note: 'Billed to the payers' }
+      { party: 'payer', facilityId: null, note: 'Billed to the payers' },
+      { party: 'facility', facilityId: 'f2', note: 'Part A stay' }
     ]);
     await assert.rejects(
       async () => run(node('record-responsibility'), { claimId: 'c1', party: 'patient' }),
@@ -315,7 +356,11 @@ describe('claimNodes', () => {
     );
     await assert.rejects(
       async () => run(node('read-claim-document'), { claimId: 'c1', documentId: 'd2' }),
-      /is not on claim c1/
+      /Document d2 is not on claim c1/
+    );
+    await assert.rejects(
+      async () => run(node('read-claim-document'), { claimId: 'c1', documentId: ' ' }),
+      /No document to read/
     );
   });
 

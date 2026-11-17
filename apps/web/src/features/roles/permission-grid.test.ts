@@ -1,16 +1,26 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { PERMISSION_RESOURCES } from '@ugula/access';
+import { PERMISSION_RESOURCES, type Permission } from '@ugula/access';
 import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { render, screen, userEvent, within } from '../../shared/testing-dom.ts';
 import type { PermissionGrant } from './client.ts';
-import { PermissionGrid, RESOURCE_LABELS, toggled } from './permission-grid.tsx';
+import { PermissionGrid, toggled } from './permission-grid.tsx';
 
 const grants: PermissionGrant[] = [
   { permission: 'claims:read', description: 'See claims.', isGrantable: true },
   { permission: 'claims:update', description: 'Change claims.', isGrantable: false },
   { permission: 'users:read', description: 'See users.', isGrantable: true }
 ];
+
+const box = (name: string) => screen.getByRole('checkbox', { name }) as HTMLInputElement;
+
+const show = (props: { selected: Permission[]; readOnly?: boolean }) => {
+  const changes: Permission[][] = [];
+  render(
+    createElement(PermissionGrid, { grants, ...props, onChange: (next) => changes.push(next) })
+  );
+  return changes;
+};
 
 describe('toggled', () => {
   it('adds a permission in sorted order or takes it away', () => {
@@ -21,29 +31,47 @@ describe('toggled', () => {
 
 describe('PermissionGrid', () => {
   it('shows one row per area and a column per action in use', () => {
-    const html = renderToStaticMarkup(
-      createElement(PermissionGrid, { grants, selected: ['claims:read'] })
+    show({ selected: ['claims:read'] });
+    const table = screen.getByRole('table', { name: 'Permissions' });
+    assert.deepEqual(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((h) => h.textContent),
+      ['Area', 'View', 'Change']
     );
-    assert.equal(html.split('<tr').length - 1, PERMISSION_RESOURCES.length + 1);
-    assert.ok(html.includes('aria-label="Permissions"') && html.includes('@4xl:rounded-xl'));
-    assert.ok(html.includes('>View<') && html.includes('>Change<'));
-    assert.ok(!html.includes('>Create<') && !html.includes('>Delete<'));
-    assert.match(html, /aria-label="View Claims" title="See claims."[^>]*checked=""/);
-    assert.doesNotMatch(html, /aria-label="View Users"[^>]*checked=""/);
+    assert.equal(within(table).getAllByRole('row').length, PERMISSION_RESOURCES.length + 1);
+    assert.equal(within(table).getAllByRole('checkbox').length, grants.length);
+    assert.equal(box('View Claims').checked, true);
+    assert.equal(box('View Claims').title, 'See claims.');
+    assert.equal(box('View Users').checked, false);
   });
 
-  it('locks permissions the user cannot grant and explains why', () => {
-    const html = renderToStaticMarkup(createElement(PermissionGrid, { grants, selected: [] }));
-    assert.match(html, /aria-label="Change Claims"[^>]*disabled=""/);
-    assert.ok(html.includes('You can&#x27;t grant permissions you don&#x27;t hold.'));
-    const readOnly = renderToStaticMarkup(
-      createElement(PermissionGrid, { grants, selected: [], readOnly: true })
-    );
-    assert.match(readOnly, /aria-label="View Claims"[^>]*disabled=""/);
-    assert.ok(!readOnly.includes('You can&#x27;t grant'));
+  it('grants a permission in sorted order when its box is ticked', async () => {
+    const changes = show({ selected: ['users:read'] });
+    await userEvent.setup().click(box('View Claims'));
+    assert.deepEqual(changes, [['claims:read', 'users:read']]);
   });
 
-  it('labels every resource', () => {
-    for (const r of PERMISSION_RESOURCES) assert.ok(RESOURCE_LABELS[r]);
+  it('takes a permission away when its box is cleared', async () => {
+    const changes = show({ selected: ['claims:read', 'users:read'] });
+    await userEvent.setup().click(box('View Users'));
+    assert.deepEqual(changes, [['claims:read']]);
+  });
+
+  it('locks permissions the user cannot grant and explains why', async () => {
+    const changes = show({ selected: [] });
+    assert.equal(box('Change Claims').disabled, true);
+    assert.equal(box('View Claims').disabled, false);
+    assert.equal(screen.getAllByText("You can't grant permissions you don't hold.").length, 1);
+    await userEvent.setup().click(box('Change Claims'));
+    assert.deepEqual(changes, []);
+  });
+
+  it('locks every box when read only, without the grant explanation', () => {
+    show({ selected: ['claims:read'], readOnly: true });
+    for (const b of screen.getAllByRole('checkbox')) {
+      assert.equal((b as HTMLInputElement).disabled, true);
+    }
+    assert.ok(!screen.queryByText("You can't grant permissions you don't hold."));
   });
 });

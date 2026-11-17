@@ -60,13 +60,28 @@ describe('payer file acknowledgments', () => {
         : []
     );
     const acked = await postBatchAcknowledgments(filed.c, [group('000000101')]);
-    const lookup = filed.queries.find((q) => q.sql.includes('from "claim_batches"'));
-    assert.ok(lookup?.sql.includes('"b"."control_number" = $2'));
-    assert.ok(lookup?.parameters.includes(101));
-    assert.deepEqual(
-      acked.items.map((i) => [i.reference, i.outcome]),
-      [['20261105-0007', 'accepted']]
+    const [lookup] = filed.queries;
+    assert.equal(
+      lookup?.sql,
+      'select distinct "e"."claim_id", "e"."coverage_id", "c"."number" from "claim_batches" as "b" inner join "claim_events" as "e" on "e"."batch_id" = "b"."id" inner join "claims" as "c" on "c"."id" = "e"."claim_id" where "b"."agency_id" = $1 and "b"."control_number" = $2 and "e"."kind" in ($3, $4)'
     );
+    assert.deepEqual(lookup?.parameters, ['t1', 101, 'submitted', 'resubmitted']);
+    assert.deepEqual(
+      acked.items.map((i) => [i.reference, i.outcome, i.message]),
+      [['20261105-0007', 'accepted', 'The clearinghouse accepted 837P file 000000101']]
+    );
+    assert.deepEqual(eventRows(filed.queries), [
+      [
+        't1',
+        'c1',
+        'accepted',
+        'cov1',
+        'The clearinghouse accepted 837P file 000000101',
+        null,
+        null,
+        'd:000000101:c1'
+      ]
+    ]);
   });
 
   it('passes on a TA1 envelope rejection and looks up the batch it names', async () => {
@@ -74,12 +89,24 @@ describe('payer file acknowledgments', () => {
     const out = await postInterchangeAcknowledgments(c, [
       { controlNumber: '000000055', status: 'rejected', noteCode: '006', message: 'Bad ID' }
     ]);
-    assert.ok(queries.every((q) => q.sql.startsWith('select')));
     assert.deepEqual(
-      out.items.map((i) => [i.reference, i.outcome]),
-      [['000000055', 'unmatched']]
+      queries.map((q) => q.parameters),
+      [['t1', 55, 'submitted', 'resubmitted']]
     );
-    assert.match(out.envelopeRejection ?? '', /rejected the file envelope: interchange 55/);
+    assert.deepEqual(out, {
+      items: [
+        {
+          reference: '000000055',
+          claimId: null,
+          outcome: 'unmatched',
+          message: 'No 837P file has control number 000000055',
+          paidCents: null,
+          adjustedCents: null
+        }
+      ],
+      envelopeRejection:
+        'The clearinghouse rejected the file envelope: interchange 55: Bad ID (TA1 note 006)'
+    });
   });
 
   it('records a TA1 rejection on each claim of the batch and on the file, not on the batch', async () => {
@@ -91,9 +118,16 @@ describe('payer file acknowledgments', () => {
     const out = await postInterchangeAcknowledgments(c, [
       { controlNumber: '000000055', status: 'rejected', noteCode: '', message: 'Bad ID' }
     ]);
-    assert.ok(!queries.some((q) => q.sql.startsWith('update')));
-    const lookup = queries.find((q) => q.sql.includes('from "claim_batches" as "b"'));
-    assert.deepEqual(lookup?.parameters, ['t1', 55, 'submitted', 'resubmitted']);
+    assert.deepEqual(
+      queries.map((q) => q.sql.split(' ').slice(0, 3).join(' ')),
+      [
+        'select distinct "e"."claim_id",',
+        'insert into "claim_events"',
+        'insert into "signals"',
+        'select "id", state'
+      ]
+    );
+    assert.deepEqual(queries[0]?.parameters, ['t1', 55, 'submitted', 'resubmitted']);
     const note =
       'The clearinghouse rejected the file envelope of 837P file 55: Bad ID (TA1 note not given)';
     assert.deepEqual(eventRows(queries), [
@@ -266,9 +300,15 @@ describe('payer file acknowledgments', () => {
       queries.filter((q) => q.sql.includes('from "claims"')).map((q) => q.parameters),
       [['t1', '20261105-1001', '20261105-1002', '20261105-9999']]
     );
+    const submissions = queries.filter((q) => q.sql.includes('from "claim_events"'));
     assert.deepEqual(
-      queries.filter((q) => q.sql.includes('from "claim_events"')).map((q) => q.parameters),
-      [['c1', 'c2', 'submitted', 'resubmitted']]
+      submissions.map((q) => [q.sql, q.parameters]),
+      [
+        [
+          'select distinct on ("claim_id") "claim_id", "coverage_id" from "claim_events" where "claim_id" in ($1, $2) and "kind" in ($3, $4) order by "claim_id", "created_at" desc, "id" desc',
+          ['c1', 'c2', 'submitted', 'resubmitted']
+        ]
+      ]
     );
     assert.equal(queries.filter((q) => q.sql.startsWith('insert into "claim_events"')).length, 1);
     assert.deepEqual(eventRows(queries), [

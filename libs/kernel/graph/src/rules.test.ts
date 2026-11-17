@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { pin } from './define.ts';
+import { RETURN_TYPE } from './compile.ts';
+import { pin, pureNode } from './define.ts';
 import { combineSources } from './registry.ts';
 import { ruleHost, runRule } from './rules.ts';
 import { slotGraph } from './slot.ts';
@@ -46,7 +47,7 @@ describe('runRule', () => {
   it('refuses graphs that are missing or have exec pins', async () => {
     await assert.rejects(
       runRule({ nodes, graphs: graphs({}) }, { type: 'acme.rule', version: 1 }, {}, now),
-      /not available/
+      { message: 'Rule acme.rule@1 is not available' }
     );
     const stage = slotGraph({ ...passThrough.signature, execIn: ['exec'], execOut: ['then'] });
     await assert.rejects(
@@ -56,7 +57,38 @@ describe('runRule', () => {
         {},
         now
       ),
-      /is not a rule/
+      { message: 'acme.stage@1 is not a rule' }
+    );
+  });
+
+  it('names the rule when one of its nodes fails', async () => {
+    const boom = pureNode({
+      type: 'acme.boom',
+      title: 'Boom',
+      category: 'Test',
+      description: 'Always fails.',
+      inputs: [],
+      outputs: [pin('level', 'string')],
+      compute: () => {
+        throw new Error('no tariff');
+      }
+    });
+    const failing: GraphDef = {
+      ...passThrough,
+      nodes: [
+        { id: 'boom', type: 'acme.boom', version: 1 },
+        { id: 'return', type: RETURN_TYPE, version: 1 }
+      ],
+      edges: [{ from: 'boom', fromPin: 'level', to: 'return', toPin: 'level' }]
+    };
+    await assert.rejects(
+      runRule(
+        { nodes: [...nodes, boom], graphs: graphs({ 'acme.rule': failing }) },
+        { type: 'acme.rule', version: 1 },
+        { level: 'ALS1' },
+        now
+      ),
+      { message: 'Rule acme.rule@1 failed: no tariff' }
     );
   });
 });

@@ -41,6 +41,47 @@ describe('build835', () => {
     assert.equal(aet?.claims[0]?.denied, true);
   });
 
+  it('splits the unpaid balance into PR-2 patient share and the CO-45 rest', () => {
+    const text = build835(
+      [
+        {
+          claims: [
+            { claimNumber: '401', chargeCents: 10_000, paidCents: 8_000, patientCents: 2_000 },
+            { claimNumber: '402', chargeCents: 10_000, paidCents: 7_000, patientCents: 1_000 },
+            { claimNumber: '403', chargeCents: 5_000, paidCents: 5_000 },
+            {
+              claimNumber: '404',
+              chargeCents: 3_000,
+              paidCents: 3_000,
+              lines: [{ code: 'A0427', chargeCents: 3_000, paidCents: 3_000 }]
+            }
+          ]
+        }
+      ],
+      at
+    );
+    const [r] = read835(text);
+    assert.deepEqual([r?.payerName, r?.payerId], ['MEDICARE', 'DEMOMCR']);
+    assert.deepEqual(
+      r?.claims.map((c) => [c.claimNumber, c.patientCents, c.adjustments]),
+      [
+        ['401', 2_000, [{ group: 'PR', reason: '2', cents: 2_000 }]],
+        [
+          '402',
+          1_000,
+          [
+            { group: 'CO', reason: '45', cents: 2_000 },
+            { group: 'PR', reason: '2', cents: 1_000 }
+          ]
+        ],
+        ['403', 0, []],
+        ['404', 0, []]
+      ]
+    );
+    assert.deepEqual(r?.claims[3]?.services[0]?.adjustments, []);
+    assert.ok(text.includes('N1*PE*DEVELOPMENT EMS*XX*1234567893~'));
+  });
+
   it('reports each service line with its line control number and line adjustments', () => {
     const [remit] = read835(
       build835(

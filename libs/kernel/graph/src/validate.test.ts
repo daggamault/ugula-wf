@@ -85,7 +85,10 @@ describe('validateGraph', () => {
       ]
     });
     assert.deepEqual(messages(read('n')), []);
-    assert.ok(messages(read('x')).includes('n: "x" is not an input of this graph'));
+    assert.deepEqual(messages(read('x')), [
+      'n: "x" is not an input of this graph',
+      'n: No output "n"'
+    ]);
   });
 
   it('reports structural, typing and binding problems', () => {
@@ -117,28 +120,22 @@ describe('validateGraph', () => {
         { from: 'x', fromPin: 'y', to: 'seq', toPin: 'exec' }
       ]
     };
-    const found = messages(bad);
-    for (const expected of [
+    assert.deepEqual(messages(bad), [
       '-: Duplicate variable "total"',
       '-: Variable "total" default: expected string, got number',
       'ghost: Unknown node type nope@1',
+      'seq: Invalid config: Invalid value: Expected <=32 but received 99',
       'up: Value for "text": expected string, got number',
       'add: Expression for "a" uses unknown variable "missing"',
       'add: No input "z"',
+      'gv: Unknown variable "undeclared"',
       'add: "b" expects number but got string',
       'b1: Cannot connect exec and data pins',
       'len: No input "nope"',
       '-: Edge 6 references a missing node',
       'entry: Exec output "exec" can only connect once; use a Sequence',
-      'len: Input "text" is required',
-      'gv: Unknown variable "undeclared"'
-    ]) {
-      assert.ok(
-        found.includes(expected),
-        `missing "${expected}" in ${JSON.stringify(found, null, 1)}`
-      );
-    }
-    assert.ok(found.some((m) => m.startsWith('seq: Invalid config')));
+      'len: Input "text" is required'
+    ]);
   });
 
   it('reports duplicate names, extra entries and conflicting input sources', () => {
@@ -161,19 +158,20 @@ describe('validateGraph', () => {
         { from: 'entry', fromPin: 'n', to: 'set', toPin: 'value' }
       ]
     });
-    for (const expected of [
+    assert.deepEqual(found, [
       '-: Duplicate graph pin "n"',
       'entry: Duplicate node id "entry"',
       '-: A graph can have only one Entry',
-      'add: Input "a" is both connected and set',
+      'entry: Duplicate pin "n"',
+      'entry: Duplicate pin "n"',
       'add: Expression for "b": Unexpected end of expression',
-      'set: Input "value" can only have one connection'
-    ]) {
-      assert.ok(
-        found.includes(expected),
-        `missing "${expected}" in ${JSON.stringify(found, null, 1)}`
-      );
-    }
+      'set: Cannot connect exec and data pins',
+      'add: Cannot connect exec and data pins',
+      'set: Cannot connect exec and data pins',
+      'entry: Exec output "n" can only connect once; use a Sequence',
+      'set: Input "value" can only have one connection',
+      'add: Input "a" is both connected and set'
+    ]);
   });
 
   it('enforces pure graph rules, return pins and pure cycles', () => {
@@ -192,20 +190,25 @@ describe('validateGraph', () => {
         { from: 'b', fromPin: 'result', to: 'r', toPin: 'x' }
       ]
     };
-    const found = messages(pure);
-    assert.ok(found.includes('branch: Pure graphs can only contain pure nodes'));
-    assert.ok(found.includes('r: Return pin "nope" is not an exec output of this graph'));
-    assert.ok(found.includes('a: Pure nodes form a cycle'));
-    assert.ok(found.includes('b: Pure nodes form a cycle'));
-    assert.ok(
-      messages({ ...pure, nodes: pure.nodes.filter((x) => x.id !== 'r') }).includes(
-        '-: A pure graph needs exactly one Return'
-      )
-    );
-    assert.ok(
-      messages({ ...base, nodes: base.nodes.slice(1) }).includes(
-        '-: Add an Entry node so execution can start'
-      )
-    );
+    assert.deepEqual(messages(pure), [
+      'branch: Pure graphs can only contain pure nodes',
+      'r: Return pin "nope" is not an exec output of this graph',
+      'branch: Input "condition" is required',
+      'a: Pure nodes form a cycle',
+      'b: Pure nodes form a cycle'
+    ]);
+    assert.deepEqual(messages({ ...pure, nodes: pure.nodes.filter((x) => x.id !== 'r') }), [
+      '-: A pure graph needs exactly one Return',
+      'branch: Pure graphs can only contain pure nodes',
+      '-: Edge 2 references a missing node',
+      'branch: Input "condition" is required',
+      'a: Pure nodes form a cycle',
+      'b: Pure nodes form a cycle'
+    ]);
+    assert.deepEqual(messages({ ...base, nodes: base.nodes.slice(1) }), [
+      '-: Add an Entry node so execution can start',
+      '-: Edge 0 references a missing node',
+      '-: Edge 1 references a missing node'
+    ]);
   });
 });

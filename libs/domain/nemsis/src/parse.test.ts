@@ -71,7 +71,14 @@ describe('parseDataset', () => {
       () => parseDataset('<!DOCTYPE x [<!ENTITY a "a">]><EMSDataSet/>'),
       /must not declare a DOCTYPE/
     );
+    assert.throws(() => parseDataset('<EMSDataSet>text</EMSDataSet>'), /Not a NEMSIS EMSDataSet/);
+    assert.throws(() => parseDataset('<!doctype x><EMSDataSet/>'), /must not declare a DOCTYPE/);
+  });
+
+  it('reads a dataset without reports as none', () => {
     assert.deepEqual(parseDataset('<EMSDataSet><Header/></EMSDataSet>'), { reports: [] });
+    assert.deepEqual(parseDataset('<EMSDataSet><Header>x</Header></EMSDataSet>'), { reports: [] });
+    assert.deepEqual(parseDataset('<EMSDataSet><Other/></EMSDataSet>'), { reports: [] });
   });
 });
 
@@ -79,6 +86,8 @@ describe('pcrNumberOf', () => {
   it('finds the PCR number anywhere in a report', () => {
     assert.equal(pcrNumberOf({ eRecord: { 'eRecord.01': ' 2026-0042 ' } }), '2026-0042');
     assert.equal(pcrNumberOf([{ x: [{ 'eRecord.01': 'Z' }] }]), 'Z');
+    assert.equal(pcrNumberOf([{ 'eRecord.01': '' }, { 'eRecord.01': 'Y' }]), 'Y');
+    assert.equal(pcrNumberOf({ eRecord: { 'eRecord.01': 7 } }), null);
     assert.equal(pcrNumberOf({ eRecord: { 'eRecord.01': ' ' } }), null);
     assert.equal(pcrNumberOf(null), null);
   });
@@ -94,11 +103,27 @@ describe('reportXml', () => {
     </PatientCareReport></Header></EMSDataSet>`;
     const [report = null] = parseDataset(xml).reports;
     const text = reportXml(report);
-    assert.ok(
-      text.startsWith('<PatientCareReport>\n  <eRecord>\n    <eRecord.01>PCR-9</eRecord.01>')
+    assert.equal(
+      text,
+      [
+        '<PatientCareReport>',
+        '  <eRecord>',
+        '    <eRecord.01>PCR-9</eRecord.01>',
+        '  </eRecord>',
+        '  <eVitals>',
+        '    <eVitals.VitalGroup>',
+        '      <eVitals.06>120</eVitals.06>',
+        '    </eVitals.VitalGroup>',
+        '    <eVitals.VitalGroup>',
+        '      <eVitals.06>118</eVitals.06>',
+        '    </eVitals.VitalGroup>',
+        '  </eVitals>',
+        '  <eSituation>',
+        '    <eSituation.11 PN="8801005"/>',
+        '  </eSituation>',
+        '</PatientCareReport>'
+      ].join('\n')
     );
-    assert.ok(text.includes('<eSituation.11 PN="8801005"/>'));
-    assert.equal(text.match(/<eVitals.VitalGroup>/g)?.length, 2);
     const [again] = parseDataset(`<EMSDataSet><Header>${text}</Header></EMSDataSet>`).reports;
     assert.deepEqual(again, report);
   });

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { PublishedGraph } from '@ugula/db';
+import type { GraphRef, PublishedGraph } from '@ugula/db';
 import { actionNode, createStdNodes, ENTRY_TYPE, type GraphDef } from '@ugula/graph';
 import { buildEngine, bundleKey, createEngineCache } from './engines.ts';
 
@@ -25,14 +25,38 @@ const rows: PublishedGraph[] = [
   { id: 'v-child', key: 'demo.child', version: 3, definition: child }
 ];
 
+const refs: GraphRef[] = rows.map(({ definition: _, ...ref }) => ref);
+
 const nodes = createStdNodes({ fetch });
+
+describe('bundleKey', () => {
+  it('keys a bundle by its root and its sorted graph and table pins', () => {
+    assert.equal(bundleKey('v', [{ id: 'x', key: 'k.a', version: 2 }]), 'v|k.a@2=x');
+    assert.equal(bundleKey('v', [], [{ id: 't2', key: 'k.t' }]), 'v|#k.t=t2');
+    assert.equal(
+      bundleKey(
+        'v',
+        [
+          { id: 'y', key: 'k.b', version: 1 },
+          { id: 'x', key: 'k.a', version: 2 }
+        ],
+        [
+          { id: 't2', key: 'k.u' },
+          { id: 't1', key: 'k.t' }
+        ]
+      ),
+      'v|k.a@2=x|k.b@1=y|#k.t=t1|#k.u=t2'
+    );
+  });
+});
 
 describe('buildEngine', () => {
   it('resolves composites from the bundle and std graphs, rooted at the requested version', async () => {
     const { engine, root } = buildEngine(nodes, rows, 'v-root');
     assert.deepEqual(root, { type: 'demo.root', version: 1 });
-    assert.ok(engine.registry.graph({ type: 'demo.child', version: 3 }));
+    assert.deepEqual(engine.registry.graph({ type: 'demo.child', version: 3 })?.def, child);
     assert.ok(engine.registry.graph({ type: 'std.math.clamp', version: 1 }));
+    assert.equal(engine.registry.graph({ type: 'demo.child', version: 4 }), undefined);
     const state = engine.start(root, {}, { now: new Date(0) });
     await engine.drain(state, { runId: 'r', now: new Date(0) });
     assert.equal(state.status, 'completed');
@@ -69,10 +93,15 @@ describe('buildEngine', () => {
     assert.equal(state.suspension?.kind, 'timer');
   });
 
-  it('rejects missing roots and malformed definitions', () => {
-    assert.throws(() => buildEngine(nodes, rows, 'nope'), /not found/);
-    assert.throws(() =>
-      buildEngine(nodes, [{ id: 'v', key: 'a.b', version: 1, definition: { nodes: 1 } }], 'v')
+  it('rejects a root missing from the bundle', () => {
+    assert.throws(() => buildEngine(nodes, rows, 'nope'), /^Error: Graph version nope not found$/);
+  });
+
+  it('rejects a malformed definition', () => {
+    assert.throws(
+      () =>
+        buildEngine(nodes, [{ id: 'v', key: 'a.b', version: 1, definition: { nodes: 1 } }], 'v'),
+      { name: 'ValiError' }
     );
   });
 });
@@ -102,6 +131,23 @@ const tableFlow: GraphDef = {
   ]
 };
 
+const tableGraphs = [{ id: 'v-t', key: 'demo.tables', version: 1 }];
+
+const codesTable = {
+  id: 'tv-1',
+  kind: 'lookup' as const,
+  definition: { rows: [{ key: 'a', value: 'A1' }] }
+};
+
+const runOnce = async ({
+  engine,
+  root
+}: Awaited<ReturnType<ReturnType<typeof createEngineCache>>>) => {
+  const state = engine.start(root, {}, { now: new Date(0) });
+  await engine.drain(state, { runId: 'r', now: new Date(0) });
+  return state;
+};
+
 describe('pinned tables', () => {
   it('runs table nodes on the table versions the run pinned', async () => {
     const loaded: string[][] = [];
@@ -110,67 +156,117 @@ describe('pinned tables', () => {
       loadDefinitions: async () => [{ id: 'v-t', definition: tableFlow }],
       loadTables: async (ids) => {
         loaded.push(ids);
-        return [{ id: 'tv-1', kind: 'lookup', definition: { rows: [{ key: 'a', value: 'A1' }] } }];
+        return [codesTable];
       }
     });
-    const graphs = [{ id: 'v-t', key: 'demo.tables', version: 1 }];
-    const { engine, root } = await engines({
-      versionId: 'v-t',
-      graphs,
-      tables: [{ id: 'tv-1', key: 'demo.codes' }]
-    });
-    const state = engine.start(root, {}, { now: new Date(0) });
-    await engine.drain(state, { runId: 'r', now: new Date(0) });
+    const state = await runOnce(
+      await engines({
+        versionId: 'v-t',
+        graphs: tableGraphs,
+        tables: [{ id: 'tv-1', key: 'demo.codes' }]
+      })
+    );
     assert.deepEqual(state.result?.outputs, { code: 'A1' });
     assert.deepEqual(loaded, [['tv-1']]);
+  });
 
-    const missing = await engines({ versionId: 'v-t', graphs, tables: [] });
-    const faulted = missing.engine.start(missing.root, {}, { now: new Date(0) });
-    await missing.engine.drain(faulted, { runId: 'r', now: new Date(0) });
-    assert.equal(faulted.status, 'faulted');
-    assert.match(faulted.fault?.error.message ?? '', /demo.codes is not available/);
-    assert.equal(loaded.length, 1);
+  it('loads no tables for a run that pinned none, leaving table nodes to fault', async () => {
+    const loaded: string[][] = [];
+    const engines = createEngineCache({
+      nodes,
+      loadDefinitions: async () => [{ id: 'v-t', definition: tableFlow }],
+      loadTables: async (ids) => {
+        loaded.push(ids);
+        return [codesTable];
+      }
+    });
+    const state = await runOnce(
+      await engines({ versionId: 'v-t', graphs: tableGraphs, tables: [] })
+    );
+    assert.equal(state.status, 'faulted');
+    assert.match(state.fault?.error.message ?? '', /demo\.codes is not available/);
+    assert.deepEqual(loaded, []);
+  });
+
+  it('leaves out a pinned table whose version could not be loaded', async () => {
+    const engines = createEngineCache({
+      nodes,
+      loadDefinitions: async () => [{ id: 'v-t', definition: tableFlow }],
+      loadTables: async () => []
+    });
+    const state = await runOnce(
+      await engines({
+        versionId: 'v-t',
+        graphs: tableGraphs,
+        tables: [{ id: 'tv-9', key: 'demo.codes' }]
+      })
+    );
+    assert.equal(state.status, 'faulted');
+    assert.match(state.fault?.error.message ?? '', /demo\.codes is not available/);
   });
 });
 
 describe('createEngineCache', () => {
-  it('reuses engines per pinned bundle, evicts least recently used, and forgets failures', async () => {
+  const counting = (fail: (ids: string[]) => boolean = () => false) => {
     const loads: string[][] = [];
-    const bundles: Record<string, PublishedGraph[]> = {
-      a: rows,
-      b: rows.map((r) => (r.id === 'v-child' ? { ...r, id: 'v-override' } : r)),
-      bad: rows.map((r) => (r.id === 'v-child' ? { ...r, id: 'v-bad' } : r))
-    };
     const engines = createEngineCache({
       nodes,
-      max: 1,
+      max: 2,
       loadTables: async () => [],
       loadDefinitions: async (ids) => {
         loads.push(ids);
-        if (ids.includes('v-root') && loads.length > 3) throw new Error('db down');
-        return rows.flatMap((r) =>
-          ids.includes(r.id)
-            ? [r]
-            : r.id === 'v-child' && ids.includes('v-override')
-              ? [{ ...r, id: 'v-override' }]
-              : []
-        );
+        if (fail(ids)) throw new Error('db down');
+        return rows.filter((r) => ids.includes(r.id));
       }
     });
-    const run = (id: string) =>
-      engines({
-        versionId: 'v-root',
-        graphs: (bundles[id] ?? []).map(({ definition: _, ...ref }) => ref),
-        tables: []
-      });
-    await run('a');
-    await run('a');
-    await run('b');
-    await run('a');
-    assert.equal(loads.length, 3);
-    await assert.rejects(() => run('bad'), /db down/);
-    assert.equal(loads.length, 4);
-    assert.equal(bundleKey('v', [{ id: 'x', key: 'k.a', version: 2 }]), 'v|k.a@2=x');
-    assert.equal(bundleKey('v', [], [{ id: 't2', key: 'k.t' }]), 'v|#k.t=t2');
+    const run = (versionId: string, graphs: GraphRef[] = refs) =>
+      engines({ versionId, graphs, tables: [] });
+    return { run, loads };
+  };
+
+  it('reuses the engine of a bundle whatever order its pins come in', async () => {
+    const { run, loads } = counting();
+    const first = await run('v-root');
+    assert.equal(await run('v-root', [...refs].reverse()), first);
+    assert.deepEqual(loads, [['v-root', 'v-child']]);
+  });
+
+  it('evicts the least recently used bundle beyond its limit', async () => {
+    const { run, loads } = counting();
+    const childOnly = [{ id: 'v-child', key: 'demo.child', version: 3 }];
+    const bumped = [
+      { id: 'v-root', key: 'demo.root', version: 1 },
+      { id: 'v-child', key: 'demo.child', version: 4 }
+    ];
+    await run('v-root');
+    await run('v-child', childOnly);
+    await run('v-root');
+    await run('v-root', bumped);
+    await run('v-root');
+    await run('v-child', childOnly);
+    assert.deepEqual(loads, [
+      ['v-root', 'v-child'],
+      ['v-child'],
+      ['v-root', 'v-child'],
+      ['v-child']
+    ]);
+  });
+
+  it('forgets a failed load so the next run loads again', async () => {
+    let down = true;
+    const { run, loads } = counting(() => down);
+    await assert.rejects(() => run('v-root'), /^Error: db down$/);
+    down = false;
+    const { root } = await run('v-root');
+    assert.deepEqual(root, { type: 'demo.root', version: 1 });
+    assert.equal(loads.length, 2);
+  });
+
+  it('rejects a bundle whose pinned version has no definition', async () => {
+    const { run } = counting();
+    await assert.rejects(
+      () => run('v-root', [...refs, { id: 'v-gone', key: 'demo.gone', version: 1 }]),
+      { name: 'ValiError' }
+    );
   });
 });

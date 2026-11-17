@@ -20,21 +20,25 @@ describe('run jobs', () => {
     assert.deepEqual(advance('r', null), advance('r'));
     assert.deepEqual(advance('r', 'p'), { runId: 'r', command: { type: 'advance' }, group: 'p' });
     assert.deepEqual(start('r'), { runId: 'r', command: { type: 'advance' }, interactive: true });
-    assert.deepEqual(cancel('r').command, { type: 'cancel' });
-    assert.deepEqual(retry('r').command, { type: 'retry' });
-    assert.deepEqual(skip('r', 'then', { a: 1 }).command, {
-      type: 'skip',
-      pin: 'then',
-      outputs: { a: 1 }
+    assert.deepEqual(cancel('r'), { runId: 'r', command: { type: 'cancel' } });
+    assert.deepEqual(retry('r'), { runId: 'r', command: { type: 'retry' } });
+    assert.deepEqual(skip('r', 'then', { a: 1 }), {
+      runId: 'r',
+      command: { type: 'skip', pin: 'then', outputs: { a: 1 } }
     });
     assert.deepEqual(resume('r', '7', { ok: true }), {
       runId: 'r',
       command: { type: 'resume', suspensionId: '7', payload: { ok: true } }
     });
-    assert.equal(resume('r', '7', null, '2026-01-01').startAfter, '2026-01-01');
+    assert.deepEqual(resume('r', '7', null, '2026-01-01'), {
+      runId: 'r',
+      command: { type: 'resume', suspensionId: '7', payload: null },
+      startAfter: '2026-01-01'
+    });
+    assert.deepEqual(resume('r', '7', null, ''), resume('r', '7', null));
   });
 
-  it('enqueue through the caller transaction, keep retrying commands other than advance, put runs a person started first, and skip empty batches', async () => {
+  it('enqueue through the caller transaction, keep retrying commands other than advance, put immediate and person-started runs ahead of deferred ones, and skip empty batches', async () => {
     const calls: unknown[][] = [];
     const boss: RunQueueClient = { insert: async (...args) => void calls.push(args) };
     const db = { executeSql: async () => ({ rows: [] }) };
@@ -45,7 +49,10 @@ describe('run jobs', () => {
       advance('c', 'parent'),
       cancel('d'),
       timeout('e', '2', '2026-01-02'),
-      start('f')
+      start('f'),
+      resume('g', '3', 1),
+      retry('h'),
+      skip('i', null, {})
     ]);
     assert.deepEqual(calls, [
       [
@@ -74,7 +81,18 @@ describe('run jobs', () => {
             retryLimit: 1_000_000,
             priority: 1
           },
-          { data: { runId: 'f', command: { type: 'advance' } }, priority: 2 }
+          { data: { runId: 'f', command: { type: 'advance' } }, priority: 2 },
+          {
+            data: { runId: 'g', command: { type: 'resume', suspensionId: '3', payload: 1 } },
+            retryLimit: 1_000_000,
+            priority: 2
+          },
+          { data: { runId: 'h', command: { type: 'retry' } }, retryLimit: 1_000_000, priority: 2 },
+          {
+            data: { runId: 'i', command: { type: 'skip', pin: null, outputs: {} } },
+            retryLimit: 1_000_000,
+            priority: 2
+          }
         ],
         { db }
       ]
@@ -83,8 +101,7 @@ describe('run jobs', () => {
 
   it('gives each signal timeout a stable job id so a wake can delete it', async () => {
     const { id } = timeout('r', '7', '2026-01-01');
-    assert.ok(id);
-    assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}$/);
+    assert.match(id ?? '', /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}$/);
     assert.equal(timeout('r', '7', '2026-02-01').id, id);
     assert.notEqual(timeout('r', '8', '2026-01-01').id, id);
     assert.deepEqual(timeout('r', '7', '2026-01-01'), {

@@ -20,7 +20,27 @@ describe('sse server', () => {
       assert.deepEqual(await (await fetch(`${base}/health`)).json(), { status: 'ok' });
       assert.equal((await fetch(`${base}/events?x=1`)).status, 204);
       assert.deepEqual(hits, ['/events?x=1']);
-      assert.equal((await fetch(`${base}/unknown`)).status, 404);
+      const unknown = await fetch(`${base}/unknown`);
+      assert.equal(unknown.status, 404);
+      assert.deepEqual(await unknown.json(), { error: 'Not Found' });
+      assert.equal((await fetch(`${base}/health`, { method: 'POST' })).status, 404);
+      assert.equal((await fetch(`${base}/events`, { method: 'POST' })).status, 404);
+      assert.deepEqual(hits, ['/events?x=1']);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('drops the connection when the events handler fails', async () => {
+    const server = createSseServer({
+      events: async () => {
+        throw new Error('boom');
+      }
+    }).listen(0);
+    await once(server, 'listening');
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      await assert.rejects(fetch(`${base}/events`), TypeError);
     } finally {
       server.close();
     }

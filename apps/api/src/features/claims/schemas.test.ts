@@ -1,10 +1,21 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { CLAIM_TASK_KEYS } from '@ugula/billing';
 import * as v from 'valibot';
-import { listClaimEventsQuery, searchClaimsQuery, startTaskSchema } from './schemas.ts';
+import {
+  documentParam,
+  listClaimEventsQuery,
+  searchClaimsQuery,
+  startTaskSchema
+} from './schemas.ts';
 
-describe('claim schemas', () => {
-  it('defaults list filters to open claims', () => {
+const issues = (schema: v.GenericSchema, input: unknown) =>
+  v.safeParse(schema, input).issues?.map((i) => i.message);
+
+const ID = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
+
+describe('searchClaimsQuery', () => {
+  it('defaults to the first page of open claims, newest first', () => {
     assert.deepEqual(v.parse(searchClaimsQuery, {}), {
       status: 'open',
       page: 1,
@@ -12,31 +23,92 @@ describe('claim schemas', () => {
       sort: 'created',
       dir: 'desc'
     });
-    assert.equal(v.safeParse(searchClaimsQuery, { sort: 'balance', dir: 'asc' }).success, true);
-    assert.equal(v.safeParse(searchClaimsQuery, { sort: 'payer' }).success, false);
-    assert.deepEqual(
-      v.parse(searchClaimsQuery, { status: 'all', lastName: ' smith ' }).lastName,
-      'smith'
-    );
-    assert.equal(v.safeParse(searchClaimsQuery, { status: 'needs_review' }).success, false);
-    assert.equal(v.safeParse(searchClaimsQuery, { status: 'pending' }).success, false);
-    assert.equal(v.safeParse(searchClaimsQuery, { birthDate: '01/02/1980' }).success, false);
-    assert.equal(v.parse(searchClaimsQuery, { number: ' 42 ' }).number, '42');
-    assert.equal(v.safeParse(searchClaimsQuery, { patientId: 'x' }).success, false);
-    assert.equal(v.parse(searchClaimsQuery, { sort: 'waiting' }).sort, 'waiting');
-    assert.equal(v.parse(searchClaimsQuery, { sort: 'encounter' }).sort, 'encounter');
   });
 
-  it('starts only the claim task workflows a biller may start', () => {
-    assert.deepEqual(v.parse(startTaskSchema, { workflow: 'billing.post-payment' }), {
-      workflow: 'billing.post-payment'
-    });
-    assert.equal(v.safeParse(startTaskSchema, { workflow: 'billing.cycle-claim' }).success, false);
-    assert.equal(v.safeParse(startTaskSchema, {}).success, false);
+  it('trims the name and number filters and keeps the other filters', () => {
+    assert.deepEqual(
+      v.parse(searchClaimsQuery, {
+        status: 'all',
+        firstName: ' ann ',
+        lastName: ' smith ',
+        birthDate: '1980-01-02',
+        number: ' 42 ',
+        patientId: ID,
+        page: '2',
+        pageSize: '50',
+        sort: 'balance',
+        dir: 'asc'
+      }),
+      {
+        status: 'all',
+        firstName: 'ann',
+        lastName: 'smith',
+        birthDate: '1980-01-02',
+        number: '42',
+        patientId: ID,
+        page: 2,
+        pageSize: 50,
+        sort: 'balance',
+        dir: 'asc'
+      }
+    );
+  });
+
+  it('sorts by each column the claim list offers', () => {
+    for (const sort of [
+      'created',
+      'number',
+      'service',
+      'patient',
+      'pcr',
+      'encounter',
+      'total',
+      'balance',
+      'status',
+      'waiting'
+    ]) {
+      assert.equal(v.parse(searchClaimsQuery, { sort }).sort, sort);
+    }
+    assert.deepEqual(issues(searchClaimsQuery, { sort: 'payer' }), [
+      'Invalid type: Expected ("created" | "number" | "service" | "patient" | "pcr" | ' +
+        '"encounter" | "total" | "balance" | "status" | "waiting") but received "payer"'
+    ]);
+  });
+
+  it('filters only open or all claims', () => {
+    for (const status of ['needs_review', 'pending']) {
+      assert.deepEqual(issues(searchClaimsQuery, { status }), [
+        `Invalid type: Expected ("open" | "all") but received "${status}"`
+      ]);
+    }
+  });
+
+  it('rejects a malformed birth date, patient id or overlong filter', () => {
+    assert.deepEqual(issues(searchClaimsQuery, { birthDate: '01/02/1980' }), [
+      'Use a date like 1980-01-02'
+    ]);
+    assert.deepEqual(issues(searchClaimsQuery, { patientId: 'x' }), ['Invalid UUID: Received "x"']);
+    assert.deepEqual(issues(searchClaimsQuery, { number: 'x'.repeat(41) }), [
+      'Invalid length: Expected <=40 but received 41'
+    ]);
+    assert.deepEqual(issues(searchClaimsQuery, { lastName: 'x'.repeat(61) }), [
+      'Invalid length: Expected <=60 but received 61'
+    ]);
+  });
+
+  it('pages only by whole pages and the offered page sizes', () => {
+    assert.deepEqual(issues(searchClaimsQuery, { page: '0' }), [
+      'Invalid value: Expected >=1 but received 0'
+    ]);
+    assert.deepEqual(issues(searchClaimsQuery, { page: '1.5' }), ['Invalid integer: Received 1.5']);
+    assert.deepEqual(issues(searchClaimsQuery, { pageSize: '7' }), [
+      'Invalid type: Expected (10 | 25 | 50 | 100) but received 7'
+    ]);
   });
 });
-describe('claim paging schemas', () => {
-  it('pages claims and history only by the sizes and sorts the lists offer', () => {
+
+describe('listClaimEventsQuery', () => {
+  it('defaults to the first page of history, newest first', () => {
     assert.deepEqual(v.parse(listClaimEventsQuery, {}), {
       page: 1,
       pageSize: 25,
@@ -47,13 +119,41 @@ describe('claim paging schemas', () => {
       v.parse(listClaimEventsQuery, { page: '3', pageSize: '100', sort: 'payer', dir: 'asc' }),
       { page: 3, pageSize: 100, sort: 'payer', dir: 'asc' }
     );
-    const fails = (schema: typeof listClaimEventsQuery | typeof searchClaimsQuery, q: object) =>
-      !v.safeParse(schema, q).success;
-    assert.ok(fails(listClaimEventsQuery, { sort: 'created' }));
-    assert.ok(fails(listClaimEventsQuery, { dir: 'up' }));
-    assert.ok(fails(searchClaimsQuery, { page: '0' }));
-    assert.ok(fails(searchClaimsQuery, { page: '1.5' }));
-    assert.ok(fails(searchClaimsQuery, { pageSize: '7' }));
-    assert.ok(fails(searchClaimsQuery, { number: 'x'.repeat(41) }));
+  });
+
+  it('sorts history only by its own columns and directions', () => {
+    assert.deepEqual(issues(listClaimEventsQuery, { sort: 'created' }), [
+      'Invalid type: Expected ("when" | "event" | "payer" | "amount") but received "created"'
+    ]);
+    assert.deepEqual(issues(listClaimEventsQuery, { dir: 'up' }), [
+      'Invalid type: Expected ("asc" | "desc") but received "up"'
+    ]);
+  });
+});
+
+describe('startTaskSchema', () => {
+  it('starts only the claim task workflows a biller may start', () => {
+    assert.deepEqual(v.parse(startTaskSchema, { workflow: 'billing.post-payment' }), {
+      workflow: 'billing.post-payment'
+    });
+    assert.deepEqual(issues(startTaskSchema, { workflow: 'billing.cycle-claim' }), [
+      `Invalid type: Expected (${CLAIM_TASK_KEYS.map((k) => `"${k}"`).join(' | ')}) ` +
+        'but received "billing.cycle-claim"'
+    ]);
+    assert.deepEqual(issues(startTaskSchema, {}), [
+      'Invalid key: Expected "workflow" but received undefined'
+    ]);
+  });
+});
+
+describe('documentParam', () => {
+  it('requires a claim id and a document id', () => {
+    assert.deepEqual(v.parse(documentParam, { id: ID, documentId: ID }), {
+      id: ID,
+      documentId: ID
+    });
+    assert.deepEqual(issues(documentParam, { id: ID, documentId: 'x' }), [
+      'Invalid UUID: Received "x"'
+    ]);
   });
 });

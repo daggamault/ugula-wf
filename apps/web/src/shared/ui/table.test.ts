@@ -1,17 +1,25 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
-import { Table, TableCell, TableRow } from './table.tsx';
+import { render, screen, userEvent, within } from '../testing-dom.ts';
+import { Table, TableCell, TableRow, type TableSorting } from './table.tsx';
 
-const render = (sorting?: Parameters<typeof Table>[0]['sorting']) =>
-  renderToStaticMarkup(
+const sortingOf = (sort: string, dir: 'asc' | 'desc'): TableSorting => ({
+  sort,
+  dir,
+  sortHref: (k) => `/runs?sort=${k}`,
+  sortTo: (k, d) => `/runs?sort=${k}&dir=${d}`
+});
+
+const show = (sorting?: TableSorting) =>
+  render(
     createElement(Table, {
       label: 'Runs',
       head: [
         { label: 'Name', sort: 'name' },
         { label: 'Total', sort: 'total' },
         { label: 'Started', isSecondary: true },
+        { label: 'Hidden', isLabelHidden: true },
         { label: 'Actions', isLabelHidden: true }
       ],
       ...(sorting ? { sorting } : {}),
@@ -22,109 +30,198 @@ const render = (sorting?: Parameters<typeof Table>[0]['sorting']) =>
         createElement(TableCell, { kind: 'numeric' }, '$1.00'),
         createElement(TableCell, { isSecondary: true }, 'Today'),
         null,
+        createElement(TableCell, null, 'Secret'),
         createElement(TableCell, { kind: 'actions' }, 'Open')
       )
     })
   );
 
+const table = () => screen.getByRole('table', { name: 'Runs' });
+const header = (name: string) => within(table()).getByRole('columnheader', { name });
+const cells = () => within(table()).getAllByRole('cell');
+const here = () => `${window.location.pathname}${window.location.search}`;
+
 describe('Table', () => {
-  it('is a labelled table on wider screens and labelled cards on phones', () => {
-    const html = render();
-    assert.ok(html.includes('aria-label="Runs"'));
-    assert.ok(html.includes('<th scope="col"'));
-    assert.ok(html.includes('sr-only @4xl:not-sr-only'));
-    assert.ok(html.includes('@4xl:table-row'));
-    assert.ok(!html.includes('@4xl:hidden">Name<'));
-    assert.ok(html.includes('@4xl:hidden">Total</span>'));
-    assert.ok(html.includes('@4xl:hidden">Started</span>'));
-    assert.ok(!html.includes('@4xl:hidden">Actions<'));
-    assert.ok(html.includes('<span class="sr-only">Actions</span>'));
-    assert.ok(html.includes('@4xl:hidden @6xl:table-cell'));
-    assert.ok(!html.includes('href='));
+  it('is a labelled table with a column header per column', () => {
+    show();
+    assert.deepEqual(
+      within(table())
+        .getAllByRole('columnheader')
+        .map((th) => [th.textContent, th.getAttribute('scope')]),
+      [
+        ['Name', 'col'],
+        ['Total', 'col'],
+        ['Started', 'col'],
+        ['Hidden', 'col'],
+        ['Actions', 'col']
+      ]
+    );
   });
 
-  it('turns sortable headers into links that show the current order', () => {
-    const html = render({
-      sort: 'total',
-      dir: 'desc',
-      sortHref: (k) => `/runs?sort=${k}`,
-      sortTo: (k, d) => `/runs?sort=${k}&dir=${d}`
-    });
-    assert.ok(html.includes('aria-sort="descending"'));
-    assert.ok(html.includes('href="/runs?sort=name"') && html.includes('href="/runs?sort=total"'));
-    assert.equal(html.match(/aria-sort=/g)?.length, 1);
-    assert.ok(html.includes('Sort By'));
-    assert.match(
-      html,
-      /role="option"[^>]*aria-selected="true" data-value="total:desc"[^>]*><span[^>]*>Total, Descending<\/span>/
+  it('keeps a hidden column label for screen readers', () => {
+    show();
+    assert.equal(
+      within(header('Actions')).getByText('Actions').classList.contains('sr-only'),
+      true
     );
-    assert.ok(!html.includes('Default Order'));
-    const unlisted = render({
-      sort: 'created',
-      dir: 'desc',
-      sortHref: (k) => `/runs?sort=${k}`,
-      sortTo: (k, d) => `/runs?sort=${k}&dir=${d}`
-    });
-    assert.match(
-      unlisted,
-      /role="option"[^>]*aria-selected="true" data-value="created:desc"[^>]*><span[^>]*>Default Order<\/span>/
+    assert.equal(within(header('Name')).getByText('Name').classList.contains('sr-only'), false);
+  });
+
+  it('labels each value with its column for phones, except the title and actions', () => {
+    show();
+    assert.deepEqual(
+      cells().map((td) => [...td.children].map((c) => c.textContent)),
+      [['Batch'], ['Total', '$1.00'], ['Started', 'Today'], ['Secret'], ['Open']]
     );
-    assert.ok(!unlisted.includes('aria-sort='));
+  });
+
+  it('places cells by position, skipping empty children', () => {
+    show();
+    assert.equal(cells().length, 5);
+    assert.ok(!within(cells()[3] as HTMLElement).queryByText('Hidden'));
+  });
+
+  it('hides secondary columns on mid-size screens only', () => {
+    show();
+    assert.equal(header('Started').classList.contains('@4xl:hidden'), true);
+    assert.equal(header('Started').classList.contains('@6xl:table-cell'), true);
+    assert.equal(cells()[2]?.classList.contains('@4xl:hidden'), true);
+    assert.equal(header('Total').classList.contains('@4xl:hidden'), false);
+  });
+
+  it('shows plain headers without sorting', () => {
+    show();
+    assert.equal(within(table()).queryAllByRole('link').length, 0);
+    assert.equal(
+      within(table())
+        .getAllByRole('columnheader')
+        .some((th) => th.hasAttribute('aria-sort')),
+      false
+    );
+    assert.ok(!screen.queryByRole('button', { name: 'Sort By' }));
+  });
+
+  it('marks a compact column to shrink to its content', () => {
+    render(
+      createElement(Table, {
+        label: 'Claims',
+        head: ['Patient', { label: 'Due', isCompact: true }],
+        children: createElement(TableRow, null, createElement(TableCell, null, 'Doe, Jane'))
+      })
+    );
+    assert.equal(
+      screen.getByRole('columnheader', { name: 'Due' }).classList.contains('w-px'),
+      true
+    );
+    assert.equal(
+      screen.getByRole('columnheader', { name: 'Patient' }).classList.contains('w-px'),
+      false
+    );
+  });
+
+  it('passes extra attributes through to the cell', () => {
+    render(
+      createElement(Table, {
+        label: 'Claims',
+        head: ['Patient'],
+        children: createElement(TableRow, null, createElement(TableCell, { colSpan: 3 }, 'All'))
+      })
+    );
+    assert.equal(screen.getByRole('cell').getAttribute('colspan'), '3');
+  });
+});
+
+describe('Table sorting', () => {
+  it('turns sortable headers into links and marks only the sorted column', () => {
+    show(sortingOf('total', 'desc'));
+    assert.equal(
+      within(header('Name')).getByRole('link', { name: 'Name' }).getAttribute('href'),
+      '/runs?sort=name'
+    );
+    assert.equal(
+      within(header('Total')).getByRole('link', { name: 'Total' }).getAttribute('href'),
+      '/runs?sort=total'
+    );
+    assert.ok(!within(header('Started')).queryByRole('link'));
+    assert.deepEqual(
+      within(table())
+        .getAllByRole('columnheader')
+        .map((th) => th.getAttribute('aria-sort')),
+      [null, 'descending', null, null, null]
+    );
+  });
+
+  it('says ascending for an ascending sort', () => {
+    show(sortingOf('name', 'asc'));
+    assert.equal(header('Name').getAttribute('aria-sort'), 'ascending');
+  });
+
+  it('marks no column when sorted by something not shown', () => {
+    show(sortingOf('created', 'desc'));
+    assert.equal(
+      within(table())
+        .getAllByRole('columnheader')
+        .some((th) => th.hasAttribute('aria-sort')),
+      false
+    );
+  });
+
+  it('sorts in place when a header link is followed', async () => {
+    show(sortingOf('total', 'desc'));
+    await userEvent.setup().click(within(header('Name')).getByRole('link'));
+    assert.equal(here(), '/runs?sort=name');
   });
 });
 
 describe('Table sorting on phones', () => {
+  it('offers each sortable column in both directions with the current order chosen', () => {
+    show(sortingOf('total', 'desc'));
+    assert.equal(screen.getByRole('button', { name: 'Sort By' }).textContent, 'Total, Descending');
+    const list = screen.getByRole('listbox');
+    assert.deepEqual(
+      within(list)
+        .getAllByRole('option')
+        .map((o) => [o.textContent, o.getAttribute('aria-selected')]),
+      [
+        ['Name, Ascending', 'false'],
+        ['Name, Descending', 'false'],
+        ['Total, Ascending', 'false'],
+        ['Total, Descending', 'true']
+      ]
+    );
+  });
+
+  it('adds a Default Order choice when the current sort is not a column', () => {
+    show(sortingOf('created', 'desc'));
+    assert.equal(screen.getByRole('button', { name: 'Sort By' }).textContent, 'Default Order');
+    assert.deepEqual(
+      screen.getAllByRole('option').map((o) => o.textContent),
+      [
+        'Default Order',
+        'Name, Ascending',
+        'Name, Descending',
+        'Total, Ascending',
+        'Total, Descending'
+      ]
+    );
+  });
+
+  it('navigates to the chosen order', async () => {
+    show(sortingOf('total', 'desc'));
+    await userEvent.setup().click(screen.getByRole('option', { name: 'Name, Ascending' }));
+    assert.equal(here(), '/runs?sort=name&dir=asc');
+  });
+
   it('offers no sort menu when no column sorts', () => {
-    const html = renderToStaticMarkup(
+    render(
       createElement(Table, {
         label: 'Fees',
         head: ['Code', 'Amount'],
-        sorting: {
-          sort: 'created',
-          dir: 'desc',
-          sortHref: (k) => `/fees?sort=${k}`,
-          sortTo: (k, d) => `/fees?sort=${k}&dir=${d}`
-        },
+        sorting: sortingOf('created', 'desc'),
         children: createElement(TableRow, null, createElement(TableCell, null, 'A0427'))
       })
     );
-    assert.ok(!html.includes('Sort By') && !html.includes('aria-haspopup="listbox"'));
-    assert.ok(!html.includes('href='));
-  });
-});
-
-describe('Table cells', () => {
-  it('marks compact and muted cells and right-aligns phone values beside their label', () => {
-    const html = renderToStaticMarkup(
-      createElement(Table, {
-        label: 'Claims',
-        head: ['Patient', { label: 'Due', isCompact: true }],
-        children: createElement(
-          TableRow,
-          null,
-          createElement(TableCell, null, 'Doe, Jane'),
-          createElement(TableCell, { kind: 'date', isMuted: true }, 'Today')
-        )
-      })
-    );
-    assert.ok(html.includes('w-px'));
-    assert.ok(html.includes('justify-between text-surface-fg-muted tabular-nums'));
-    assert.ok(html.includes('@max-4xl:text-right'));
-    assert.ok(html.includes('@4xl:px-4 @4xl:py-3 @4xl:align-middle'));
-    assert.ok(html.includes('rounded-xl') && !html.includes('shadow'));
-  });
-});
-
-describe('Table alignment', () => {
-  it('left-aligns every column, numbers included, with the sort arrow after the label', () => {
-    const html = render({
-      sort: 'total',
-      dir: 'asc',
-      sortHref: (k) => `/runs?sort=${k}`,
-      sortTo: (k, d) => `/runs?sort=${k}&dir=${d}`
-    });
-    assert.doesNotMatch(html, /(?<![\w:-])(@4xl:)?text-right/);
-    assert.ok(!html.includes('flex-row-reverse'));
-    assert.ok(html.includes('tabular-nums'));
+    assert.ok(!screen.queryByRole('button', { name: 'Sort By' }));
+    assert.ok(!screen.queryByRole('link'));
   });
 });

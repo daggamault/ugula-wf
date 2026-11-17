@@ -8,7 +8,10 @@ describe('agency time zones', () => {
   it("reads the billing profile's time zone, UTC without a profile", async () => {
     const zoned = createRecordingDb(() => [{ zone: 'America/Chicago' }]);
     assert.equal(await findTimeZone(zoned.db, 'a1'), 'America/Chicago');
-    assert.ok(zoned.queries[0]?.sql.includes("where bp.agency_id = $1::uuid), 'UTC')"));
+    assert.equal(
+      zoned.queries[0]?.sql,
+      "select coalesce((select bp.time_zone from billing_profiles bp where bp.agency_id = $1::uuid), 'UTC') as zone"
+    );
     assert.deepEqual(zoned.queries[0]?.parameters, ['a1']);
     assert.equal(await findTimeZone(createRecordingDb(() => []).db, 'a1'), 'UTC');
   });
@@ -27,6 +30,10 @@ describe('agency time zones', () => {
       .selectFrom('claims as c')
       .select(agencyTimeZone(sql.ref('c.agency_id')).as('zone'))
       .compile();
-    assert.ok(q.sql.includes('where bp.agency_id = "c"."agency_id"'));
+    assert.equal(
+      q.sql,
+      'select coalesce((select bp.time_zone from billing_profiles bp where bp.agency_id = "c"."agency_id"), \'UTC\') as "zone" from "claims" as "c"'
+    );
+    assert.deepEqual(q.parameters, []);
   });
 });

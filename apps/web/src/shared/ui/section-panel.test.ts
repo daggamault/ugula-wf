@@ -1,46 +1,80 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { render, screen, within } from '../testing-dom.ts';
 import { Section, SectionPanel } from './section-panel.tsx';
 
 describe('SectionPanel', () => {
-  it('labels the panel by its heading and renders actions and content', () => {
-    const html = renderToStaticMarkup(
+  it('names the region by its heading', () => {
+    render(createElement(SectionPanel, { title: 'Payers', children: 'List' }));
+    const region = screen.getByRole('region', { name: 'Payers' });
+    assert.equal(within(region).getByRole('heading', { level: 2 }).textContent, 'Payers');
+  });
+
+  it('shows the description, actions and content', () => {
+    render(
       createElement(SectionPanel, {
         title: 'Payers',
         description: 'Billed in order.',
         actions: createElement('button', { type: 'button' }, 'Save'),
-        children: 'List'
+        children: createElement('p', null, 'List')
       })
     );
-    assert.match(html, /<section aria-labelledby="([^"]+)".*<h2 id="\1"/);
-    assert.ok(html.includes('Billed in order.'));
-    assert.ok(html.includes('<button type="button">Save</button>'));
-    assert.ok(html.includes('border-border'));
-    assert.ok(html.includes('rounded-xl') && html.includes('p-5'));
-    assert.ok(html.includes('items-center justify-between gap-4'));
-    assert.ok(html.includes('text-base font-bold'));
-    assert.ok(!html.includes('shadow'));
+    const region = screen.getByRole('region', { name: 'Payers' });
+    assert.equal(within(region).getByText('Billed in order.').tagName, 'P');
+    assert.equal(within(region).getByRole('button').textContent, 'Save');
+    assert.equal(within(region).getByText('List').tagName, 'P');
   });
 
-  it('highlights an accented panel', () => {
-    const html = renderToStaticMarkup(
-      createElement(SectionPanel, { title: 'Decision', accent: 'primary' })
-    );
-    assert.ok(html.includes('border-primary/40'));
-    assert.ok(!html.includes('shadow'));
-    const custom = renderToStaticMarkup(
-      createElement(SectionPanel, { title: 'Changed', accent: 'custom' })
-    );
-    assert.ok(custom.includes('border-custom/40'));
+  it('shows only the heading when nothing else is given', () => {
+    render(createElement(SectionPanel, { title: 'Payers' }));
+    const region = screen.getByRole('region', { name: 'Payers' });
+    assert.equal(region.textContent, 'Payers');
+    assert.equal(region.children.length, 1);
+  });
+
+  it('frames a plain panel with the neutral border', () => {
+    render(createElement(SectionPanel, { title: 'Payers' }));
+    assert.equal(screen.getByRole('region').classList.contains('border-border'), true);
+  });
+
+  it('highlights an accented panel in its accent color', () => {
+    for (const accent of ['primary', 'warning', 'custom'] as const) {
+      const { unmount } = render(createElement(SectionPanel, { title: 'Decision', accent }));
+      const region = screen.getByRole('region', { name: 'Decision' });
+      assert.equal(region.classList.contains('border-border'), false, accent);
+      assert.equal(
+        [...region.classList].some((c) => c.startsWith(`border-${accent}/`)),
+        true,
+        accent
+      );
+      unmount();
+    }
   });
 });
 
 describe('Section', () => {
-  it('renders an unframed labelled section', () => {
-    const html = renderToStaticMarkup(createElement(Section, { title: 'Queues', children: 'T' }));
-    assert.match(html, /<section aria-labelledby="([^"]+)".*<h2 id="\1"/);
-    assert.ok(html.includes('Queues'));
+  it('names an unframed region by its heading and shows its content', () => {
+    render(
+      createElement(Section, {
+        title: 'Queues',
+        description: 'Waiting work.',
+        actions: createElement('button', { type: 'button' }, 'Add'),
+        children: createElement('p', null, 'T')
+      })
+    );
+    const region = screen.getByRole('region', { name: 'Queues' });
+    assert.equal(within(region).getByRole('heading', { level: 2 }).textContent, 'Queues');
+    assert.equal(within(region).getByText('Waiting work.').tagName, 'P');
+    assert.equal(within(region).getByRole('button').textContent, 'Add');
+    assert.equal(within(region).getByText('T').tagName, 'P');
+    assert.equal(region.classList.contains('border'), false);
+  });
+
+  it('leaves out the description and actions when not given', () => {
+    render(createElement(Section, { title: 'Queues' }));
+    const region = screen.getByRole('region', { name: 'Queues' });
+    assert.equal(region.textContent, 'Queues');
+    assert.ok(!within(region).queryByRole('button'));
   });
 });

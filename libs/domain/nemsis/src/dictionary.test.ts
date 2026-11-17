@@ -31,8 +31,27 @@ describe('reportTerms', () => {
     ]);
   });
 
+  it('keeps only short code-like values as codes', () => {
+    const terms = reportTerms({
+      a: '12345678901234567890',
+      b: '123456789012345678901',
+      c: 'two words',
+      d: '',
+      e: { '@NV': 'Not Recorded', '#text': 'x/y' },
+      f: { '#text': 'R07.9' }
+    });
+    assert.deepEqual(terms, {
+      elements: ['a', 'b', 'c', 'd', 'e', 'f'],
+      codes: [
+        { list: 'a', code: '12345678901234567890' },
+        { list: 'f', code: 'R07.9' }
+      ]
+    });
+  });
+
   it('finds nothing in a report that is not an object', () => {
     assert.deepEqual(reportTerms(null), { elements: [], codes: [] });
+    assert.deepEqual(reportTerms(['eRecord']), { elements: [], codes: [] });
   });
 });
 
@@ -43,6 +62,7 @@ describe('codeSystemOf', () => {
     assert.equal(codeSystemOf('eProcedures.03'), 'snomed');
     assert.equal(codeSystemOf('eDisposition.04'), 'gnis');
     assert.equal(codeSystemOf('ePatient.08'), 'state');
+    assert.equal(codeSystemOf('eHistory.07'), 'snomed');
     assert.equal(codeSystemOf('eResponse.05'), null);
     assert.equal(codeSystemOf('toString'), null);
   });
@@ -57,5 +77,6 @@ describe('describeCode', () => {
     assert.equal(describeCode(dictionary, 'eResponse.05', '2205001'), 'Emergency');
     assert.equal(describeCode(dictionary, '@NV', '7701003'), 'Not Recorded');
     assert.equal(describeCode(dictionary, 'eResponse.05', '1'), null);
+    assert.equal(describeCode(dictionary, 'eResponse.99', '2205001'), null);
   });
 });

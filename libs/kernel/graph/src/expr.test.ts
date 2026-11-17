@@ -12,6 +12,8 @@ describe('expressions', () => {
     assert.equal(ev('a > 1 ? "big" : a == 1 ? "one" : "small"', { a: 1 }), 'one');
     assert.equal(ev('!a && b || c', { a: false, b: true, c: false }), true);
     assert.equal(ev('x ?? 5', { x: null }), 5);
+    assert.equal(ev('x ?? 5', { x: 0 }), 0);
+    assert.equal(ev('a || b', { a: 0, b: '' }), false);
     assert.equal(ev('"n=" + 2 + true'), 'n=2true');
     assert.equal(ev('1.5e2 + .5'), 150.5);
     assert.equal(ev('a?.5:1', { a: true }), 0.5);
@@ -72,6 +74,8 @@ describe('expressions', () => {
     assert.throws(() => ev('"a" - 1'), /needs numbers/);
     assert.throws(() => ev('x => x'), /function cannot be used/);
     assert.throws(() => ev('-"a"'), /Unary "-" needs a number/);
+    assert.throws(() => ev('map([1], 5)'), /Expected a function/);
+    assert.throws(() => ev('null.x'), /Cannot read "x" of null/);
     assert.throws(() => ev('1 < "2"'), /needs two numbers or two strings/);
     assert.throws(() => ev('5 % 0'), /Division by zero/);
     assert.throws(() => ev('constructor'), /Unknown name "constructor"/);
@@ -127,6 +131,9 @@ describe('expressions', () => {
     ]);
     assert.deepEqual(freeIdentifiers('a.b + c["d"]'), ['a', 'c']);
     assert.deepEqual(freeIdentifiers('{ x, y: 1 }'), ['x']);
+    assert.deepEqual(freeIdentifiers('[a, -b, !c] == (d ? e : f)'), ['a', 'b', 'c', 'd', 'e', 'f']);
+    assert.deepEqual(freeIdentifiers(parseExpr('(x, y) => x + y + z')), ['z']);
+    assert.deepEqual(freeIdentifiers('1 + 2'), []);
   });
 
   it('describes why an expression cannot run', () => {

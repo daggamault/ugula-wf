@@ -49,7 +49,13 @@ describe('conversion nodes', () => {
     assert.deepEqual(await out('std.convert.to-code', { text: ' ' }, modifier), { code: null });
     const def = convertNodes.find((d) => d.type === 'std.convert.to-code');
     assert.equal(def?.summary?.(modifier), 'Code Set: modifier');
-    await assert.rejects(() => out('std.convert.to-code', {}, { kind: 'zip-code' }));
+    await assert.rejects(
+      () => out('std.convert.to-code', {}, { kind: 'zip-code' }),
+      /Invalid format/
+    );
+    assert.deepEqual(await out('std.convert.to-code', {}, modifier), { code: null });
+    const { signature } = await run('std.convert.to-code', {}, modifier);
+    assert.deepEqual(signature.outputs[0]?.type, { code: 'modifier' });
   });
 });
 

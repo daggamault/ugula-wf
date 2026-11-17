@@ -60,6 +60,42 @@ describe('variable nodes', () => {
   });
 });
 
+describe('variable use', () => {
+  it('declares the variable each node reads or writes', () => {
+    for (const node of [getVarNode, setVarNode, appendVarNode, incrementVarNode]) {
+      assert.deepEqual(node.variables?.({ name: 'total' }), ['total']);
+    }
+  });
+
+  it('types set pins from the variable and remembers an empty value', async () => {
+    const vars: Record<string, Json> = { count: 1 };
+    const set = await invokeNode(setVarNode, { graph, vars, config: { name: 'count' } });
+    assert.deepEqual(
+      [set.signature.inputs[0]?.type, set.signature.outputs[0]?.type],
+      ['number', 'number']
+    );
+    assert.deepEqual([set.outputs, vars.count], [{ value: null }, null]);
+  });
+
+  it('takes any item for a variable that is not a typed list', async () => {
+    const append = await invokeNode(appendVarNode, {
+      graph,
+      vars: {},
+      config: { name: 'count' },
+      inputs: { item: { a: 1 } }
+    });
+    assert.equal(append.signature.inputs[0]?.type, 'any');
+    assert.deepEqual(append.outputs, { length: 1 });
+  });
+
+  it('rejects a variable without a name', async () => {
+    await assert.rejects(
+      () => invokeNode(getVarNode, { graph, config: { name: '' } }),
+      /Invalid length/
+    );
+  });
+});
+
 describe('variable summaries', () => {
   it('name the variable', () => {
     for (const node of [getVarNode, setVarNode, appendVarNode, incrementVarNode]) {

@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Json } from '@ugula/graph';
-import { createElement } from 'react';
+import { createElement, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createCatalog } from '../../shared/graph/catalog.ts';
 import { testNodes } from '../../shared/testing.ts';
+import { render, screen, userEvent } from '../../shared/testing-dom.ts';
 import {
   ExpressionEditor,
   FunctionReference,
@@ -61,6 +62,35 @@ describe('ExpressionEditor', () => {
     );
     assert.ok(html.includes('Given for Each Item') && html.includes('>index</li>'));
     assert.ok(html.includes('>limit</li>') && !html.includes('>amount</li>'));
+  });
+});
+
+describe('editing a formula', () => {
+  it('keeps the other settings, lists new inputs and flags a broken formula as it is typed', async () => {
+    const sent: Json[] = [];
+    const Harness = () => {
+      const [config, setConfig] = useState<Json>({ expression: 'a', label: 'Total' });
+      return createElement(ExpressionEditor, {
+        ...props(config),
+        onConfig: (next) => {
+          sent.push(next ?? null);
+          setConfig(next ?? null);
+        }
+      });
+    };
+    render(createElement(Harness));
+    const user = userEvent.setup();
+    const formula = screen.getByRole('textbox', { name: 'Formula' });
+    await user.type(formula, ' *');
+    assert.deepEqual(sent.at(-1), { expression: 'a *', label: 'Total' });
+    assert.equal(formula.getAttribute('aria-invalid'), 'true');
+    await user.type(formula, ' rate');
+    assert.deepEqual(sent.at(-1), { expression: 'a * rate', label: 'Total' });
+    assert.equal(formula.getAttribute('aria-invalid'), null);
+    assert.deepEqual(
+      screen.getAllByRole('listitem').map((li) => li.textContent),
+      ['a', 'rate']
+    );
   });
 });
 

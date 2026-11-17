@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
+import { render, screen } from '../../shared/testing-dom.ts';
 import type { PatientSummary, PatientsClient } from './client.ts';
 import { PatientDetails, PatientPage } from './patient-page.tsx';
 
@@ -49,15 +50,36 @@ describe('PatientDetails', () => {
 });
 
 describe('PatientPage', () => {
-  it('waits for the patient before rendering', () => {
-    const html = renderToStaticMarkup(
+  const show = (find: PatientsClient['find']) =>
+    render(
       createElement(PatientPage, {
-        client: { find: () => new Promise(() => undefined) } as unknown as PatientsClient,
+        client: { find } as PatientsClient,
         live: idleLive,
         patientId: 'p1',
-        claims: null
+        back: '/patients?lastName=do',
+        claims: createElement('section', { 'aria-label': 'Claims' })
       })
     );
-    assert.ok(html.includes('aria-label="Loading"'));
+
+  it('loads the patient and shows their details above their claims', async () => {
+    const asked: string[] = [];
+    show(async (id) => {
+      asked.push(id);
+      return patient;
+    });
+    assert.ok(screen.getByRole('status', { name: 'Loading' }));
+    assert.ok(await screen.findByRole('heading', { name: 'Doe, Jane' }));
+    assert.ok(screen.getByRole('region', { name: 'Claims' }));
+    assert.equal(
+      screen.getByRole('link', { name: 'Back to Patients' }).getAttribute('href'),
+      '/patients?lastName=do'
+    );
+    assert.deepEqual(asked, ['p1']);
+  });
+
+  it('says why the patient could not load', async () => {
+    show(() => Promise.reject(new Error('Patient not found')));
+    assert.ok(await screen.findByText('Patient not found'));
+    assert.ok(!screen.queryByRole('region', { name: 'Claims' }));
   });
 });

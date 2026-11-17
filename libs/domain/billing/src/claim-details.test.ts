@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  coverageKey,
   isOriginDestination,
   readClaimDetails,
   readCoverages,
@@ -44,7 +45,24 @@ describe('readClaimDetails', () => {
         documentation: readDocumentation(null)
       }
     );
-    assert.deepEqual(readClaimDetails(null).diagnoses, []);
+  });
+
+  it('reads nothing from a missing claim and only a date-shaped service date', () => {
+    const blank = { name: null, addressLine: null, city: null, state: null, postalCode: null };
+    assert.deepEqual(readClaimDetails(null), {
+      serviceDate: null,
+      pickup: blank,
+      destination: blank,
+      diagnoses: [],
+      originDestination: null,
+      documentation: readDocumentation(null)
+    });
+    assert.deepEqual(
+      ['2026-10-01', '10/01/2026', ' 2026-10-01 ', 20261001].map(
+        (serviceDate) => readClaimDetails({ serviceDate }).serviceDate
+      ),
+      ['2026-10-01', null, '2026-10-01', null]
+    );
   });
 
   it('keeps origin/destination modifiers, with X only as a destination', () => {
@@ -61,8 +79,7 @@ describe('readClaimDetails', () => {
       null,
       null
     ]);
-    assert.ok(isOriginDestination('IH'));
-    assert.ok(!isOriginDestination('rh'));
+    assert.deepEqual(['IH', 'rh', null].map(isOriginDestination), [true, false, false]);
   });
 
   it('caps diagnoses at the twelve an 837P carries', () => {
@@ -142,7 +159,34 @@ describe('readCoverages', () => {
     );
   });
 
-  it('reads nothing from a missing list', () => {
+  it('puts unknown priorities last and keeps ties in the order reported', () => {
+    assert.deepEqual(
+      readCoverages([
+        { payer: 'A', priority: 'other' },
+        { payer: 'B', priority: '2611005' },
+        { payer: 'C' },
+        { payer: 'D', priority: '2611005', groupId: ' G1 ' },
+        { payer: 'E', priority: '2611003' }
+      ]).map((c) => [c.payer, c.groupId]),
+      [
+        ['E', null],
+        ['B', null],
+        ['D', 'G1'],
+        ['A', null],
+        ['C', null]
+      ]
+    );
+  });
+
+  it('reads nothing from a missing list and skips entries that are not records', () => {
     assert.deepEqual(readCoverages(null), []);
+    assert.deepEqual(readCoverages(['Medicare', null, {}]), []);
+  });
+});
+
+describe('coverageKey', () => {
+  it('matches a payer and member ID regardless of case and spacing', () => {
+    assert.equal(coverageKey(' Medicare ', ' 1eg4 '), 'medicare|1eg4');
+    assert.equal(coverageKey('Medicare', null), 'medicare|');
   });
 });

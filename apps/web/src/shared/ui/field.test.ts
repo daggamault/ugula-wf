@@ -1,82 +1,119 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { render, screen, within } from '../testing-dom.ts';
 import {
   describedByOf,
   errorIdOf,
   Field,
   FieldGroup,
   FieldSet,
-  FormActions,
   fieldControlClasses,
   hintIdOf
 } from './field.tsx';
 
+type FieldProps = Parameters<typeof Field>[0];
+
+const showField = (props: Partial<FieldProps> = {}) => {
+  const { error, hint } = props;
+  render(
+    createElement(Field, {
+      id: 'npi',
+      label: 'NPI',
+      ...props,
+      children: createElement('input', {
+        id: 'npi',
+        'aria-describedby': describedByOf('npi', error, hint)
+      })
+    })
+  );
+};
+
 describe('Field', () => {
-  it('labels a control and shows errors before hints', () => {
-    const html = renderToStaticMarkup(
-      createElement(Field, { id: 'x', label: 'X', error: 'Bad', hint: 'Help', children: 'control' })
-    );
-    assert.ok(html.includes('for="x"'));
-    assert.ok(html.includes(`<p id="${errorIdOf('x')}" role="alert"`));
-    assert.ok(!html.includes('Help'));
+  it('labels its control', () => {
+    showField();
+    screen.getByRole('textbox', { name: 'NPI' });
   });
 
-  it('marks required fields and links hints', () => {
-    const html = renderToStaticMarkup(
-      createElement(Field, { id: 'x', label: 'X', hint: 'Help', isRequired: true, children: 'c' })
-    );
-    assert.ok(html.includes('>*</span>'));
-    assert.ok(html.includes(`id="${hintIdOf('x')}"`));
-    assert.equal(describedByOf('x', undefined, 'Help'), hintIdOf('x'));
-    assert.equal(describedByOf('x', 'Bad', 'Help'), errorIdOf('x'));
+  it('describes the control by its hint', () => {
+    showField({ hint: '10 digits' });
+    const input = screen.getByRole('textbox', { name: 'NPI', description: '10 digits' });
+    assert.equal(input.getAttribute('aria-describedby'), hintIdOf('npi'));
+  });
+
+  it('announces an error in place of the hint and describes the control by it', () => {
+    showField({ error: 'Must be 10 digits', hint: '10 digits' });
+    assert.equal(screen.getByRole('alert').textContent, 'Must be 10 digits');
+    assert.equal(screen.getByRole('alert').id, errorIdOf('npi'));
+    screen.getByRole('textbox', { name: 'NPI', description: 'Must be 10 digits' });
+    assert.ok(!screen.queryByText('10 digits'));
+  });
+
+  it('marks required fields with a decorative asterisk kept out of the name', () => {
+    showField({ isRequired: true });
+    screen.getByRole('textbox', { name: 'NPI' });
+    const star = screen.getByText('*');
+    assert.equal(star.getAttribute('aria-hidden'), 'true');
+  });
+
+  it('hides the label visually while still naming the control', () => {
+    showField({ isLabelHidden: true });
+    screen.getByRole('textbox', { name: 'NPI' });
+    assert.equal(screen.getByText('NPI').classList.contains('sr-only'), true);
+  });
+
+  it('spans one, two or four grid columns on wider containers', () => {
+    const spans = ([1, 2, 4] as const).map((span) => {
+      const { container, unmount } = render(
+        createElement(Field, { id: 'x', label: 'X', span, children: null })
+      );
+      const classes = [...(container.firstElementChild?.classList ?? [])];
+      unmount();
+      return classes.filter((c) => c.includes('col-span'));
+    });
+    assert.deepEqual(spans, [[], ['@lg:col-span-2'], ['@lg:col-span-2', '@3xl:col-span-4']]);
+  });
+});
+
+describe('describedByOf', () => {
+  it('points at the error first, then the hint, then nothing', () => {
+    assert.equal(describedByOf('x', 'Bad', 'Help'), 'x-error');
+    assert.equal(describedByOf('x', undefined, 'Help'), 'x-hint');
     assert.equal(describedByOf('x'), undefined);
   });
+});
 
-  it('spans grid columns on wider containers', () => {
-    const html = (span: 1 | 2 | 4) =>
-      renderToStaticMarkup(createElement(Field, { id: 'x', label: 'X', span, children: 'c' }));
-    assert.ok(!html(1).includes('col-span'));
-    assert.ok(html(2).includes('@lg:col-span-2') && !html(2).includes('@3xl:col-span-4'));
-    assert.ok(html(4).includes('@3xl:col-span-4'));
-  });
-
-  it('gives controls a focus ring, hover surface and disabled state', () => {
-    assert.ok(fieldControlClasses.includes('focus-visible:outline-primary'));
-    assert.ok(fieldControlClasses.includes('hover:bg-surface-hover'));
-    assert.ok(fieldControlClasses.includes('aria-invalid:border-danger'));
-    assert.ok(fieldControlClasses.includes('disabled:cursor-not-allowed'));
+describe('fieldControlClasses', () => {
+  it('rings focus, borders invalid controls in danger and dims disabled ones', () => {
+    const classes = fieldControlClasses.split(' ');
+    for (const c of [
+      'focus-visible:outline-primary',
+      'aria-invalid:border-danger',
+      'disabled:cursor-not-allowed',
+      'disabled:opacity-50'
+    ]) {
+      assert.equal(classes.includes(c), true, c);
+    }
   });
 });
 
 describe('FieldGroup', () => {
-  it('labels a group of fields by its section title', () => {
-    const html = renderToStaticMarkup(
-      createElement(FieldGroup, { title: 'Patient', children: 'fields' })
-    );
-    assert.match(
-      html,
-      /<section aria-labelledby="([^"]+)".*<h3 id="\1" class="text-base font-bold">/
-    );
-    assert.ok(html.includes('>Patient</h3>'));
-  });
-});
-
-describe('FormActions', () => {
-  it('stacks full-width buttons on phones and right-aligns them from small screens up', () => {
-    const html = renderToStaticMarkup(createElement(FormActions, null, 'Save'));
-    assert.ok(html.includes('flex-col-reverse') && html.includes('sm:justify-end'));
-    assert.ok(html.includes('gap-2'));
+  it('is a region named by its section heading', () => {
+    render(createElement(FieldGroup, { title: 'Patient', children: 'fields' }));
+    const group = screen.getByRole('region', { name: 'Patient' });
+    within(group).getByRole('heading', { level: 3, name: 'Patient' });
   });
 });
 
 describe('FieldSet', () => {
-  it('names nested fields with a legend and indents them', () => {
-    const html = renderToStaticMarkup(
-      createElement(FieldSet, { label: 'Address', children: 'fields' })
+  it('groups nested fields under a legend', () => {
+    render(
+      createElement(FieldSet, {
+        label: 'Address',
+        children: createElement('input', { 'aria-label': 'Street' })
+      })
     );
-    assert.ok(html.startsWith('<fieldset') && html.includes('<legend'));
-    assert.ok(html.includes('>Address</legend>') && html.includes('border-l-2 pl-4'));
+    const group = screen.getByRole('group', { name: 'Address' });
+    within(group).getByRole('textbox', { name: 'Street' });
   });
 });

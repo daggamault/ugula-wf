@@ -69,6 +69,8 @@ describe('expression functions', () => {
     assert.equal(f('padEnd', 'a', 3), 'a  ');
     assert.equal(f('text', { a: 1 }), '{"a":1}');
     assert.equal(f('number', '42'), 42);
+    assert.equal(f('number', -1.5), -1.5);
+    assert.throws(() => f('number', true), /Cannot convert "true" to a number/);
     assert.throws(() => parseNumber(''), /Cannot convert "" to a number/);
     assert.throws(() => parseNumber('1e400'), /Cannot convert/);
     assert.throws(() => f('len', 3), /len: expected string, list or object, got number/);

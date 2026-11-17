@@ -64,82 +64,140 @@ const applied: AppliedPayerFile = {
 };
 
 describe('payerFileNodes', () => {
-  it('reads an 835 into claim payments for the remittance rules, without applying it', async () => {
-    const { node, calls } = nodesWith({ status: 'read', kind: '835', lines: [line] }, applied);
-    const out = await invokeNode(node('read-payer-file'), { inputs: { file, fileName: 'a.835' } });
-    assert.deepEqual([out.pin, out.outputs.kind, out.outputs.lines], ['read', '835', [line]]);
-    assert.deepEqual(calls, [['read', 'run', { document: file, fileName: 'a.835' }]]);
+  describe('read-payer-file', () => {
+    it('reads an 835 into claim payments for the remittance rules, without applying it', async () => {
+      const { node, calls } = nodesWith({ status: 'read', kind: '835', lines: [line] }, applied);
+      const out = await invokeNode(node('read-payer-file'), {
+        inputs: { file, fileName: 'a.835' }
+      });
+      assert.equal(out.pin, 'read');
+      assert.deepEqual(out.outputs, { kind: '835', lines: [line], fileId: null, reason: null });
+      assert.deepEqual(calls, [['read', 'run', { document: file, fileName: 'a.835' }]]);
+    });
+
+    it('continues through a file it already applied', async () => {
+      const out = await invokeNode(
+        nodesWith({ status: 'duplicate', fileId: 'f0' }, applied).node('read-payer-file'),
+        { inputs: { file, fileName: 'a.835' } }
+      );
+      assert.equal(out.pin, 'duplicate');
+      assert.deepEqual(out.outputs, { kind: null, lines: [], fileId: 'f0', reason: null });
+    });
+
+    it('continues through an unreadable file, saying why', async () => {
+      const out = await invokeNode(
+        nodesWith({ status: 'unreadable', reason: 'Not X12' }, applied).node('read-payer-file'),
+        { inputs: { file, fileName: 'a.txt' } }
+      );
+      assert.equal(out.pin, 'unreadable');
+      assert.deepEqual(out.outputs, { kind: null, lines: [], fileId: null, reason: 'Not X12' });
+    });
+
+    it('refuses a file without a storage key before reading anything', async () => {
+      const { node, calls } = nodesWith({ status: 'duplicate', fileId: 'f0' }, applied);
+      await assert.rejects(
+        () =>
+          invokeNode(node('read-payer-file'), {
+            inputs: { file: { bucket: 'ugula' }, fileName: 'a.835' }
+          }),
+        { message: 'No payer file to apply' }
+      );
+      assert.deepEqual(calls, []);
+    });
   });
 
-  it('continues through duplicate and unreadable files instead of faulting', async () => {
-    const dup = await invokeNode(
-      nodesWith({ status: 'duplicate', fileId: 'f0' }, applied).node('read-payer-file'),
-      { inputs: { file, fileName: 'a.835' } }
-    );
-    assert.deepEqual([dup.pin, dup.outputs.fileId, dup.outputs.lines], ['duplicate', 'f0', []]);
-    const bad = await invokeNode(
-      nodesWith({ status: 'unreadable', reason: 'Not X12' }, applied).node('read-payer-file'),
-      { inputs: { file, fileName: 'a.txt' } }
-    );
-    assert.deepEqual([bad.pin, bad.outputs.reason], ['unreadable', 'Not X12']);
-  });
+  describe('apply-payer-file', () => {
+    it('applies the file with the routed postings and lists the lines a biller has to look at', async () => {
+      const { node, calls } = nodesWith({ status: 'read', kind: '835', lines: [line] }, applied);
+      const posting = {
+        position: 1,
+        route: 'reconcile',
+        message: '',
+        adjustedCents: 200,
+        crossover: true,
+        reasons: []
+      };
+      const out = await invokeNode(node('apply-payer-file'), {
+        inputs: { file, fileName: 'a.835', postings: [posting] }
+      });
+      assert.equal(out.pin, 'applied');
+      assert.deepEqual(out.outputs, {
+        fileId: 'f1',
+        kind: '835',
+        reviews: [review],
+        envelopeRejection: null
+      });
+      assert.deepEqual(calls, [
+        [
+          'apply',
+          'run',
+          'key',
+          {
+            document: file,
+            fileName: 'a.835',
+            postings: [
+              { position: 1, route: 'reconcile', message: '', adjustedCents: 200, crossover: true }
+            ]
+          }
+        ]
+      ]);
+    });
 
-  it('applies the file with the routed postings and lists the lines a biller has to look at', async () => {
-    const { node, calls } = nodesWith({ status: 'read', kind: '835', lines: [line] }, applied);
-    const posting = {
-      position: 1,
-      route: 'reconcile',
-      message: '',
-      adjustedCents: 200,
-      crossover: true,
-      reasons: []
-    };
-    const out = await invokeNode(node('apply-payer-file'), {
-      inputs: { file, fileName: 'a.835', postings: [posting] }
+    it('applies a file without postings and gives why a TA1 rejected it', async () => {
+      const { node, calls } = nodesWith(
+        { status: 'read', kind: 'TA1', lines: [] },
+        { ...applied, kind: 'TA1', reviews: [], envelopeRejection: 'Invalid interchange sender ID' }
+      );
+      const out = await invokeNode(node('apply-payer-file'), {
+        inputs: { file, fileName: 'a.ta1' }
+      });
+      assert.equal(out.pin, 'applied');
+      assert.deepEqual(out.outputs, {
+        fileId: 'f1',
+        kind: 'TA1',
+        reviews: [],
+        envelopeRejection: 'Invalid interchange sender ID'
+      });
+      assert.deepEqual(calls, [
+        ['apply', 'run', 'key', { document: file, fileName: 'a.ta1', postings: [] }]
+      ]);
     });
-    assert.equal(out.pin, 'applied');
-    assert.deepEqual(
-      [out.outputs.fileId, out.outputs.kind, out.outputs.reviews],
-      ['f1', '835', [review]]
-    );
-    assert.deepEqual((calls[0] as unknown[])[3], {
-      document: file,
-      fileName: 'a.835',
-      postings: [
-        { position: 1, route: 'reconcile', message: '', adjustedCents: 200, crossover: true }
-      ]
-    });
-    const raced = nodesWith(
-      { status: 'read', kind: '835', lines: [] },
-      { status: 'duplicate', fileId: 'f0' }
-    );
-    const dup = await invokeNode(raced.node('apply-payer-file'), {
-      inputs: { file, fileName: 'a.835' }
-    });
-    assert.deepEqual([dup.pin, dup.outputs.fileId], ['duplicate', 'f0']);
-    const garbled = nodesWith(
-      { status: 'read', kind: '835', lines: [] },
-      { status: 'unreadable', reason: 'Not an X12 file' }
-    );
-    await assert.rejects(
-      () => invokeNode(garbled.node('apply-payer-file'), { inputs: { file, fileName: 'a.835' } }),
-      /^Error: Not an X12 file$/
-    );
-  });
 
-  it('refuses a file without a storage key or a name before reading anything', async () => {
-    const { node, calls } = nodesWith({ status: 'duplicate', fileId: 'f0' }, applied);
-    await assert.rejects(
-      () =>
-        invokeNode(node('read-payer-file'), {
-          inputs: { file: { bucket: 'ugula' }, fileName: 'a.835' }
-        }),
-      /No payer file to apply/
-    );
-    await assert.rejects(
-      () => invokeNode(node('apply-payer-file'), { inputs: { file, fileName: ' ' } }),
-      /No payer file name/
-    );
-    assert.deepEqual(calls, []);
+    it('continues through a file another run applied first', async () => {
+      const raced = nodesWith(
+        { status: 'read', kind: '835', lines: [] },
+        { status: 'duplicate', fileId: 'f0' }
+      );
+      const out = await invokeNode(raced.node('apply-payer-file'), {
+        inputs: { file, fileName: 'a.835' }
+      });
+      assert.equal(out.pin, 'duplicate');
+      assert.deepEqual(out.outputs, {
+        fileId: 'f0',
+        kind: null,
+        reviews: [],
+        envelopeRejection: null
+      });
+    });
+
+    it('faults on a file it cannot read, since reading it first should have caught that', async () => {
+      const garbled = nodesWith(
+        { status: 'read', kind: '835', lines: [] },
+        { status: 'unreadable', reason: 'Not an X12 file' }
+      );
+      await assert.rejects(
+        () => invokeNode(garbled.node('apply-payer-file'), { inputs: { file, fileName: 'a.835' } }),
+        { message: 'Not an X12 file' }
+      );
+    });
+
+    it('refuses a file without a name before applying anything', async () => {
+      const { node, calls } = nodesWith({ status: 'duplicate', fileId: 'f0' }, applied);
+      await assert.rejects(
+        () => invokeNode(node('apply-payer-file'), { inputs: { file, fileName: ' ' } }),
+        { message: 'No payer file name' }
+      );
+      assert.deepEqual(calls, []);
+    });
   });
 });

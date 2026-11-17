@@ -24,8 +24,13 @@ const request = withSession(createPatientRoutes(service));
 
 describe('patient routes', () => {
   it('search and open patients in the session agency', async () => {
-    assert.equal((await request('/?lastName=doe&birthDate=1980-01-02')).status, 200);
-    assert.equal((await request(`/${ID}`)).status, 200);
+    const list = await request('/?lastName=doe&birthDate=1980-01-02');
+    assert.deepEqual(
+      [list.status, await list.json()],
+      [200, { items: [], total: 0, page: 1, pageSize: 25 }]
+    );
+    const found = await request(`/${ID}`);
+    assert.deepEqual([found.status, await found.json()], [200, { patient: { id: ID } }]);
     assert.equal((await request('/?birthDate=yesterday')).status, 400);
     assert.equal((await request('/')).status, 400);
     assert.equal((await request('/?lastName=%20%20')).status, 400);

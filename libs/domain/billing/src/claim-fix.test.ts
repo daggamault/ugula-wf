@@ -5,9 +5,30 @@ import { completeCheck } from './testing.ts';
 
 const check = completeCheck();
 
+const unchanged = {
+  serviceDate: null,
+  classification: null,
+  level: null,
+  emergency: null,
+  loadedMiles: null,
+  deceased: null,
+  nonCoveredMiles: null,
+  diagnoses: null,
+  pickup: null,
+  destination: null,
+  originDestination: null,
+  documentation: null,
+  patientAddress: null,
+  coverage: null,
+  newCoverage: null,
+  lines: null,
+  note: null
+};
+
 describe('readClaimPatch', () => {
   it('keeps what the biller left empty and merges partial addresses', () => {
-    assert.ok(Object.values(readClaimPatch({}, check)).every((v) => v === null));
+    assert.deepEqual(readClaimPatch({}, check), unchanged);
+    assert.deepEqual(readClaimPatch('nonsense', check), unchanged);
     const patch = readClaimPatch(
       {
         serviceDate: '2025-12-29',
@@ -37,7 +58,15 @@ describe('readClaimPatch', () => {
       insuredLastName: null,
       remove: false
     });
-    assert.ok(Object.values(chargeChanges(patch)).some(Boolean));
+    assert.deepEqual(chargeChanges(patch), {
+      classification: false,
+      level: false,
+      emergency: false,
+      loadedMiles: true,
+      deceased: false,
+      nonCoveredMiles: false,
+      payers: true
+    });
     assert.deepEqual(chargeChanges({ ...patch, loadedMiles: null, coverage: null }), {
       classification: false,
       level: false,
@@ -60,6 +89,7 @@ describe('readClaimPatch', () => {
         mspAccident: 'workersComp',
         mspEsrd: false,
         pcsType: 'weekly',
+        pcsOnFile: null,
         roundTrips: 4,
         signature: 'signed',
         priorAuthorization: ' UTN-9 ',
@@ -77,24 +107,52 @@ describe('readClaimPatch', () => {
       nonCoveredMiles: true,
       payers: false
     });
-    assert.equal(patch.documentation?.signature, undefined);
-    assert.ok(!Object.hasOwn(patch.documentation ?? {}, 'pcsOnFile'));
-    assert.deepEqual(
-      [
-        patch.documentation?.patientCount,
-        patch.documentation?.abnOnFile,
-        patch.documentation?.abnSignedOn,
-        patch.documentation?.mspAccident,
-        patch.documentation?.mspEsrd,
-        patch.documentation?.pcsType,
-        patch.documentation?.roundTrips,
-        patch.documentation?.priorAuthorization,
-        patch.documentation?.facilityStay
-      ],
-      [2, true, '2025-12-30', 'workersComp', false, undefined, 4, 'UTN-9', 'snf']
-    );
-    assert.equal(readClaimPatch({ deceased: false, nonCoveredMiles: 0 }, check).deceased, null);
+    assert.deepEqual(patch.documentation, {
+      patientCount: 2,
+      abnOnFile: true,
+      abnSignedOn: '2025-12-30',
+      mspEsrd: false,
+      mspAccident: 'workersComp',
+      priorAuthorization: 'UTN-9',
+      roundTrips: 4,
+      facilityStay: 'snf'
+    });
+  });
+
+  it('patches the death and non-covered miles only when they differ from the claim', () => {
+    assert.equal(readClaimPatch({ deceased: false }, check).deceased, null);
+    assert.equal(readClaimPatch({ deceased: false }, { ...check, deceased: true }).deceased, false);
     assert.equal(readClaimPatch({ nonCoveredMiles: 0 }, check).nonCoveredMiles, null);
+    const some = { ...check, nonCoveredMiles: 2 };
+    assert.equal(readClaimPatch({ nonCoveredMiles: 2 }, some).nonCoveredMiles, null);
+    assert.equal(readClaimPatch({ nonCoveredMiles: 0 }, some).nonCoveredMiles, 0);
+  });
+
+  it('patches the charge inputs a biller sets, but never classifies a claim as not billable', () => {
+    const patch = readClaimPatch(
+      { classification: 'scheduled', level: 'BLS', emergency: false, note: ' why ' },
+      check
+    );
+    assert.deepEqual(
+      [patch.classification, patch.level, patch.emergency, patch.note],
+      ['scheduled', 'BLS', false, 'why']
+    );
+    assert.deepEqual(chargeChanges(patch), {
+      classification: true,
+      level: true,
+      emergency: true,
+      loadedMiles: false,
+      deceased: false,
+      nonCoveredMiles: false,
+      payers: false
+    });
+  });
+
+  it('keeps the pickup name when the pickup address changes', () => {
+    assert.deepEqual(readClaimPatch({ pickupAddressLine: '1 Main St' }, check).pickup, {
+      ...check.details.pickup,
+      addressLine: '1 Main St'
+    });
   });
 
   it('ignores coverages that are not on the claim and invalid modifiers', () => {
@@ -118,6 +176,8 @@ describe('readClaimPatch', () => {
       'SH'
     );
     assert.equal(readClaimPatch({ originCode: 'S' }, none).originDestination, null);
+    assert.equal(readClaimPatch({}, none).originDestination, null);
+    assert.equal(readClaimPatch({ destinationCode: 'H' }, none).originDestination, null);
     assert.equal(readClaimPatch({ destinationCode: 'N' }, check).originDestination, 'RN');
     assert.equal(
       readClaimPatch({ originCode: 'R', destinationCode: 'H' }, check).originDestination,
@@ -192,6 +252,24 @@ describe('readClaimPatch', () => {
     });
     assert.equal(chargeChanges(added).payers, true);
     assert.equal(readClaimPatch({ payerId: 'p-Medicare' }, check).newCoverage, null);
+    assert.equal(
+      readClaimPatch({ payerId: 'p-Medicare', coverageId: 'c1' }, { ...check, payers: [] })
+        .newCoverage,
+      null
+    );
+    assert.deepEqual(
+      readClaimPatch(
+        { payerId: 'p-Blue', relationship: '01', insuredFirstName: 'Pat', insuredLastName: 'Doe' },
+        { ...check, payers: [] }
+      ).newCoverage,
+      {
+        payerId: 'p-Blue',
+        memberId: null,
+        relationship: '01',
+        insuredFirstName: 'Pat',
+        insuredLastName: 'Doe'
+      }
+    );
   });
 
   it('renames the destination without losing the new name to the old one', () => {

@@ -224,14 +224,24 @@ describe('createSftpBatch', () => {
   it('refuses a server whose host key is not the pinned one, naming the key it saw', async () => {
     const pinned = `SHA256:${'A'.repeat(43)}`;
     const clearinghouse = createSftpBatch({ ...config(), hostKey: pinned });
-    await assert.rejects(
-      () => clearinghouse.session((s) => s.list()),
-      (err: Error) => err.message.includes(HOST_KEY) && err.message.includes(pinned)
-    );
+    await assert.rejects(() => clearinghouse.session((s) => s.list()), {
+      message: `The SFTP server 127.0.0.1 presented host key ${HOST_KEY}, not the pinned ${pinned}`
+    });
   });
 
   it('fails to connect with the wrong password', async () => {
     const clearinghouse = createSftpBatch({ ...config(), password: 'wrong' });
-    await assert.rejects(() => clearinghouse.session((s) => s.list()));
+    await assert.rejects(() => clearinghouse.session((s) => s.list()), {
+      message: 'getConnection: All configured authentication methods failed'
+    });
+  });
+});
+
+describe('hostKeyFingerprint', () => {
+  it('formats the SHA-256 of a key as OpenSSH does, without padding', () => {
+    assert.equal(
+      hostKeyFingerprint(Buffer.from('abc')),
+      'SHA256:ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0'
+    );
   });
 });

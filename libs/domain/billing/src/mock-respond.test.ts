@@ -96,6 +96,30 @@ describe('respond', () => {
     assert.deepEqual(remit?.claims[0]?.adjustments, [{ group: 'CO', reason: '45', cents: 2_469 }]);
   });
 
+  it('holds back the 835 for claims the payer does not remit yet', () => {
+    const held = respond(file837, now, { remits: (c) => c.claimNumber === 'c-3' });
+    assert.deepEqual(held.accepted, ['c-1', 'c-3']);
+    assert.deepEqual(
+      read835(held.remit835 ?? '').map((m) => [m.payerId, m.claims.map((c) => c.claimNumber)]),
+      [['AETNA', ['c-3']]]
+    );
+    assert.equal(respond(file837, now, { remits: () => false }).remit835, null);
+  });
+
+  it('pays the claim total without lines when its lines do not add up to it', () => {
+    const isa = `ISA*00*${' '.repeat(10)}*00*${' '.repeat(10)}*ZZ*${'SUB01'.padEnd(15)}*ZZ*${'RCV01'.padEnd(15)}*261103*1200*^*00501*000000009*0*P*:~`;
+    const text = `${isa}GS*HC*SUB01*RCV01*20261103*1200*9*X*005010X222A1~ST*837*0009~HL*1**22*0~NM1*IL*1*DOE*JANE****MI*M1~CLM*d-1*100~SV1*HC:A0427*60*UN*1~SE*5*0009~GE*1*9~IEA*1*000000009~`;
+    const odd = respond(text, now);
+    const [remit] = read835(odd.remit835 ?? '');
+    assert.deepEqual(
+      [remit?.payerId, remit?.claims[0]?.paidCents, remit?.claims[0]?.services],
+      ['DEMOMCR', 8_000, []]
+    );
+    assert.deepEqual(remit?.claims[0]?.adjustments, [{ group: 'CO', reason: '45', cents: 2_000 }]);
+    assert.equal(isaOf(odd.ack999)[15], 'P');
+    assert.equal(read277(odd.ack277 ?? '')[0]?.status, 'accepted');
+  });
+
   it('sends no 835 when every claim is rejected', () => {
     const all = respond(build837(sampleSubmitter, [sampleRejectedX837], sampleEnvelope), now);
     assert.equal(all.remit835, null);

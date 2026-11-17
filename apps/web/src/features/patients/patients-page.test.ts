@@ -3,7 +3,8 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
-import type { PatientSummary, PatientsClient } from './client.ts';
+import { render, screen, userEvent, within } from '../../shared/testing-dom.ts';
+import type { PatientSearch, PatientSummary, PatientsClient } from './client.ts';
 import { PatientsPage, PatientsTable, placeOf } from './patients-page.tsx';
 
 const patient: PatientSummary = {
@@ -62,51 +63,79 @@ describe('PatientsTable search highlights', () => {
 });
 
 describe('PatientsPage', () => {
-  it('searches by last name, first name and birth date', () => {
-    const html = renderToStaticMarkup(
-      createElement(PatientsPage, {
-        live: idleLive,
-        client: { list: () => new Promise(() => undefined) } as unknown as PatientsClient,
-        search: { lastName: '', firstName: '', birthDate: '', number: '' }
-      })
-    );
-    assert.ok(
-      html.includes(
-        '<search aria-label="Search patients" class="border-border bg-surface rounded-xl border p-5">'
-      )
-    );
-    assert.ok(html.includes('Names match from the start.'));
-    assert.ok(html.includes('Last Name') && html.includes('First Name'));
-    assert.ok(html.includes('type="date"'));
-    assert.ok(html.includes('Patient Number') && html.includes('placeholder="20261105-0001"'));
+  const none = { lastName: '', firstName: '', birthDate: '', number: '' };
+
+  const fakeClient = (over: Partial<PatientsClient> = {}) => {
+    const calls: [PatientSearch, string][] = [];
+    const client = {
+      list: async (search: PatientSearch, page: string) => {
+        calls.push([search, page]);
+        return { items: [patient], total: 1, page: 1, pageSize: 25 };
+      },
+      ...over
+    } as PatientsClient;
+    return { client, calls };
+  };
+
+  const show = (client: PatientsClient, search: PatientSearch = none) =>
+    render(createElement(PatientsPage, { client, live: idleLive, search }));
+
+  it('asks for a name, birth date or number before listing anyone', () => {
+    const { client, calls } = fakeClient();
+    show(client, { ...none, lastName: ' ' });
+    assert.ok(screen.getByText(/Enter a last name, first name, birth date or patient number/));
+    assert.ok(!screen.queryByRole('table'));
+    assert.equal((screen.getByLabelText('Birth Date') as HTMLInputElement).type, 'date');
+    assert.deepEqual(calls, []);
   });
 
-  it('lists no patients until something is searched for', () => {
-    const client = { list: () => new Promise(() => undefined) } as unknown as PatientsClient;
-    const idle = renderToStaticMarkup(
-      createElement(PatientsPage, {
-        live: idleLive,
-        client,
-        search: { lastName: ' ', firstName: '', birthDate: '', number: '' }
-      })
+  it('puts the typed search in the address bar', async () => {
+    const { client } = fakeClient();
+    show(client);
+    const user = userEvent.setup();
+    await user.type(screen.getByRole('searchbox', { name: 'Last Name' }), ' Doe ');
+    await user.type(screen.getByRole('searchbox', { name: 'Patient Number' }), '20260915-0003');
+    await user.click(screen.getByRole('button', { name: 'Search' }));
+    assert.equal(window.location.pathname, '/patients');
+    assert.equal(
+      new URLSearchParams(window.location.search).toString(),
+      'lastName=Doe&number=20260915-0003'
     );
-    assert.ok(!idle.includes('aria-label="Patients"') && !idle.includes('No Patients'));
-    assert.ok(!idle.includes('role="status"'));
-    const searching = renderToStaticMarkup(
-      createElement(PatientsPage, {
-        live: idleLive,
-        client,
-        search: { lastName: 'kli', firstName: '', birthDate: '', number: '' }
-      })
+  });
+
+  it('lists the patients the search finds and opens them back to the search', async () => {
+    window.history.replaceState(null, '', '/patients?lastName=do');
+    const { client, calls } = fakeClient();
+    const search = { ...none, lastName: 'do' };
+    show(client, search);
+    const table = await screen.findByRole('table', { name: 'Patients' });
+    assert.equal(
+      within(table).getByRole('link', { name: 'Open patient Doe, Jane' }).getAttribute('href'),
+      '/patients/p1?back=%2Fpatients%3FlastName%3Ddo'
     );
-    assert.ok(searching.includes('role="status"'));
-    const byNumber = renderToStaticMarkup(
-      createElement(PatientsPage, {
-        live: idleLive,
-        client,
-        search: { lastName: '', firstName: '', birthDate: '', number: '20260915-0003' }
-      })
-    );
-    assert.ok(byNumber.includes('role="status"'));
+    assert.deepEqual(calls, [[search, 'page=1&pageSize=25&sort=name&dir=asc']]);
+  });
+
+  it('clears the search', async () => {
+    window.history.replaceState(null, '', '/patients?lastName=do&page=2');
+    const { client } = fakeClient();
+    show(client, { ...none, lastName: 'do' });
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Clear' }));
+    assert.equal(`${window.location.pathname}${window.location.search}`, '/patients');
+  });
+
+  it('explains how names match when nobody is found', async () => {
+    const { client } = fakeClient({
+      list: async () => ({ items: [], total: 0, page: 1, pageSize: 25 })
+    });
+    show(client, { ...none, firstName: 'Zed' });
+    assert.ok(await screen.findByText('No Matching Patients'));
+    assert.ok(screen.getByText(/“Sm” finds Smith/));
+  });
+
+  it('says why the search failed', async () => {
+    const { client } = fakeClient({ list: () => Promise.reject(new Error('Server unavailable')) });
+    show(client, { ...none, number: '20260915-0003' });
+    assert.equal((await screen.findByRole('alert')).textContent, 'Server unavailable');
   });
 });

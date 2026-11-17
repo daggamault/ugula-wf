@@ -1,30 +1,40 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { Hono } from 'hono';
-import { fail, ok, respond } from './result.ts';
+import { type Failure, fail, ok, type Result, respond } from './result.ts';
 
-describe('result', () => {
-  it('maps values and failures to HTTP responses', async () => {
-    const app = new Hono()
-      .get('/ok', (c) => respond(c, ok({ id: 1 }), 201))
-      .get('/missing', (c) => respond(c, fail('not_found', 'Nope')))
-      .get('/invalid', (c) => respond(c, fail('invalid', 'Bad', { issues: ['x'] })))
-      .get('/busy', (c) => respond(c, fail('rate_limited', 'Slow down')))
-      .get('/taken', (c) => respond(c, fail('conflict', 'Taken')))
-      .get('/denied', (c) => respond(c, fail('forbidden', 'No')))
-      .get('/anonymous', (c) => respond(c, fail('unauthorized', 'Who')));
-    const created = await app.request('/ok');
-    assert.equal(created.status, 201);
-    assert.deepEqual(await created.json(), { id: 1 });
-    const missing = await app.request('/missing');
-    assert.equal(missing.status, 404);
-    assert.deepEqual(await missing.json(), { error: 'Nope' });
-    const invalid = await app.request('/invalid');
-    assert.equal(invalid.status, 422);
-    assert.deepEqual(await invalid.json(), { error: 'Bad', issues: ['x'] });
-    assert.equal((await app.request('/busy')).status, 429);
-    assert.equal((await app.request('/taken')).status, 409);
-    assert.equal((await app.request('/denied')).status, 403);
-    assert.equal((await app.request('/anonymous')).status, 401);
+const reply = async (result: Result<unknown>, status?: 201) => {
+  const res = await new Hono().get('/', (c) => respond(c, result, status)).request('/');
+  return [res.status, await res.json()];
+};
+
+describe('respond', () => {
+  it('sends a value as JSON with 200 by default', async () => {
+    assert.deepEqual(await reply(ok({ id: 1 })), [200, { id: 1 }]);
+  });
+
+  it('sends a value with the status given', async () => {
+    assert.deepEqual(await reply(ok({ id: 1 }), 201), [201, { id: 1 }]);
+  });
+
+  it('sends a failure message with the status of its code, ignoring the success status', async () => {
+    const statuses: [Failure['code'], number][] = [
+      ['invalid', 422],
+      ['unauthorized', 401],
+      ['forbidden', 403],
+      ['not_found', 404],
+      ['conflict', 409],
+      ['rate_limited', 429]
+    ];
+    for (const [code, status] of statuses) {
+      assert.deepEqual(await reply(fail(code, 'Nope'), 201), [status, { error: 'Nope' }], code);
+    }
+  });
+
+  it('spreads failure details next to the message', async () => {
+    assert.deepEqual(await reply(fail('invalid', 'Bad', { issues: ['x'] })), [
+      422,
+      { error: 'Bad', issues: ['x'] }
+    ]);
   });
 });

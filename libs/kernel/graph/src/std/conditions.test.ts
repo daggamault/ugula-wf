@@ -39,7 +39,13 @@ describe('condition nodes', () => {
       { pickupState: 'NH', emergency: false },
       { ...CONFIG, match: 'any' }
     );
-    assert.equal(any.outputs.result, true);
+    assert.deepEqual(any.outputs, { result: true, reasons: ['Pickup State is NH'] });
+    const none = await run(
+      'std.logic.condition',
+      { pickupState: 'ME', emergency: false },
+      { ...CONFIG, match: 'any' }
+    );
+    assert.deepEqual(none.outputs, { result: false, reasons: [] });
   });
 
   it('treats no rules as all holding, or none for any', async () => {
@@ -116,15 +122,23 @@ describe('condition nodes', () => {
       () => run('std.logic.condition', {}, { rules: [{ field: 'x', op: 'present' }] }),
       /Each rule must test one of the inputs/
     );
-    const inputs = [{ name: 'a', type: 'number' }];
     await assert.rejects(
       () =>
-        run('std.logic.condition', {}, { inputs, rules: [{ field: 'a', op: 'gt', input: 'b' }] }),
+        run(
+          'std.logic.condition',
+          {},
+          { inputs: [{ name: 'a', type: 'number' }], rules: [{ field: 'a', op: 'gt', input: 'b' }] }
+        ),
       /Each rule must test one of the inputs/
     );
+    const inputs = [
+      { name: 'a', type: 'number' },
+      { name: 'b', type: 'number' }
+    ];
     for (const rule of [
-      { field: 'a', op: 'gt', input: 'a', value: 1 },
-      { field: 'a', op: 'empty', input: 'a' },
+      { field: 'a', op: 'gt', input: 'b', value: 1 },
+      { field: 'a', op: 'empty', input: 'b' },
+      { field: 'a', op: 'present', input: 'b' },
       { field: 'a', op: 'gt', input: 'a' }
     ]) {
       await assert.rejects(

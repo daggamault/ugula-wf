@@ -6,6 +6,7 @@ import {
   findTable,
   insertTable,
   insertTableDraft,
+  listEffectiveTables,
   listTableVersions,
   publishTableVersion,
   searchTables,
@@ -71,6 +72,39 @@ describe('table queries', () => {
     const [one, versions] = queries;
     assert.ok(one?.parameters.includes('t1'));
     assert.ok(versions?.sql.includes('"b"."table_id" as "base_table_id"'));
+    await db.destroy();
+  });
+
+  it('lists effective tables with the fields of their kind and defaults', async () => {
+    const row = { name: 'T', scope: 'system', inputs: null, outputs: null, type: null };
+    const { db, queries } = createRecordingDb(() => [
+      { ...row, id: 'd1', key: 'a.decide', kind: 'decide' },
+      {
+        ...row,
+        id: 'd2',
+        key: 'b.decide',
+        kind: 'decide',
+        inputs: [{ name: 'x' }],
+        outputs: [{ name: 'y' }]
+      },
+      { ...row, id: 'l1', key: 'c.lookup', kind: 'lookup' },
+      { ...row, id: 'l2', key: 'd.lookup', kind: 'lookup', type: 'number' }
+    ]);
+    const base = { name: 'T', scope: 'system' };
+    assert.deepEqual(await listEffectiveTables(db, S), [
+      { ...base, id: 'd1', key: 'a.decide', kind: 'decide', inputs: [], outputs: [] },
+      {
+        ...base,
+        id: 'd2',
+        key: 'b.decide',
+        kind: 'decide',
+        inputs: [{ name: 'x' }],
+        outputs: [{ name: 'y' }]
+      },
+      { ...base, id: 'l1', key: 'c.lookup', kind: 'lookup', type: 'string' },
+      { ...base, id: 'l2', key: 'd.lookup', kind: 'lookup', type: 'number' }
+    ]);
+    assert.ok(queries[0]?.parameters.includes('a-1'));
     await db.destroy();
   });
 

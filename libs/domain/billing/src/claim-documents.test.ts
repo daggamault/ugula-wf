@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { DOCUMENT_KINDS, documentContentTypeOf, isDocumentKind } from './claim-documents.ts';
+import { documentContentTypeOf, isDocumentKind } from './claim-documents.ts';
 
 describe('documents', () => {
-  it('names the kinds of claim documents and the files they are stored as', () => {
-    assert.equal(DOCUMENT_KINDS.abn, 'Advance Beneficiary Notice');
-    assert.deepEqual(['pcs', 'msp', 'xray', null].map(isDocumentKind), [true, true, false, false]);
+  it('knows the kinds of claim documents', () => {
+    assert.deepEqual(
+      ['facesheet', 'pcs', 'signature', 'abn', 'msp', 'xray', 'toString', null].map(isDocumentKind),
+      [true, true, true, true, true, false, false, false]
+    );
   });
 
   it('tells a document file type from its first bytes, whatever its name says', () => {
@@ -17,5 +19,7 @@ describe('documents', () => {
     assert.equal(of(0x4d, 0x4d, 0x00, 0x2a), 'image/tiff');
     assert.equal(documentContentTypeOf(new TextEncoder().encode('<html>')), null);
     assert.equal(of(), null);
+    assert.equal(of(0x25, 0x50, 0x44, 0x46), null);
+    assert.equal(of(0x49, 0x49, 0x00, 0x2a), null);
   });
 });

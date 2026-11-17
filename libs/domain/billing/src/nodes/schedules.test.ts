@@ -118,7 +118,20 @@ describe('scheduleNodes', () => {
     ]);
     await assert.rejects(
       () => run('issue-facility-invoices', { period: '2026-10-15' }),
-      /not the first day of a month/
+      /2026-10-15 is not the first day of a month/
     );
+  });
+
+  it('issues nothing for a month without facility trips', async () => {
+    const { calls, run } = setup();
+    const issued = await run('issue-facility-invoices', { period: '2026-09-01' });
+    assert.deepEqual(issued.outputs, { invoices: 0, claims: 0 });
+    assert.deepEqual(calls, [['today', '2026-11-01T03:00:00.000Z']]);
+  });
+
+  it('refuses to raise a task without its id', async () => {
+    const { calls, run } = setup();
+    await assert.rejects(() => run('raise-task', { taskId: ' ', priority: 3 }), /No task to raise/);
+    assert.deepEqual(calls, []);
   });
 });

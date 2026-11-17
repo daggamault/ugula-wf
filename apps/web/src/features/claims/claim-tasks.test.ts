@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { ClaimCoverage } from '../../shared/claims/claim-detail.ts';
+import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
 import { claimTaskGroups, waitForTask } from './claim-tasks.tsx';
+import type { ClaimProgress } from './client.ts';
 
-const act = () => {
+type Claim = Pick<ClaimDetail, 'status' | 'cycle_status' | 'coverages'>;
+
+const recording = () => {
   const done: string[] = [];
   return {
     done,
@@ -15,68 +18,139 @@ const act = () => {
   };
 };
 
-const payer = { id: 'c' } as ClaimCoverage;
+const payer = { id: 'c' } as Claim['coverages'][number];
+
+const open: Claim = { status: 'submitted', cycle_status: 'suspended', coverages: [payer] };
+
+const waiting: ClaimProgress = {
+  step: 'await',
+  coverage: { id: 'c', payer: 'Medicare', claimFiling: null },
+  waitMs: 1,
+  balanceCents: 1
+};
+
+const groupsOf = (claim: Claim, progress: ClaimProgress | null = waiting) =>
+  claimTaskGroups(claim, progress, recording().act);
+
+const reasons = (claim: Claim, progress?: ClaimProgress | null) =>
+  groupsOf(claim, progress).map((g) => [g.label, g.items.map((i) => [i.label, i.disabledReason])]);
+
+const TASKS = [
+  'Correct Claim Data',
+  'Change Responsible Party',
+  'Add Document',
+  'Chase Document',
+  'Log Records Request',
+  'Post Payment'
+];
 
 describe('claimTaskGroups', () => {
-  it('offers every claim task and the eligibility and restart actions on an open claim', () => {
-    const { done, act: on } = act();
-    const [tasks, actions] = claimTaskGroups(
-      { status: 'submitted', cycle_status: 'suspended', coverages: [payer] },
-      null,
-      on
-    );
+  it('offers every claim task with what it does, then eligibility and restart actions', () => {
     assert.deepEqual(
-      tasks?.items.map((i) => [i.label, i.disabledReason]),
+      groupsOf(open).map((g) => [g.label, g.items.map((i) => [i.label, i.description])]),
       [
-        ['Correct Claim Data', undefined],
-        ['Change Responsible Party', undefined],
-        ['Add Document', undefined],
-        ['Chase Document', undefined],
-        ['Log Records Request', undefined],
-        ['Post Payment', undefined]
+        [
+          'Tasks',
+          [
+            [
+              'Correct Claim Data',
+              'Change what goes on the 837P; charges are priced again when needed.'
+            ],
+            [
+              'Change Responsible Party',
+              'Add, reorder or remove the payers, or bill a facility for the trip instead.'
+            ],
+            ['Add Document', 'Upload a facesheet, certification, signature form, ABN or MSP form.'],
+            ['Chase Document', 'Get a missing document by a due date.'],
+            ['Log Records Request', 'A payer asked for records; send them by the due date.'],
+            ['Post Payment', 'A payment or refund that came by mail, phone or card.']
+          ]
+        ],
+        [
+          'Actions',
+          [
+            ['Check Eligibility', 'Ask every payer again whether the coverage is active.'],
+            ['Restart Payer Cycle', 'Start the payer cycle again after it stopped.']
+          ]
+        ]
       ]
-    );
-    for (const item of [...(tasks?.items ?? []), ...(actions?.items ?? [])]) item.onSelect();
-    assert.deepEqual(done.slice(-3), ['billing.post-payment', 'check', 'restart']);
-    assert.deepEqual(
-      actions?.items.map((i) => i.disabledReason),
-      [undefined, 'The payer cycle has not stopped.']
     );
   });
 
-  it('lets a draft take only documents, a stopped cycle restart, and a closed claim nothing', () => {
-    const { act: on } = act();
-    const [draft] = claimTaskGroups(
-      { status: 'draft', cycle_status: null, coverages: [] },
-      null,
-      on
-    );
-    assert.deepEqual(
-      draft?.items.filter((i) => !i.disabledReason).map((i) => i.label),
-      ['Add Document']
-    );
-    const [, stopped] = claimTaskGroups(
-      { status: 'submitted', cycle_status: 'failed', coverages: [] },
-      null,
-      on
-    );
-    assert.deepEqual(
-      stopped?.items.map((i) => i.disabledReason),
-      ['The claim has no payers.', undefined]
-    );
-    const closed = claimTaskGroups(
-      { status: 'paid', cycle_status: null, coverages: [payer] },
-      null,
-      on
-    );
-    assert.ok(
-      closed.flatMap((g) => g.items).every((i) => i.disabledReason === 'This claim is closed.')
-    );
+  it('starts the chosen task or action', () => {
+    const { done, act } = recording();
+    for (const item of claimTaskGroups(open, waiting, act).flatMap((g) => g.items)) item.onSelect();
+    assert.deepEqual(done, [
+      'billing.correct-claim-data',
+      'billing.change-responsible-party',
+      'billing.receive-document',
+      'billing.chase-document',
+      'billing.log-records-request',
+      'billing.post-payment',
+      'check',
+      'restart'
+    ]);
+  });
+
+  it('allows every task on an open claim but no restart while the cycle runs', () => {
+    assert.deepEqual(reasons(open), [
+      ['Tasks', TASKS.map((t) => [t, undefined])],
+      [
+        'Actions',
+        [
+          ['Check Eligibility', undefined],
+          ['Restart Payer Cycle', 'The payer cycle has not stopped.']
+        ]
+      ]
+    ]);
+  });
+
+  it('restarts a cycle that stopped and checks no eligibility without payers', () => {
+    assert.deepEqual(reasons({ status: 'submitted', cycle_status: 'failed', coverages: [] })[1], [
+      'Actions',
+      [
+        ['Check Eligibility', 'The claim has no payers.'],
+        ['Restart Payer Cycle', undefined]
+      ]
+    ]);
+  });
+
+  it('restarts no cycle that faulted, since a stuck run task decides it', () => {
+    const [, actions] = groupsOf({ ...open, cycle_status: 'faulted' });
+    assert.equal(actions?.items[1]?.disabledReason, 'The payer cycle has not stopped.');
+  });
+
+  it('lets a draft take only documents', () => {
+    const draft = 'This claim is still a draft. Finish its PCR tasks first.';
+    assert.deepEqual(reasons({ status: 'draft', cycle_status: null, coverages: [payer] }, null), [
+      ['Tasks', TASKS.map((t) => [t, t === 'Add Document' ? undefined : draft])],
+      [
+        'Actions',
+        [
+          ['Check Eligibility', draft],
+          ['Restart Payer Cycle', draft]
+        ]
+      ]
+    ]);
+  });
+
+  it('allows nothing on a closed claim', () => {
+    const closed = 'This claim is closed.';
+    assert.deepEqual(reasons({ status: 'paid', cycle_status: null, coverages: [payer] }, null), [
+      ['Tasks', TASKS.map((t) => [t, closed])],
+      [
+        'Actions',
+        [
+          ['Check Eligibility', closed],
+          ['Restart Payer Cycle', closed]
+        ]
+      ]
+    ]);
   });
 });
 
 describe('waitForTask', () => {
-  it('asks until the run has opened its task', async () => {
+  it('asks every half second until the run has opened its task', async () => {
     const answers = [null, null, 't1'];
     const slept: number[] = [];
     assert.equal(
@@ -89,18 +163,31 @@ describe('waitForTask', () => {
     assert.deepEqual(slept, [500, 500]);
   });
 
-  it('gives up after a while', async () => {
+  it('does not wait when the task is already open', async () => {
+    const slept: number[] = [];
+    assert.equal(
+      await waitForTask(
+        async () => 't1',
+        async (ms) => void slept.push(ms)
+      ),
+      't1'
+    );
+    assert.deepEqual(slept, []);
+  });
+
+  it('gives up after thirty tries', async () => {
     let asked = 0;
+    let slept = 0;
     assert.equal(
       await waitForTask(
         async () => {
           asked++;
           return null;
         },
-        async () => undefined
+        async () => void slept++
       ),
       null
     );
-    assert.equal(asked, 30);
+    assert.deepEqual([asked, slept], [30, 30]);
   });
 });

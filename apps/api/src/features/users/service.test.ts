@@ -134,10 +134,24 @@ describe('user service members', () => {
       member: member(['fees:read']),
       role: { id: ROLE, name: 'Viewer', permissions: ['fees:read'] }
     });
-    const res = await service.update(limited(), 'u-2', { roleId: ROLE, version: 3 });
-    assert.ok(res.ok);
+    assert.deepEqual(await service.update(limited(), 'u-2', { roleId: ROLE, version: 3 }), {
+      ok: true,
+      value: {
+        id: 'u-2',
+        email: 'ada@example.com',
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        isOwner: false,
+        version: 3,
+        role: { id: 'r-1', name: 'Biller' },
+        blockedReason: null
+      }
+    });
     assert.ok(queries[0]?.sql.includes('for no key update'));
     assert.deepEqual(writes(queries), ['update "memberships" set']);
+    const update = queries.find((q) => q.sql.startsWith('update "memberships"'));
+    assert.deepEqual(update?.parameters.slice(0, 1), [ROLE]);
+    assert.ok(update?.parameters.includes('t-1') && update.parameters.includes('u-2'));
     await db.destroy();
   });
 
@@ -190,8 +204,19 @@ describe('user service members', () => {
       await stale.service.update(testAccess(), 'u-2', { roleId: ROLE, version: 2 }),
       failure('conflict', 'Someone else changed this user; reload and try again')
     );
+    const covered = setup({
+      member: member(USER_ADMIN_PERMISSIONS),
+      role: { id: ROLE, name: 'Viewer', permissions: [] },
+      admin: true
+    });
+    assert.equal(
+      (await covered.service.update(testAccess(), 'u-2', { roleId: ROLE, version: 3 })).ok,
+      true
+    );
+    assert.deepEqual(writes(covered.queries), ['update "memberships" set']);
     await last.db.destroy();
     await stale.db.destroy();
+    await covered.db.destroy();
   });
 
   it('removes members and ends their sessions once they belong nowhere', async () => {
@@ -392,7 +417,11 @@ describe('user service invitations', () => {
     const resent = await service.resend(limited(), 'i-1');
     assert.ok(resent.ok);
     const renew = queries.find((q) => q.sql.startsWith('update "invitations"'));
-    assert.equal(renew?.parameters[0], hashToken(tokenOf(resent.value.link)));
+    assert.ok(resent.value.link.startsWith('https://app.example.com/invitation?token='));
+    assert.deepEqual(renew?.parameters.slice(0, 2), [
+      hashToken(tokenOf(resent.value.link)),
+      new Date(NOW.getTime() + INVITATION_DAYS * DAY_MS)
+    ]);
     assert.deepEqual(await service.removeInvitation(limited(), 'i-1'), {
       ok: true,
       value: { id: 'i-1' }

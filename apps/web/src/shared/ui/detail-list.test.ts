@@ -1,22 +1,42 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { render, screen, within } from '../testing-dom.ts';
 import { Detail, DetailList } from './detail-list.tsx';
 
+const show = () =>
+  render(
+    createElement(
+      DetailList,
+      null,
+      createElement(Detail, { label: 'Total', isEmphasized: true, children: '$10.00' }),
+      createElement(Detail, { label: 'Born', children: '1958-04-12' })
+    )
+  );
+
 describe('DetailList', () => {
-  it('renders terms and values, emphasizing key figures', () => {
-    const html = renderToStaticMarkup(
-      createElement(
-        DetailList,
-        null,
-        createElement(Detail, { label: 'Total', isEmphasized: true, children: '$10.00' }),
-        createElement(Detail, { label: 'Born', children: '1958-04-12' })
-      )
+  it('pairs each term with its value in order', () => {
+    const { container } = show();
+    const list = container.querySelector('dl');
+    assert.ok(list);
+    assert.deepEqual(
+      within(list)
+        .getAllByRole('term')
+        .map((t) => t.textContent),
+      ['Total', 'Born']
     );
-    assert.match(html, /<dl[^>]*><div[^>]*><dt[^>]*>Total<\/dt><dd/);
-    assert.ok(html.includes('text-xl font-bold tracking-tight tabular-nums">$10.00</dd>'));
-    assert.ok(html.includes('class="break-words text-sm">1958-04-12</dd>'));
-    assert.ok(html.includes('1958-04-12'));
+    assert.deepEqual(
+      within(list)
+        .getAllByRole('definition')
+        .map((d) => d.textContent),
+      ['$10.00', '1958-04-12']
+    );
+  });
+
+  it('enlarges emphasized values only', () => {
+    show();
+    assert.equal(screen.getByText('$10.00').classList.contains('text-xl'), true);
+    assert.equal(screen.getByText('1958-04-12').classList.contains('text-xl'), false);
+    assert.equal(screen.getByText('1958-04-12').classList.contains('text-sm'), true);
   });
 });

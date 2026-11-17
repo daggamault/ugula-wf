@@ -41,7 +41,10 @@ describe('memoryRedis', () => {
     assert.equal(await store.incr('a'), 2);
     assert.equal(await store.ttl('a'), 60);
     await store.set('b', 'x', 'EX', 5);
-    await store.sadd('s', 'x');
+    assert.equal(await store.set('b', 'y', 'EX', 5, 'NX'), null);
+    assert.equal(await store.get('b'), 'x');
+    await store.sadd('s', 'x', 'y');
+    await store.srem('s', 'y');
     assert.deepEqual(await store.smembers('s'), ['x']);
     assert.deepEqual(keys(), ['a', 'b', 's']);
     await store.del('a', 'b', 's');

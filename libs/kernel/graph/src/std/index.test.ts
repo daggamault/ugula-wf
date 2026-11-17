@@ -1,29 +1,64 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import * as v from 'valibot';
 import { createStdNodes } from './index.ts';
 
+const TASK = { title: 'Review', queue: 'coding', outcomes: ['done'] };
+
+const humanConfig = (permissions?: readonly string[]) => {
+  const human = createStdNodes(permissions ? { fetch, permissions } : { fetch }).find(
+    (d) => d.type === 'std.human.task'
+  );
+  assert.ok(human?.config);
+  return human.config;
+};
+
 describe('createStdNodes', () => {
-  it('provides a complete catalog with unique, documented node types', () => {
-    const nodes = createStdNodes({ fetch });
-    const keys = nodes.map((d) => `${d.type}@${d.version}`);
+  it('gives every node a unique std type and version', () => {
+    const keys = createStdNodes({ fetch }).map((d) => `${d.type}@${d.version}`);
     assert.equal(new Set(keys).size, keys.length);
-    for (const d of nodes) {
-      assert.ok(d.type.startsWith('std.'), d.type);
-      assert.ok(d.title && d.category && d.description, d.type);
-    }
-    const categories = new Set(nodes.map((d) => d.category));
-    for (const c of [
+    assert.deepEqual(
+      keys.filter((k) => !k.startsWith('std.')),
+      []
+    );
+  });
+
+  it('documents every node with a title, category and description', () => {
+    assert.deepEqual(
+      createStdNodes({ fetch })
+        .filter((d) => !d.title || !d.category || !d.description)
+        .map((d) => d.type),
+      []
+    );
+  });
+
+  it('groups the catalog into its categories', () => {
+    assert.deepEqual([...new Set(createStdNodes({ fetch }).map((d) => d.category))].sort(), [
+      'Conversion',
       'Flow',
-      'Variables',
-      'Math',
-      'Logic',
-      'Text',
+      'Human',
       'Lists',
+      'Logic',
+      'Math',
+      'Network',
       'Objects',
+      'Tables',
+      'Text',
       'Time',
-      'Human'
-    ]) {
-      assert.ok(categories.has(c), c);
-    }
+      'Variables'
+    ]);
+  });
+
+  it('lets a human task require any well-formed permission when none are listed', () => {
+    assert.equal(v.safeParse(humanConfig(), { ...TASK, permission: 'claims:read' }).success, true);
+  });
+
+  it('limits a human task to the permissions it is given', () => {
+    const config = humanConfig(['claims:read']);
+    assert.equal(v.safeParse(config, { ...TASK, permission: 'claims:read' }).success, true);
+    assert.deepEqual(
+      v.safeParse(config, { ...TASK, permission: 'fees:read' }).issues?.map((i) => i.message),
+      ['Unknown permission']
+    );
   });
 });

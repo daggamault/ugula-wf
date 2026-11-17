@@ -59,11 +59,18 @@ describe('task list', () => {
     await db.destroy();
   });
 
-  it('filters by queue and assignee', async () => {
+  it('filters by queue, run and assignee', async () => {
     const { db, queries } = createRecordingDb();
     await searchTasks(db, 't-1', 'u1', { ...page, queue: 'billing', assignee: 'mine' });
     await searchTasks(db, 't-1', 'u1', { ...page, assignee: 'unassigned', sort: 'assignee' });
-    const [mine, unassigned] = queries;
+    await searchTasks(db, 't-1', 'u1', { ...page, assignee: 'all', runId: 'r1' });
+    const [mine, unassigned, ofRun] = queries;
+    assert.ok(
+      ofRun?.sql.includes(
+        'where "t"."agency_id" = $1 and "t"."status" = $2 and "t"."run_id" = $3 order by'
+      )
+    );
+    assert.deepEqual(ofRun?.parameters, ['t-1', 'open', 'r1', 25, 0]);
     assert.ok(mine?.sql.includes('"t"."queue" = $3 and "t"."assignee_id" = $4'));
     assert.deepEqual(mine?.parameters.slice(0, 4), ['t-1', 'open', 'billing', 'u1']);
     assert.ok(unassigned?.sql.includes('"t"."assignee_id" is null'));

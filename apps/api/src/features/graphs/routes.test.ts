@@ -21,11 +21,12 @@ const service = {
   search: async (access: AgencyAccess, filters: unknown) =>
     ok({ items: [], args: [access.agencyId, filters] }),
   nodes: async () => ok({ nodes: [{ key: 'demo.x' }] }),
+  map: record(ok({ graphs: [{ key: 'acme.flow', children: [] }], tables: [] })),
   find: async (_a: AgencyAccess, id: string) =>
     id === ID ? ok({ graph: { id } }) : fail('not_found', 'Graph not found'),
   compare: record(ok({ mine: null, copiedFrom: null, latest: null, baseChanged: false })),
   version: async (_a: AgencyAccess, id: string, version: number) => ok({ args: [id, version] }),
-  validate: async () => ok({ issues: [] }),
+  validate: record(ok({ issues: [] })),
   create: record(ok({ id: ID })),
   saveDraft: async () => ok({ version: 2, issues: [] }),
   publish: async () => fail('invalid', 'Fix', { issues: [{ message: 'x' }] }),
@@ -41,14 +42,24 @@ const post = (path: string, body?: unknown) =>
   request(path, { method: 'POST', ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
 
 describe('graph routes', () => {
-  it('serve lists, the node catalog and validation', async () => {
+  it('serve lists, the node catalog, the customization map and validation', async () => {
     assert.deepEqual(await (await request('/?q=match&show=blocks&sort=key')).json(), {
       items: [],
       args: ['t-1', { q: 'match', show: 'blocks', page: 1, pageSize: 25, sort: 'key', dir: 'asc' }]
     });
     assert.equal((await request('/?show=nope')).status, 400);
     assert.deepEqual(await (await request('/nodes')).json(), { nodes: [{ key: 'demo.x' }] });
-    assert.equal((await post('/validate', { definition })).status, 200);
+    const map = await request('/map');
+    assert.equal(map.status, 200);
+    assert.deepEqual(await map.json(), {
+      graphs: [{ key: 'acme.flow', children: [] }],
+      tables: []
+    });
+    assert.deepEqual(calls.at(-1), [access]);
+    const valid = await post('/validate', { definition });
+    assert.equal(valid.status, 200);
+    assert.deepEqual(await valid.json(), { issues: [] });
+    assert.deepEqual(calls.at(-1), [access, definition]);
     assert.equal((await post('/validate', { definition: {} })).status, 400);
   });
 

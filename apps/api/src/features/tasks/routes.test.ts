@@ -19,7 +19,10 @@ const record =
 const service = {
   search: record({ items: [], total: 0, page: 1, pageSize: 25 }),
   queues: record({ queues: [] }),
-  find: record({ task: { id: ID } }),
+  find: async (...args: unknown[]) => {
+    calls.push(args);
+    return args[1] === ID ? ok({ task: { id: ID } }) : fail('not_found', 'Task not found');
+  },
   next: record({ task: null }),
   claim: record({ status: 'claimed' }),
   release: async (...args: unknown[]) => {
@@ -38,7 +41,9 @@ const request = withSession(createTaskRoutes(service));
 
 describe('task routes', () => {
   it('summarize queues for the session user', async () => {
-    assert.equal((await request('/queues')).status, 200);
+    const res = await request('/queues');
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { queues: [] });
     assert.deepEqual(calls.at(-1), ['t-1', 'u-1']);
   });
 
@@ -116,7 +121,6 @@ describe('task routes', () => {
     const res = await request(`/${ID}/complete`, { method: 'POST', body });
     assert.equal(res.status, 422);
     assert.deepEqual(await res.json(), { error: 'Some fields are invalid', fields: { note: 'x' } });
-    assert.equal((await request(`/${ID}`)).status, 200);
   });
 });
 
@@ -144,8 +148,12 @@ describe('task route validation', () => {
     assert.equal(calls.length, count);
   });
 
-  it('open a task in the session agency', async () => {
-    await request(`/${ID}`);
+  it('open a task in the session agency, or 404 when it has none by that id', async () => {
+    const found = await request(`/${ID}`);
+    assert.deepEqual([found.status, await found.json()], [200, { task: { id: ID } }]);
     assert.deepEqual(calls.at(-1), ['t-1', ID]);
+    const other = '01a16617-7704-7ba6-b9b5-9c79fa44f966';
+    const missing = await request(`/${other}`);
+    assert.deepEqual([missing.status, await missing.json()], [404, { error: 'Task not found' }]);
   });
 });

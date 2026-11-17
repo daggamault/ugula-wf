@@ -33,7 +33,12 @@ const service: AuthService = {
       ? ok({ token: 'tok', session })
       : fail('unauthorized', 'Invalid email or password');
   },
-  session: async (token) => (token === 'tok' ? ok(session) : fail('unauthorized', 'Unauthorized')),
+  session: async (token) =>
+    token === 'tok'
+      ? ok(session)
+      : token === 'gone'
+        ? ok({ userId: 'u-gone', email: 'gone@example.com' })
+        : fail('unauthorized', 'Unauthorized'),
   me: async (userId) => (userId === 'u-1' ? ok(user) : fail('unauthorized', 'Unauthorized')),
   signOut: async () => undefined,
   previewInvitation: async (token) =>
@@ -103,6 +108,24 @@ describe('auth routes', () => {
     assert.match(cookie, /Path=\//);
     assert.match(cookie, /Max-Age=\d+/);
     assert.doesNotMatch(cookie, /Secure/);
+    const secure = createAuthRoutes({
+      service,
+      sseUrl: 'http://localhost:3002',
+      secureCookie: true,
+      clientIp: () => '10.0.0.1'
+    });
+    const signed = await secure.request('/sign-in', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'dev@example.com', password: 'P@ssw0rd123' })
+    });
+    assert.match(signed.headers.get('set-cookie') ?? '', /Secure/);
+  });
+
+  it('answers /me with 401 when the session user can no longer be described', async () => {
+    const res = await routes.request('/me', { headers: { cookie: 'ugula_session=gone' } });
+    assert.equal(res.status, 401);
+    assert.deepEqual(await res.json(), { error: 'Unauthorized' });
   });
 
   it('rejects malformed sign-ins before reaching the service', async () => {
@@ -127,8 +150,18 @@ describe('auth routes', () => {
   it('previews invitations by a token sent in the body, never the URL', async () => {
     const res = await post('/invitation/preview', { token: 'invite' });
     assert.equal(res.status, 200);
-    assert.equal(((await res.json()) as { roleName: string }).roleName, 'Biller');
-    assert.equal((await post('/invitation/preview', { token: 'nope' })).status, 422);
+    assert.deepEqual(await res.json(), {
+      email: 'dev@example.com',
+      firstName: 'Dev',
+      lastName: 'User',
+      agencyName: 'Development',
+      organizationName: 'Development EMS',
+      roleName: 'Biller',
+      hasAccount: false
+    });
+    const unknown = await post('/invitation/preview', { token: 'nope' });
+    assert.equal(unknown.status, 422);
+    assert.deepEqual(await unknown.json(), { error: 'This link is invalid or has expired' });
     assert.equal((await post('/invitation/preview')).status, 400);
     assert.equal((await routes.request('/invitation?token=invite')).status, 404);
   });

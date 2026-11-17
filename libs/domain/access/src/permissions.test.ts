@@ -25,6 +25,7 @@ describe('permissions', () => {
     assert.equal(isPermission('claims:read'), true);
     assert.equal(isPermission('claims:manage'), false);
     assert.equal(isPermission('claims'), false);
+    assert.equal(isPermission(''), false);
   });
 
   it('grants the listed actions on the listed resources, in catalog order', () => {
@@ -40,5 +41,6 @@ describe('permissions', () => {
     ]);
     assert.deepEqual(grantsOf(['reports'], ['update']), []);
     assert.deepEqual(grantsOf([]), []);
+    assert.deepEqual(grantsOf(['claims'], []), []);
   });
 });

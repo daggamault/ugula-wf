@@ -20,12 +20,10 @@ describe('payer files', () => {
         'Claim status (277)'
       ]
     );
-    assert.ok(PROBLEM_OUTCOMES.includes('review'));
-    assert.ok(!PROBLEM_OUTCOMES.includes('posted'));
+    assert.deepEqual(PROBLEM_OUTCOMES, ['rejected', 'ineligible', 'unmatched', 'review']);
   });
 
   it('spawns a line review only where no claim workflow already asks a biller', () => {
     assert.deepEqual(REVIEW_OUTCOMES, ['unmatched', 'review']);
-    assert.ok(REVIEW_OUTCOMES.every((o) => PROBLEM_OUTCOMES.includes(o)));
   });
 });

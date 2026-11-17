@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createElement } from 'react';
+import type { InputBinding } from '@ugula/graph';
+import { createElement, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { render, screen, userEvent, within } from '../../shared/testing-dom.ts';
 import {
   BindingEditor,
   bindingFor,
@@ -23,7 +25,7 @@ describe('bindingFor', () => {
 });
 
 describe('BindingEditor', () => {
-  const render = (binding: Parameters<typeof BindingEditor>[0]['binding']) =>
+  const markup = (binding: Parameters<typeof BindingEditor>[0]['binding']) =>
     renderToStaticMarkup(
       createElement(BindingEditor, {
         nodeId: 'n1',
@@ -37,17 +39,57 @@ describe('BindingEditor', () => {
     );
 
   it('says what an unset input uses and marks a changed pin', () => {
-    const html = render(undefined);
+    const html = markup(undefined);
     assert.ok(html.includes('Uses 5 unless you set it.'));
     assert.ok(html.includes('aria-label="Changed from the base"'));
   });
 
   it('edits an expression in a monospace input, checked against the graph variables', () => {
-    const html = render({ expr: 'a + 1' });
+    const html = markup({ expr: 'a + 1' });
     assert.ok(html.includes('id="n1-miles-expr"') && html.includes('value="a + 1"'));
     assert.ok(html.includes('variables can be used here: a.') && html.includes('>Functions'));
     assert.ok(!html.includes('role="alert"'));
-    assert.ok(render({ expr: 'b + 1' }).includes('&quot;b&quot; is not a variable'));
+    assert.ok(markup({ expr: 'b + 1' }).includes('&quot;b&quot; is not a variable'));
+  });
+
+  it('switches between unset, a fixed value and an expression', async () => {
+    HTMLElement.prototype.showPopover ??= () => undefined;
+    const sent: (InputBinding | undefined)[] = [];
+    const Harness = () => {
+      const [binding, setBinding] = useState<InputBinding | undefined>(undefined);
+      return createElement(BindingEditor, {
+        nodeId: 'n1',
+        spec,
+        binding,
+        editable: true,
+        changed: false,
+        variables: ['a'],
+        onBind: (next) => {
+          sent.push(next);
+          setBinding(next);
+        }
+      });
+    };
+    render(createElement(Harness));
+    const user = userEvent.setup();
+    const modes = () => screen.getByRole('listbox', { name: 'Value', hidden: true });
+    await user.click(within(modes()).getByRole('option', { name: 'A Fixed Value', hidden: true }));
+    assert.deepEqual(sent.at(-1), { value: 5 });
+    assert.ok(screen.getByLabelText(/^Fixed Value/));
+    await user.click(within(modes()).getByRole('option', { name: 'An Expression', hidden: true }));
+    assert.deepEqual(sent.at(-1), { expr: '' });
+    const expr = screen.getByRole('textbox', { name: /^Expression/ });
+    assert.equal(expr.getAttribute('aria-invalid'), 'true');
+    await user.type(expr, 'b');
+    assert.deepEqual(sent.at(-1), { expr: 'b' });
+    assert.match(screen.getByRole('alert').textContent ?? '', /"b" is not a variable/);
+    await user.clear(expr);
+    await user.type(expr, 'a * 2');
+    assert.deepEqual(sent.at(-1), { expr: 'a * 2' });
+    assert.ok(!screen.queryByRole('alert'));
+    await user.click(within(modes()).getByRole('option', { name: 'Not Set', hidden: true }));
+    assert.equal(sent.at(-1), undefined);
+    assert.ok(screen.getByText('Uses 5 unless you set it.'));
   });
 
   it('names the problem with an expression, and the variables it may use', () => {

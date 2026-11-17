@@ -28,7 +28,7 @@ describe('readTA1', () => {
     );
   });
 
-  it('treats an unknown status as a rejection and names an unknown note', () => {
+  it('treats an unknown status as a rejection and a missing note as not given', () => {
     assert.deepEqual(readTA1(`${ISA}TA1*000000042*261104*1530*X~IEA*0*000000042~`), [
       {
         controlNumber: '000000042',
@@ -37,17 +37,25 @@ describe('readTA1', () => {
         message: 'Interchange note not given'
       }
     ]);
+  });
+
+  it('reads nothing from an interchange without a TA1', () => {
     assert.deepEqual(readTA1(`${ISA}IEA*0*000000042~`), []);
   });
 
-  it('reads a bare TA1 as a rejection with nothing given, and a note it does not know by code', () => {
-    assert.deepEqual(readTA1(`${ISA}TA1~TA1* 000000045 *261104*1530* A *099~IEA*0*000000042~`), [
+  it('reads a bare TA1 as a rejection with nothing given', () => {
+    assert.deepEqual(readTA1(`${ISA}TA1~IEA*0*000000042~`), [
       {
         controlNumber: '',
         status: 'rejected',
         noteCode: '',
         message: 'Interchange note not given'
-      },
+      }
+    ]);
+  });
+
+  it('trims padded elements and names a note it does not know by its code', () => {
+    assert.deepEqual(readTA1(`${ISA}TA1* 000000045 *261104*1530* A *099~IEA*0*000000042~`), [
       {
         controlNumber: '000000045',
         status: 'accepted',

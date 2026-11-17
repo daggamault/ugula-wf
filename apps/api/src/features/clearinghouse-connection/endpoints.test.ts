@@ -53,18 +53,25 @@ describe('endpointIssue', () => {
     assert.equal(endpointIssue(input, false), null);
   });
 
-  it('refuses the mock, private SFTP hosts and private or plain http real-time URLs', () => {
-    assert.match(endpointIssue({ ...input, vendor: 'mock' }, false) ?? '', /development/);
-    assert.match(endpointIssue({ ...input, sftpHost: '0x7f.1' }, false) ?? '', /SFTP host/);
-    assert.match(endpointIssue({ ...input, sftpHost: '10.0.0.5' }, false) ?? '', /SFTP host/);
-    assert.match(
-      endpointIssue({ ...input, realtimeUrl: 'http://api.example.com/core' }, false) ?? '',
-      /https/
-    );
-    assert.match(
-      endpointIssue({ ...input, realtimeUrl: 'https://169.254.169.254/latest' }, false) ?? '',
-      /real-time URL must be a public server/
-    );
+  it('allows a connection without a real-time URL', () => {
+    assert.equal(endpointIssue({ ...input, realtimeUrl: null }, false), null);
+  });
+
+  it('refuses the mock, private or unparsable SFTP hosts and private or plain http real-time URLs', () => {
+    const cases: [Partial<ConnectionInput>, string][] = [
+      [{ vendor: 'mock' }, 'The mock clearinghouse is only for development'],
+      [{ sftpHost: '0x7f.1' }, 'The SFTP host must be a public server'],
+      [{ sftpHost: '10.0.0.5' }, 'The SFTP host must be a public server'],
+      [{ sftpHost: 'bad host' }, 'The SFTP host must be a public server'],
+      [{ realtimeUrl: 'http://api.example.com/core' }, 'The real-time URL must use https'],
+      [
+        { realtimeUrl: 'https://169.254.169.254/latest' },
+        'The real-time URL must be a public server'
+      ]
+    ];
+    for (const [change, issue] of cases) {
+      assert.equal(endpointIssue({ ...input, ...change }, false), issue, JSON.stringify(change));
+    }
   });
 
   it('allows anything in development, where the mock runs on localhost', () => {

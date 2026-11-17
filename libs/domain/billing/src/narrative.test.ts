@@ -74,7 +74,55 @@ describe('readFindings', () => {
       }
     );
     assert.deepEqual(readFindings('nonsense', narrative), NO_FINDINGS);
-    assert.equal(ALS2_PROCEDURES.length, 8);
+    assert.deepEqual(readFindings({ medications: 'x', procedures: 'y' }, narrative), NO_FINDINGS);
+  });
+
+  it('counts a dose below one as one, and drops evidence that is not text or too short', () => {
+    assert.deepEqual(
+      readFindings(
+        {
+          medications: [
+            { medication: 'fentanyl', route: 'IV', doses: 0, evidence: 'fentanyl 50 mcg' },
+            { medication: 'aspirin', route: 'PO', doses: 1, evidence: 324 },
+            { medication: 'aspirin', route: 'PO', doses: 1, evidence: 'A' },
+            { medication: 7, route: 'PO', doses: 1, evidence: 'Aspirin 324' }
+          ],
+          procedures: [{ procedure: 'defibrillation', evidence: null }]
+        },
+        narrative
+      ),
+      {
+        ...NO_FINDINGS,
+        medications: [{ medication: 'fentanyl', route: 'IV', doses: 1 }],
+        ivDoses: 1
+      }
+    );
+  });
+
+  it('recognises each ALS2 procedure from the words a crew uses for it', () => {
+    const quotes: Record<(typeof ALS2_PROCEDURES)[number], string> = {
+      'endotracheal intubation': 'pt intubated with 7.5 ett',
+      'cardiac pacing': 'tcp started at 70',
+      defibrillation: 'shocked at 200 j',
+      cardioversion: 'synchronized cardioversion',
+      'central venous line': 'subclavian line placed',
+      'chest decompression': 'needle decompression left chest',
+      'surgical airway': 'cric performed',
+      'intraosseous line': 'ez-io to the left tibia'
+    };
+    const text = Object.values(quotes).join('. ');
+    assert.deepEqual(
+      readFindings(
+        {
+          procedures: ALS2_PROCEDURES.map((procedure) => ({
+            procedure,
+            evidence: quotes[procedure]
+          }))
+        },
+        text
+      ).procedures,
+      [...ALS2_PROCEDURES]
+    );
   });
 
   it('drops findings the narrative does not say, as small models list every option', () => {
@@ -151,5 +199,21 @@ describe('readNarrative', () => {
       notes: []
     });
     assert.equal(asked[0]?.user, 'Amiodarone 300 IO');
+  });
+
+  it('passes the abort signal to the model', async () => {
+    const signals: (AbortSignal | undefined)[] = [];
+    const signal = new AbortController().signal;
+    await readNarrative(
+      {
+        complete: async (_, s) => {
+          signals.push(s);
+          return {};
+        }
+      },
+      'Aspirin 324 PO',
+      signal
+    );
+    assert.deepEqual(signals, [signal]);
   });
 });

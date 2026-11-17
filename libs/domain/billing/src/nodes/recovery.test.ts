@@ -65,19 +65,52 @@ describe('recoveryNodes', () => {
       event({ kind: 'denied', route: 'appeal', note: 'Denied' }),
       event({ kind: 'appealed' })
     );
-    const denial = (await run('read-denial', { claimId: 'c1', coverageId: 'cov-Medicare' })).outputs
-      .denial as Record<string, unknown>;
-    assert.deepEqual([denial.route, denial.codes, denial.appeals], ['appeal', ['CO-50'], 1]);
+    const denial = await run('read-denial', { claimId: 'c1', coverageId: 'cov-Medicare' });
+    assert.deepEqual(denial.outputs.denial, {
+      coverageId: 'cov-Medicare',
+      payer: 'Medicare',
+      payerKind: 'MB',
+      route: 'appeal',
+      note: 'Denied',
+      codes: ['CO-50'],
+      remarks: [],
+      paidCents: 0,
+      balanceCents: 100_000,
+      deniedOn: '2026-02-01',
+      appeals: 1,
+      payerClaimNumber: null,
+      correctionMethod: null,
+      appealDays: null
+    });
     const appeal = await run('read-appeal', { claimId: 'c1', coverageId: 'cov-Medicare' });
-    assert.deepEqual([appeal.outputs.decided, appeal.outputs.signalsSeen], [false, 0]);
-    const refund = (await run('read-refund', { claimId: 'c1' })).outputs.refund as Record<
-      string,
-      unknown
-    >;
-    assert.equal(refund.overpaidCents, 0);
-    const balance = (await run('read-patient-balance', { claimId: 'c1' })).outputs
-      .patientBalance as Record<string, unknown>;
-    assert.equal(balance.balanceCents, 100_000);
+    assert.deepEqual(appeal.outputs, {
+      decided: false,
+      paidCents: 0,
+      deniedAgain: false,
+      balanceCents: 100_000,
+      signalsSeen: 0
+    });
+    assert.deepEqual((await run('read-refund', { claimId: 'c1' })).outputs.refund, {
+      overpaidCents: 0,
+      coverageId: null,
+      payer: null,
+      payerKind: 'patient',
+      paidCents: 0,
+      identifiedOn: null
+    });
+    assert.deepEqual(
+      (await run('read-patient-balance', { claimId: 'c1' })).outputs.patientBalance,
+      {
+        balanceCents: 100_000,
+        adjustments: [{ group: 'CO', reason: '50', cents: 100_000 }],
+        claimFilings: ['MB'],
+        state: null,
+        serviceDate: null,
+        planType: null,
+        payerKind: 'MB',
+        protectedCents: 0
+      }
+    );
     await assert.rejects(() => run('read-refund', { claimId: 'other' }), /does not exist/);
   });
 
@@ -125,27 +158,61 @@ describe('recoveryNodes', () => {
     await run('protect-balance', { claimId: 'c1', adjustedCents: 4_000, note: 'NH law' });
     await run('skip-remaining-payers', { claimId: 'c1' });
     await run('add-payer', { claimId: 'c1', payerId: 'p-blue', memberId: ' M1 ' });
-    assert.deepEqual(
-      calls.map(([kind]) => kind),
-      ['refund', 'protect', 'skip', 'add']
-    );
-    assert.deepEqual(calls[0]?.[1], {
-      claimId: 'c1',
-      key: 'key',
-      coverageId: 'cov-Medicare',
-      cents: 2_500,
-      note: 'Refund of a credit balance',
-      paidOn: '2026-02-28'
-    });
-    assert.deepEqual(calls[3]?.[1], { payerId: 'p-blue', memberId: 'M1' });
+    assert.deepEqual(calls, [
+      [
+        'refund',
+        {
+          claimId: 'c1',
+          key: 'key',
+          coverageId: 'cov-Medicare',
+          cents: 2_500,
+          note: 'Refund of a credit balance',
+          paidOn: '2026-02-28'
+        }
+      ],
+      ['protect', { key: 'key', adjustedCents: 4_000, note: 'NH law' }],
+      ['skip', { key: 'key', note: 'Moved to the patient' }],
+      ['add', { payerId: 'p-blue', memberId: 'M1' }]
+    ]);
+  });
+
+  it('refunds the patient and skips payers with the note given', async () => {
+    const { calls, run } = setup();
+    await run('record-refund', { claimId: 'c1', amountCents: 500, note: ' Patient overpaid ' });
+    await run('skip-remaining-payers', { claimId: 'c1', note: 'Coverage lapsed' });
+    await run('add-payer', { claimId: 'c1', payerId: 'p-blue' });
+    assert.deepEqual(calls, [
+      [
+        'refund',
+        {
+          claimId: 'c1',
+          key: 'key',
+          coverageId: null,
+          cents: 500,
+          note: 'Patient overpaid',
+          paidOn: '2026-02-28'
+        }
+      ],
+      ['skip', { key: 'key', note: 'Coverage lapsed' }],
+      ['add', { payerId: 'p-blue', memberId: null }]
+    ]);
+  });
+
+  it('refuses a payer, refund or protected balance it cannot record', async () => {
+    const { calls, run } = setup();
     await assert.rejects(
       () => run('add-payer', { claimId: 'c1', payerId: ' ' }),
-      /Choose the payer/
+      /Choose the payer to bill/
     );
     await assert.rejects(
       () => run('record-refund', { claimId: 'c1', amountCents: -1 }),
-      /whole number of cents/
+      /The refund .*whole number of cents/
     );
+    await assert.rejects(
+      () => run('protect-balance', { claimId: 'c1', adjustedCents: 4_000, note: ' ' }),
+      /Say why the balance is protected/
+    );
+    assert.deepEqual(calls, []);
   });
 
   it('renders and stores the appeal packet, and sets another claim frequency', async () => {
@@ -172,11 +239,8 @@ describe('recoveryNodes', () => {
       /Name the appeal level/
     );
     const voided = await run('with-frequency', { x837: sampleX837, frequency: '8' });
-    assert.equal((voided.outputs.x837 as { frequency: string }).frequency, '8');
+    assert.deepEqual(voided.outputs.x837, { ...sampleX837, frequency: '8' });
     const kept = await run('with-frequency', { x837: sampleX837 });
-    assert.equal(
-      (kept.outputs.x837 as { frequency: string }).frequency,
-      (sampleX837 as { frequency: string }).frequency
-    );
+    assert.deepEqual(kept.outputs.x837, sampleX837);
   });
 });

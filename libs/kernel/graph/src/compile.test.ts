@@ -39,10 +39,17 @@ describe('compileGraph', () => {
       g.returns.map((r) => r.id),
       ['ret']
     );
-    assert.equal(g.out.get(portKey('a', 'result'))?.length, 2);
-    assert.equal(g.in.get(portKey('ret', 'exec'))?.[0]?.from, 'entry');
-    assert.equal(g.variables.get('v')?.default, 0);
+    assert.deepEqual(g.out.get(portKey('a', 'result')), [def.edges[1], def.edges[2]]);
+    assert.deepEqual(g.in.get(portKey('ret', 'exec')), [def.edges[0]]);
+    assert.equal(g.in.get(portKey('a', 'a')), undefined);
+    assert.deepEqual([...g.nodes.keys()], ['entry', 'a', 'b', 'ret']);
+    assert.deepEqual(g.variables.get('v'), { name: 'v', type: 'number', default: 0 });
     assert.equal(compileGraph(def), g);
+  });
+
+  it('has no entry or returns when a graph has none', () => {
+    const bare = compileGraph({ ...def, nodes: [def.nodes[1] as NodeInstance], edges: [] });
+    assert.deepEqual([bare.entry, bare.returns, bare.out.size], [undefined, [], 0]);
   });
 
   it('lists distinct node refs', () => {
@@ -177,6 +184,16 @@ describe('rule references', () => {
       'std.list.filter-rule@1'
     ]);
     assert.equal(ruleRefOf(each.nodes[1] as NodeInstance), null);
+    assert.deepEqual(ruleRefOf(each.nodes[0] as NodeInstance), { type: 'r.line', version: 2 });
+    assert.equal(
+      ruleRefOf({
+        id: 'x',
+        type: 'std.list.find-rule',
+        version: 1,
+        config: { rule: 'r.x', version: '2' }
+      }),
+      null
+    );
     const moved = retargetRefs(each, (key) => (key === 'r.line' ? 4 : undefined));
     assert.deepEqual(moved.nodes[0]?.config, { rule: 'r.line', version: 4, item: 'line' });
   });

@@ -51,14 +51,33 @@ const overlaps = (
   );
 
 describe('shapeOf', () => {
-  it('sizes a node by its pin rows and description', () => {
-    assert.equal(action.height - pure.height, 24 - 34);
-    assert.deepEqual(action.ins, ['exec', 'a']);
-    assert.deepEqual(action.outs, ['then', 'again']);
-    assert.equal(action.execOuts, 2);
+  it('lists the input and output pins, exec pins first', () => {
+    assert.deepEqual(
+      [action.ins, action.outs, action.execOuts],
+      [['exec', 'a'], ['then', 'again'], 2]
+    );
+  });
+
+  it('sizes a node by its title, its pin rows and room for a description', () => {
+    assert.deepEqual([action.top, action.height], [34, 94]);
+    assert.deepEqual([pure.top, pure.height], [68, 104]);
+  });
+
+  it('marks a node without exec pins as pure', () => {
     assert.equal(action.pure, false);
     assert.equal(pure.pure, true);
-    assert.equal(shapeOf(null, false).pure, false);
+    assert.equal(source.pure, true);
+  });
+
+  it('gives an unknown node one empty pin row', () => {
+    assert.deepEqual(shapeOf(null, false), {
+      top: 34,
+      height: 70,
+      ins: [],
+      outs: [],
+      execOuts: 0,
+      pure: false
+    });
   });
 });
 
@@ -165,7 +184,34 @@ describe('layout', () => {
     assert.equal(Math.min(...Object.values(positions).map((p) => p.y)), 0);
   });
 
-  it('lays out graphs without an entry or edges', () => {
+  it('lays out a graph without edges in one column from the top', () => {
     assert.deepEqual(layout(def(['a'], [])), { a: { x: 0, y: 0 } });
+  });
+
+  it('starts a graph without an entry from the nodes nothing wires into', () => {
+    const shapes = new Map([
+      ['a', action],
+      ['b', action]
+    ]);
+    const positions = layout(def(['b', 'a'], [e('a', 'then', 'b', 'exec')]), shapes);
+    assert.deepEqual([column(positions.a?.x ?? -1), column(positions.b?.x ?? -1)], [0, 1]);
+  });
+
+  it('ignores wires from a node to itself or to nodes not on the graph', () => {
+    const shapes = new Map([
+      ['entry', start],
+      ['a', action]
+    ]);
+    const graph = def(['entry', 'a'], [e('entry', 'exec', 'a', 'exec')]);
+    assert.deepEqual(
+      layout(
+        {
+          ...graph,
+          edges: [...graph.edges, e('a', 'then', 'a', 'exec'), e('a', 'again', 'gone', 'exec')]
+        },
+        shapes
+      ),
+      layout(graph, shapes)
+    );
   });
 });

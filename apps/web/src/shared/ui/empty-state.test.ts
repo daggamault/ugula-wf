@@ -1,44 +1,80 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
-import { EmptyState, EmptyText } from './empty-state.tsx';
+import { render, screen, userEvent } from '../testing-dom.ts';
+import { EmptyState, EmptyText, emptyValue } from './empty-state.tsx';
+
+const hasIcon = (container: HTMLElement, icon: string) =>
+  container.querySelector('svg')?.classList.contains(icon) ?? false;
 
 describe('EmptyState', () => {
-  it('renders a titled message with an optional action', () => {
-    const html = renderToStaticMarkup(
+  it('titles the message with a section heading by default', () => {
+    const { container } = render(createElement(EmptyState, { title: 'No Runs' }));
+    screen.getByRole('heading', { level: 2, name: 'No Runs' });
+    assert.ok(!container.querySelector('p'));
+    assert.ok(!screen.queryByRole('button'));
+  });
+
+  it('uses the heading level it is given', () => {
+    render(createElement(EmptyState, { title: 'No Fees', heading: 'h1' }));
+    screen.getByRole('heading', { level: 1, name: 'No Fees' });
+  });
+
+  it('explains below the title and offers a working action', async () => {
+    const clicks: string[] = [];
+    const { container } = render(
       createElement(EmptyState, {
         title: 'No Fees',
-        heading: 'h1',
-        action: createElement('button', { type: 'button' }, 'Add'),
+        action: createElement(
+          'button',
+          { type: 'button', onClick: () => clicks.push('add') },
+          'Add'
+        ),
         children: 'Add one above.'
       })
     );
-    assert.ok(html.includes('<h1'));
-    assert.ok(html.includes('No Fees'));
-    assert.ok(html.includes('Add one above.'));
-    assert.ok(html.includes('<button type="button">Add</button>'));
+    assert.equal(container.querySelector('p')?.textContent, 'Add one above.');
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Add' }));
+    assert.deepEqual(clicks, ['add']);
   });
 
-  it('defaults to a section heading with a decorative icon that fits the reason', () => {
-    const empty = renderToStaticMarkup(createElement(EmptyState, { title: 'No Runs' }));
-    assert.ok(empty.includes('<h2 class="text-base font-bold">No Runs</h2>'));
-    assert.ok(empty.includes('lucide-inbox') && empty.includes('rounded-xl'));
-    assert.match(empty, /<span aria-hidden="true"[^>]*><svg/);
-    assert.ok(!empty.includes('<p class'));
-    const failed = renderToStaticMarkup(
-      createElement(EmptyState, { reason: 'error', title: 'Something Went Wrong' })
-    );
-    assert.ok(failed.includes('lucide-triangle-alert'));
+  it('shows a decorative icon that fits the reason', () => {
+    const cases = [
+      [undefined, 'lucide-inbox'],
+      ['clear', 'lucide-circle-check-big'],
+      ['noMatches', 'lucide-search-x'],
+      ['error', 'lucide-triangle-alert']
+    ] as const;
+    for (const [reason, icon] of cases) {
+      const { container, unmount } = render(
+        createElement(EmptyState, { title: 'T', ...(reason ? { reason } : {}) })
+      );
+      assert.equal(hasIcon(container, icon), true, reason ?? 'empty');
+      assert.equal(container.querySelector('svg')?.closest('[aria-hidden="true"]') !== null, true);
+      unmount();
+    }
   });
 });
 
 describe('EmptyText', () => {
-  it('renders a compact message with an icon', () => {
-    const html = renderToStaticMarkup(
+  it('renders a compact message with a decorative icon for the reason', () => {
+    const { container } = render(
       createElement(EmptyText, { reason: 'clear', children: 'All clear.' })
     );
-    assert.ok(html.includes('<svg'));
-    assert.ok(html.includes('All clear.'));
+    assert.equal(container.querySelector('p')?.textContent, 'All clear.');
+    assert.equal(hasIcon(container, 'lucide-circle-check-big'), true);
+    assert.equal(container.querySelector('svg')?.closest('[aria-hidden="true"]') !== null, true);
+    assert.ok(!screen.queryByRole('heading'));
+  });
+
+  it('defaults to the empty icon', () => {
+    const { container } = render(createElement(EmptyText, { children: 'Nothing yet.' }));
+    assert.equal(hasIcon(container, 'lucide-inbox'), true);
+  });
+});
+
+describe('emptyValue', () => {
+  it('is an em dash', () => {
+    assert.equal(emptyValue, '—');
   });
 });

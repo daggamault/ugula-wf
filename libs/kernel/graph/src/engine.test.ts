@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { ENTRY_TYPE, INPUT_TYPE, RETURN_TYPE, refKey } from './compile.ts';
-import { actionNode, pin, pureNode } from './define.ts';
+import { actionNode, defineNode, next, pin, pureNode, suspend } from './define.ts';
 import { createEngine } from './engine.ts';
 import { getPath } from './json.ts';
 import { combineSources } from './registry.ts';
@@ -231,7 +231,17 @@ describe('engine', () => {
     const composite = trace.find((t) => t.node === 'check');
     assert.deepEqual(composite?.outputs, { doubled: 10 });
     assert.equal(composite?.pin, 'ok');
-    assert.ok(trace.some((t) => t.path === 'check/' && t.node === 'twice'));
+    assert.deepEqual(
+      trace.map((t) => [t.path, t.node, t.event, t.pin]),
+      [
+        ['check/', 'limit', 'eval', null],
+        ['check/', 'branch', 'exec', 'false'],
+        ['check/', 'twice', 'eval', null],
+        ['check/', 'ok', 'exec', null],
+        ['', 'check', 'exec', 'ok'],
+        ['', 'okRet', 'exec', null]
+      ]
+    );
     assert.deepEqual(Object.keys(small.scopes), []);
 
     const large = engine.start({ type: 'test.main', version: 1 }, { amount: 500 }, { now });
@@ -714,9 +724,14 @@ describe('engine', () => {
     assert.equal(state.status, 'completed');
     assert.deepEqual(seen, [6, 6, 2, 4]);
     assert.deepEqual(evals, [3, 1, 2]);
-    const pure = trace.filter((t) => t.event === 'eval');
-    assert.equal(pure.length, 3);
-    assert.ok(pure.every((t) => Object.keys(t.inputs).length === 0));
+    assert.deepEqual(
+      trace.filter((t) => t.event === 'eval').map((t) => [t.node, t.inputs]),
+      [
+        ['d1', {}],
+        ['d2', {}],
+        ['d2', {}]
+      ]
+    );
   });
 
   it('defers a busy node on a timer without counting an attempt or changing its key', async () => {
@@ -857,5 +872,294 @@ describe('engine', () => {
     lease.abort(new Error('lease lost'));
     await assert.rejects(engine.advance(state, { ...cx, signal: lease.signal }), /lease lost/);
     assert.equal(signals.length, 1);
+  });
+});
+
+describe('engine rules, variables and guards', () => {
+  const twice: GraphDef = {
+    signature: {
+      execIn: [],
+      execOut: [],
+      inputs: [pin('n', 'number')],
+      outputs: [pin('twice', 'number')]
+    },
+    variables: [],
+    nodes: [
+      n('in', INPUT_TYPE, { config: { pin: 'n' } }),
+      n('mul', 'std.math.multiply', { inputs: { b: val(2) } }),
+      n('ret', RETURN_TYPE)
+    ],
+    edges: [e('in', 'n', 'mul', 'a'), e('mul', 'result', 'ret', 'twice')]
+  };
+
+  const apply = actionNode({
+    type: 'test.apply',
+    title: 'Apply',
+    category: 'Test',
+    description: 'Runs a rule.',
+    inputs: [pin('rule', 'string'), pin('n', 'any', { optional: true })],
+    outputs: [pin('out', 'any')],
+    compute: async ({ rule, n }, _, ctx) => ({
+      out: await ctx.evaluate({ type: rule, version: 1 }, n === null ? {} : { n })
+    })
+  });
+
+  const runApply = async (rule: string, value: Json) => {
+    const main = graph(
+      { outputs: [pin('out', 'any')] },
+      [
+        n('call', 'test.apply', { inputs: { rule: val(rule), n: val(value) } }),
+        n('ret', RETURN_TYPE)
+      ],
+      [
+        e('entry', 'exec', 'call', 'exec'),
+        e('call', 'then', 'ret', 'exec'),
+        e('call', 'out', 'ret', 'out')
+      ]
+    );
+    const engine = setup({ 'test.main@1': main, 'test.twice@1': twice }, [apply]);
+    const state = engine.start({ type: 'test.main', version: 1 }, {}, { now });
+    await engine.drain(state, cx);
+    return state;
+  };
+
+  it('lets a node evaluate a rule and refuses rules that are missing, not pure or mistyped', async () => {
+    assert.deepEqual((await runApply('test.twice', 4)).result, {
+      pin: null,
+      outputs: { out: { twice: 8 } }
+    });
+    assert.equal(
+      (await runApply('test.missing', 4)).fault?.error.message,
+      'Rule test.missing@1 is not available'
+    );
+    assert.equal(
+      (await runApply('test.main', 4)).fault?.error.message,
+      'test.main@1 is not a rule'
+    );
+    assert.equal(
+      (await runApply('test.twice', 'x')).fault?.error.message,
+      'Input "n" of "call › test.twice@1": expected number, got string'
+    );
+    assert.equal(
+      (await runApply('test.twice', null)).fault?.error.message,
+      'Input "n" of "call › test.twice@1" is required'
+    );
+  });
+
+  it('evaluates a pure node that reads the clock again once the clock moves', async () => {
+    const reads: string[] = [];
+    const seen: Json[] = [];
+    const clock = pureNode({
+      type: 'test.clock',
+      title: 'Clock',
+      category: 'Test',
+      description: 'Reads the clock.',
+      inputs: [],
+      outputs: [pin('at', 'string')],
+      compute: (_, __, ctx) => {
+        reads.push(ctx.now.toISOString());
+        return { at: ctx.now.toISOString() };
+      }
+    });
+    const sink = actionNode({
+      type: 'test.sink',
+      title: 'Sink',
+      category: 'Test',
+      description: 'Records a value.',
+      inputs: [pin('x', 'string')],
+      outputs: [],
+      compute: ({ x }) => {
+        seen.push(x);
+        return {};
+      }
+    });
+    const def = graph(
+      {},
+      [n('clock', 'test.clock'), n('s1', 'test.sink'), n('s2', 'test.sink'), n('s3', 'test.sink')],
+      [
+        e('entry', 'exec', 's1', 'exec'),
+        e('s1', 'then', 's2', 'exec'),
+        e('s2', 'then', 's3', 'exec'),
+        e('clock', 'at', 's1', 'x'),
+        e('clock', 'at', 's2', 'x'),
+        e('clock', 'at', 's3', 'x')
+      ]
+    );
+    const engine = setup({ 'test.main@1': def }, [clock, sink]);
+    const state = engine.start({ type: 'test.main', version: 1 }, {}, { now });
+    const later = new Date('2026-01-01T00:05:00.000Z');
+    await engine.advance(state, cx);
+    await engine.advance(state, cx);
+    await engine.advance(state, { ...cx, now: later });
+    assert.deepEqual(seen, [
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:05:00.000Z'
+    ]);
+    assert.deepEqual(reads, ['2026-01-01T00:00:00.000Z', '2026-01-01T00:05:00.000Z']);
+  });
+
+  it('faults on unknown variables and on values that do not fit a variable', async () => {
+    const poke = defineNode({
+      type: 'test.poke',
+      version: 1,
+      title: 'Poke',
+      category: 'Test',
+      description: 'Writes a variable.',
+      signature: {
+        execIn: ['exec'],
+        execOut: ['then'],
+        inputs: [pin('name', 'string'), pin('value', 'any', { optional: true })],
+        outputs: []
+      },
+      run: async (inv) => {
+        inv.vars.set(String(await inv.read('name')), await inv.read('value'));
+        return next('then');
+      }
+    });
+    const peek = defineNode({
+      type: 'test.peek',
+      version: 1,
+      title: 'Peek',
+      category: 'Test',
+      description: 'Reads an undeclared variable.',
+      signature: { execIn: [], execOut: [], inputs: [], outputs: [pin('value', 'any')] },
+      run: (inv) => next(null, { value: inv.vars.get('ghost') })
+    });
+    const poking = (name: string, value: Json) =>
+      graph(
+        {},
+        [n('poke', 'test.poke', { inputs: { name: val(name), value: val(value) } })],
+        [e('entry', 'exec', 'poke', 'exec')],
+        [{ name: 'v', type: 'number', default: 0 }]
+      );
+    const fault = async (def: GraphDef) => (await run(def, {}, [poke, peek])).state.fault?.error;
+    assert.deepEqual(await fault(poking('ghost', 1)), {
+      message: 'Unknown variable "ghost"',
+      path: '',
+      node: 'poke'
+    });
+    assert.equal(
+      (await fault(poking('v', 'x')))?.message,
+      'Variable "v": expected number, got string'
+    );
+    const peeking = graph(
+      { outputs: [pin('x', 'any')] },
+      [n('peek', 'test.peek'), n('ret', RETURN_TYPE)],
+      [e('entry', 'exec', 'ret', 'exec'), e('peek', 'value', 'ret', 'x')]
+    );
+    assert.deepEqual(await fault(peeking), {
+      message: 'Unknown variable "ghost"',
+      path: '',
+      node: 'peek'
+    });
+  });
+
+  it('faults on data cycles, pure graphs without a Return and pure nodes that try to wait', async () => {
+    const cycle = graph(
+      { outputs: [pin('x', 'number')] },
+      [n('a', 'std.math.add'), n('b', 'std.math.add'), n('ret', RETURN_TYPE)],
+      [
+        e('entry', 'exec', 'ret', 'exec'),
+        e('a', 'result', 'b', 'a'),
+        e('b', 'result', 'a', 'a'),
+        e('b', 'result', 'ret', 'x')
+      ]
+    );
+    assert.equal((await run(cycle)).state.fault?.error.message, 'Data cycle through "b"');
+
+    const waits = defineNode({
+      type: 'test.waits',
+      version: 1,
+      title: 'Waits',
+      category: 'Test',
+      description: 'A pure node that suspends.',
+      signature: { execIn: [], execOut: [], inputs: [], outputs: [pin('x', 'number')] },
+      run: () => suspend({ kind: 'timer', data: null })
+    });
+    const waiting = graph(
+      { outputs: [pin('x', 'number')] },
+      [n('w', 'test.waits', { label: 'Wait Here' }), n('ret', RETURN_TYPE)],
+      [e('entry', 'exec', 'ret', 'exec'), e('w', 'x', 'ret', 'x')]
+    );
+    assert.deepEqual((await run(waiting, {}, [waits])).state.fault?.error, {
+      message: 'Pure node "Wait Here" cannot suspend',
+      path: '',
+      node: 'w'
+    });
+
+    const empty: GraphDef = {
+      signature: { execIn: [], execOut: [], inputs: [], outputs: [pin('x', 'number')] },
+      variables: [],
+      nodes: [],
+      edges: []
+    };
+    const pulls = graph(
+      { outputs: [pin('x', 'number')] },
+      [n('sub', 'test.empty'), n('ret', RETURN_TYPE)],
+      [e('entry', 'exec', 'ret', 'exec'), e('sub', 'x', 'ret', 'x')]
+    );
+    const engine = setup({ 'test.main@1': pulls, 'test.empty@1': empty });
+    const state = engine.start({ type: 'test.main', version: 1 }, {}, { now });
+    await engine.drain(state, cx);
+    assert.equal(state.fault?.error.message, 'Graph test.empty@1 has no Return node');
+  });
+
+  it('faults when the exec flow reaches a pure node or an unknown node type', async () => {
+    const pureExec = graph({}, [n('add', 'std.math.add')], [e('entry', 'exec', 'add', 'exec')]);
+    assert.equal(
+      (await run(pureExec)).state.fault?.error.message,
+      'Pure node "add" cannot be executed'
+    );
+    const { state } = await run(
+      graph({}, [n('ghost', 'nope')], [e('entry', 'exec', 'ghost', 'exec')])
+    );
+    assert.equal(state.fault?.error.message, 'Unknown node type nope@1');
+  });
+
+  it('faults a composite whose inputs cannot be read at the composite itself', async () => {
+    const needs = graph({ inputs: [pin('a', 'number')], execOut: ['done'] }, [], []);
+    const main = graph(
+      {},
+      [n('sub', 'test.needs', { label: 'Needs A' })],
+      [e('entry', 'exec', 'sub', 'exec')]
+    );
+    const engine = setup({ 'test.main@1': main, 'test.needs@1': needs });
+    const state = engine.start({ type: 'test.main', version: 1 }, {}, { now });
+    const trace = await engine.drain(state, cx);
+    assert.deepEqual(state.fault?.error, {
+      message: 'Input "a" of "Needs A" is required',
+      path: '',
+      node: 'sub'
+    });
+    assert.deepEqual(
+      trace.map((t) => [t.node, t.error?.message]),
+      [['sub', 'Input "a" of "Needs A" is required']]
+    );
+    const at = state.fault ? engine.nodeAt(state, state.fault.cursor) : null;
+    assert.equal(at?.title, 'Needs A');
+  });
+
+  it('finishes a top-level chain without a Return through its first exit with default outputs', async () => {
+    const def = graph(
+      {
+        execOut: ['done', 'other'],
+        outputs: [pin('x', 'number', { default: 5 }), pin('y', 'string')]
+      },
+      [],
+      []
+    );
+    assert.deepEqual((await run(def)).state.result, { pin: 'done', outputs: { x: 5, y: null } });
+  });
+
+  it('refuses to skip a Return node', async () => {
+    const def = graph(
+      { outputs: [pin('x', 'number')] },
+      [n('ret', RETURN_TYPE)],
+      [e('entry', 'exec', 'ret', 'exec')]
+    );
+    const { engine, state } = await run(def);
+    assert.equal(state.fault?.error.message, 'Input "x" of "ret" is required');
+    assert.throws(() => engine.skipFault(state, null, {}), /A Return node cannot be skipped/);
   });
 });

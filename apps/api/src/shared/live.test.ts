@@ -19,7 +19,7 @@ describe('publishAfter', () => {
     const res = await publishAfter(publish, 't-1', Promise.resolve(fail('conflict', 'No')), () => [
       { kind: 'claim', id: null }
     ]);
-    assert.equal(res.ok, false);
+    assert.deepEqual(res, fail('conflict', 'No'));
     assert.deepEqual(events, []);
   });
 

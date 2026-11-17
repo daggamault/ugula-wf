@@ -47,13 +47,14 @@ describe('exchangeNodes', () => {
     );
     const out = await invokeNode(answered.node('send-270'), { inputs: { claimId: 'c1' } });
     assert.deepEqual(
-      [out.pin, out.outputs.fileName, out.outputs.reviews],
-      ['answered', '271-1.x12', [review]]
+      [out.pin, out.outputs],
+      ['answered', { fileName: '271-1.x12', reviews: [review], sentAs: null, reason: null }]
     );
-    assert.equal(answered.calls[0]?.[2], 'c1');
-    assert.equal(answered.calls[0]?.[4], false);
     await invokeNode(answered.node('send-270'), { inputs: { claimId: 'c1', force: true } });
-    assert.equal(answered.calls[1]?.[4], true);
+    assert.deepEqual(answered.calls, [
+      ['270', 'run', 'c1', 'key', false],
+      ['270', 'run', 'c1', 'key', true]
+    ]);
     const sent = await invokeNode(
       setup(
         { status: 'sent', sentAs: '270-1.ELG', reason: 'Timed out' },
@@ -90,7 +91,7 @@ describe('exchangeNodes', () => {
       [out.pin, out.outputs.status],
       ['answered', 'Paid (F1:65): Claim has been paid']
     );
-    assert.deepEqual(answered.calls[0]?.slice(2), ['c1', answered.calls[0]?.[3], 'cov-1']);
+    assert.deepEqual(answered.calls, [['276', 'run', 'c1', 'key', 'cov-1']]);
     const sent = await invokeNode(
       setup(
         { status: 'unavailable', reason: '' },

@@ -6,7 +6,15 @@ describe('passwords', () => {
   it('asks for at least twelve characters and says so', () => {
     assert.equal(MIN_PASSWORD_LENGTH, 12);
     assert.equal(PASSWORD_TOO_SHORT, 'Use at least 12 characters');
+  });
+
+  it('rejects passwords shorter than the minimum', () => {
+    assert.equal(isLongEnoughPassword(''), false);
     assert.equal(isLongEnoughPassword('x'.repeat(11)), false);
+  });
+
+  it('accepts passwords at or over the minimum', () => {
     assert.equal(isLongEnoughPassword('x'.repeat(12)), true);
+    assert.equal(isLongEnoughPassword('x'.repeat(200)), true);
   });
 });

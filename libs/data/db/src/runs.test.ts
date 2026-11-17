@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { RunQueueClient } from '@ugula/run-queue';
+import { buildFindPublishedGraphs, buildLatestVersion } from './graph-versions.ts';
 import { resolveWorkflowVersion, signalRuns, startRun } from './runs.ts';
 import { createRecordingDb } from './testing.ts';
 
@@ -13,10 +14,15 @@ describe('startRun', () => {
       await startRun(db, boss, { agencyId: 't', versionId: 'v', inputs: { a: 1 } }),
       'r1'
     );
-    assert.ok(queries[0]?.sql.startsWith('insert into "workflow_runs"'));
+    assert.equal(
+      queries[0]?.sql,
+      'insert into "workflow_runs" ("agency_id", "graph_version_id", "status", "inputs", "started_by_id") values ($1, $2, $3, $4, $5) returning "id"'
+    );
     assert.deepEqual(queries[0]?.parameters, ['t', 'v', 'running', '{"a":1}', null]);
-    assert.match(queries[1]?.sql ?? '', /insert into workflow_run_graphs/);
-    assert.ok(queries[1]?.parameters.includes('r1'));
+    assert.match(queries[1]?.sql ?? '', /^\s+insert into workflow_run_graphs /);
+    assert.deepEqual(queries[1]?.parameters, ['v', 't', 'r1']);
+    assert.match(queries[2]?.sql ?? '', /^\s+insert into workflow_run_tables /);
+    assert.equal(queries.length, 3);
     assert.deepEqual(jobs, [{ data: { runId: 'r1', command: { type: 'advance' } } }]);
     jobs.length = 0;
     await startRun(db, boss, {
@@ -26,8 +32,7 @@ describe('startRun', () => {
       interactive: true,
       startedBy: 'u1'
     });
-    const started = queries.filter((q) => q.sql.startsWith('insert into "workflow_runs"')).at(-1);
-    assert.equal(started?.parameters.at(-1), 'u1');
+    assert.deepEqual(queries[3]?.parameters, ['t', 'v', 'running', '{}', 'u1']);
     assert.deepEqual(jobs, [{ data: { runId: 'r1', command: { type: 'advance' } }, priority: 2 }]);
     await db.destroy();
   });
@@ -48,7 +53,11 @@ describe('signalRuns', () => {
       'insert into "signals" ("agency_id", "key", "received") values ($1, $2, $3) on conflict ("agency_id", "key") do update set "received" = signals.received + 1, "updated_at" = now()'
     );
     assert.deepEqual(queries[0]?.parameters, ['t', 'claim:c1', 1]);
-    assert.ok(queries[1]?.sql.startsWith('select'));
+    assert.equal(
+      queries[1]?.sql,
+      `select "id", state -> 'suspension' ->> 'id' as "wait_id" from "workflow_runs" where "agency_id" = $1 and "wait_key" in ($2) and "status" = $3`
+    );
+    assert.deepEqual(queries[1]?.parameters, ['t', 'claim:c1', 'suspended']);
     await db.destroy();
   });
 
@@ -88,10 +97,24 @@ describe('signalRuns', () => {
       2
     );
     assert.deepEqual(queries[1]?.parameters, ['t', 'claim:c1', 'suspended']);
-    assert.deepEqual((jobs[1] as { data: unknown }).data, {
-      runId: 'r2',
-      command: { type: 'resume', suspensionId: '9', payload: { payload: { a: 1 } } }
-    });
+    assert.deepEqual(jobs, [
+      {
+        data: {
+          runId: 'r1',
+          command: { type: 'resume', suspensionId: '7', payload: { payload: { a: 1 } } }
+        },
+        priority: 2,
+        retryLimit: 1_000_000
+      },
+      {
+        data: {
+          runId: 'r2',
+          command: { type: 'resume', suspensionId: '9', payload: { payload: { a: 1 } } }
+        },
+        priority: 2,
+        retryLimit: 1_000_000
+      }
+    ]);
     await db.destroy();
   });
 });
@@ -108,9 +131,13 @@ describe('resolveWorkflowVersion', () => {
       version: 2
     });
     const [latest, resolve] = queries;
-    assert.ok(latest?.sql.includes('order by g.agency_id is not null, v.version desc'));
+    assert.equal(latest?.sql, buildLatestVersion('t', 'billing.claim').compile(db).sql);
     assert.deepEqual(latest?.parameters, ['billing.claim', 't']);
-    assert.deepEqual(resolve?.parameters.slice(0, 2), [['billing.claim'], [2]]);
+    assert.equal(
+      resolve?.sql,
+      buildFindPublishedGraphs('t', [{ key: 'billing.claim', version: 2 }]).compile(db).sql
+    );
+    assert.deepEqual(resolve?.parameters, [['billing.claim'], [2], 't']);
     await db.destroy();
   });
 

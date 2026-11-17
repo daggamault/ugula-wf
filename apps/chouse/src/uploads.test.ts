@@ -7,6 +7,7 @@ describe('isInboundUpload', () => {
     assert.equal(isInboundUpload('/upload/B1.CLP'), true);
     assert.equal(isInboundUpload('/upload/B1.CLP.part'), false);
     assert.equal(isInboundUpload('/upload/B1.tmp'), false);
+    assert.equal(isInboundUpload('/upload/B1.CLP.FILEPART'), false);
     assert.equal(isInboundUpload('/download/B1.CLP'), false);
     assert.equal(isInboundUpload('/upload/inner/B1.CLP'), false);
   });
@@ -26,6 +27,8 @@ describe('routeUpload', () => {
     assert.deepEqual(routeUpload('B1.txt'), {
       error: 'upload 837P files as .CLP, 270 as .ELG and 276 as .CLS'
     });
-    assert.ok('error' in routeUpload('B1'));
+    assert.deepEqual(routeUpload('B1'), {
+      error: 'upload 837P files as .CLP, 270 as .ELG and 276 as .CLS'
+    });
   });
 });

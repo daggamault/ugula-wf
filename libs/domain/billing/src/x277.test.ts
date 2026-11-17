@@ -45,71 +45,179 @@ const ACKNOWLEDGMENT = file(
   'SE*35*0001'
 );
 
-describe('read277', () => {
-  const claims = read277(ACKNOWLEDGMENT);
+const claim = (...segments: string[]) =>
+  read277(
+    file(
+      'ST*277*0001*005010X214',
+      'HL*1**20*1',
+      'HL*2*1*21*1',
+      'HL*3*2*19*1',
+      'HL*4*3*PT',
+      ...segments,
+      'SE*99*0001'
+    )
+  );
 
-  it('reads the status of each claim, ignoring batch-level statuses', () => {
+describe('read277', () => {
+  it('reads each claim, ignoring accepted batch-level statuses and claims without a trace', () => {
+    assert.deepEqual(read277(ACKNOWLEDGMENT), [
+      {
+        claimNumber: '1001',
+        status: 'accepted',
+        categories: ['A2'],
+        payerClaimNumber: 'ICN111',
+        message: 'Accepted into adjudication'
+      },
+      {
+        claimNumber: '1002',
+        status: 'rejected',
+        categories: ['A1', 'A7'],
+        payerClaimNumber: null,
+        message: 'Entity contract or member ID is invalid'
+      },
+      {
+        claimNumber: '1003',
+        status: 'rejected',
+        categories: ['A3', 'A6'],
+        payerClaimNumber: null,
+        message: 'Returned as unprocessable; Rejected for missing information'
+      },
+      {
+        claimNumber: '1004',
+        status: 'pending',
+        categories: ['P1'],
+        payerClaimNumber: null,
+        message: ''
+      }
+    ]);
+  });
+
+  it('reads the category of all three status elements, once each', () => {
+    assert.deepEqual(claim('TRN*2*1001', 'STC*A7:164*20261024*U*0******A7:21*A8:562'), [
+      {
+        claimNumber: '1001',
+        status: 'rejected',
+        categories: ['A7', 'A8'],
+        payerClaimNumber: null,
+        message: 'Rejected for invalid information; Rejected for relational field error'
+      }
+    ]);
+  });
+
+  it('joins every status message over the category descriptions', () => {
     assert.deepEqual(
-      claims.map((c) => [c.claimNumber, c.status]),
+      claim(
+        'TRN*2*1001',
+        'STC*A7:164*20261024*U*0********Bad member ID',
+        'STC*A6:35*20261024*U*0********Missing NPI'
+      ),
       [
-        ['1001', 'accepted'],
-        ['1002', 'rejected'],
-        ['1003', 'rejected'],
-        ['1004', 'pending']
+        {
+          claimNumber: '1001',
+          status: 'rejected',
+          categories: ['A7', 'A6'],
+          payerClaimNumber: null,
+          message: 'Bad member ID; Missing NPI'
+        }
       ]
     );
   });
 
-  it('keeps the payer claim number and a message for billers', () => {
-    assert.deepEqual(claims[0], {
-      claimNumber: '1001',
-      status: 'accepted',
-      categories: ['A2'],
-      payerClaimNumber: 'ICN111',
-      message: 'Accepted into adjudication'
-    });
-    assert.deepEqual(claims[1], {
-      claimNumber: '1002',
-      status: 'rejected',
-      categories: ['A1', 'A7'],
-      payerClaimNumber: null,
-      message: 'Entity contract or member ID is invalid'
-    });
+  it('accepts a claim the payer split on acceptance', () => {
+    assert.deepEqual(claim('TRN*2*1005', 'STC*A5:20*20261024*WQ*942.5', 'REF*1K*ICN555'), [
+      {
+        claimNumber: '1005',
+        status: 'accepted',
+        categories: ['A5'],
+        payerClaimNumber: 'ICN555',
+        message: 'Split claim'
+      }
+    ]);
+  });
+
+  it('accepts a claim forwarded to another entity', () => {
+    assert.deepEqual(claim('TRN*2*1006', 'STC*A0:16*20261024*WQ*0'), [
+      {
+        claimNumber: '1006',
+        status: 'accepted',
+        categories: ['A0'],
+        payerClaimNumber: null,
+        message: 'Forwarded to another entity'
+      }
+    ]);
+  });
+
+  it('leaves a claim with no status pending', () => {
+    assert.deepEqual(claim('TRN*2*1007'), [
+      {
+        claimNumber: '1007',
+        status: 'pending',
+        categories: [],
+        payerClaimNumber: null,
+        message: ''
+      }
+    ]);
+  });
+
+  it('keeps the first claim trace and payer claim number', () => {
+    assert.deepEqual(claim('TRN*2*1008', 'TRN*2*1009', 'REF*1K*ICN1', 'REF*1K*ICN2', 'STC*A1:19'), [
+      {
+        claimNumber: '1008',
+        status: 'accepted',
+        categories: ['A1'],
+        payerClaimNumber: 'ICN1',
+        message: 'Received'
+      }
+    ]);
+  });
+
+  it('reads only 277 transactions', () => {
     assert.deepEqual(
-      [claims[2]?.categories, claims[2]?.message],
-      [['A3', 'A6'], 'Returned as unprocessable; Rejected for missing information']
+      read277(
+        file(
+          'ST*999*0001',
+          'HL*4*3*PT',
+          'TRN*2*1001',
+          'STC*A1:19',
+          'SE*5*0001',
+          'ST*277*0002*005010X214',
+          'HL*4*3*PT',
+          'TRN*2*1002',
+          'STC*A1:19',
+          'SE*5*0002'
+        )
+      ).map((c) => c.claimNumber),
+      ['1002']
     );
-    assert.equal(claims[3]?.message, '');
   });
 
-  it('accepts a claim the payer split on acceptance, and reads only 277 transactions', () => {
-    const [split] = read277(
-      file(
-        'ST*277*0001*005010X214',
-        'HL*1**20*1',
-        'HL*2*1*21*1',
-        'HL*3*2*19*1',
-        'HL*4*3*PT',
-        'TRN*2*1005',
-        'STC*A5:20*20261024*WQ*942.5',
-        'REF*1K*ICN555',
-        'SE*9*0001',
-        'ST*999*0002',
-        'AK1*HC*1',
-        'SE*3*0002'
-      )
+  it('passes a rejection down from any level above with its message', () => {
+    assert.deepEqual(
+      read277(
+        file(
+          'ST*277*0001*005010X214',
+          'HL*3**20*1',
+          'STC*A8:21*20261024*U*0********BATCH IN ERROR',
+          'HL*4*3*21*1',
+          'STC*A1:19',
+          'HL*5*4*PT',
+          'TRN*2*2002',
+          'SE*7*0001'
+        )
+      ),
+      [
+        {
+          claimNumber: '2002',
+          status: 'rejected',
+          categories: ['A8'],
+          payerClaimNumber: null,
+          message: 'BATCH IN ERROR'
+        }
+      ]
     );
-    assert.deepEqual(split, {
-      claimNumber: '1005',
-      status: 'accepted',
-      categories: ['A5'],
-      payerClaimNumber: 'ICN555',
-      message: 'Split claim'
-    });
-    assert.deepEqual(read277(file('ST*999*0001', 'AK1*HC*1', 'SE*3*0001')), []);
   });
 
-  it('passes a rejection down from any level above, and skips parents it never saw', () => {
+  it('skips parents it never saw and levels without an id', () => {
     assert.deepEqual(
       read277(
         file(
@@ -119,14 +227,7 @@ describe('read277', () => {
           'HL*2*99*PT',
           'TRN*2*2001',
           'STC*A1:19*20261024*WQ*100',
-          'HL*3**20*1',
-          'STC*A8:21*20261024*U*0********BATCH IN ERROR',
-          'HL*4*3*21*1',
-          'STC*A1:19',
-          'HL*5*4*PT',
-          'TRN*2*2002',
-          'TRN*2*2003',
-          'SE*14*0001'
+          'SE*6*0001'
         )
       ),
       [
@@ -136,13 +237,21 @@ describe('read277', () => {
           categories: ['A1'],
           payerClaimNumber: null,
           message: 'Received'
-        },
+        }
+      ]
+    );
+  });
+
+  it('ignores statuses before the first level', () => {
+    assert.deepEqual(
+      read277(file('ST*277*0001*005010X214', 'STC*A3:21', 'HL*4**PT', 'TRN*2*2001', 'SE*4*0001')),
+      [
         {
-          claimNumber: '2002',
-          status: 'rejected',
-          categories: ['A8'],
+          claimNumber: '2001',
+          status: 'pending',
+          categories: [],
           payerClaimNumber: null,
-          message: 'BATCH IN ERROR'
+          message: ''
         }
       ]
     );

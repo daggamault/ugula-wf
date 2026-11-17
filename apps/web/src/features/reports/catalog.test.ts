@@ -3,17 +3,59 @@ import { describe, it } from 'node:test';
 import { titleCaseLabel } from '../../shared/format.ts';
 import { findReport, groupOf, REPORTS } from './catalog.ts';
 
+const groupsOf = (id: string) => findReport(id)?.groups?.map((g) => g.value) ?? null;
+
 describe('report catalog', () => {
-  it('gives each report a unique URL-safe id and a Title Case title with a sentence describing it', () => {
+  it('lists the reports in order with the dates each one filters by', () => {
+    assert.deepEqual(
+      REPORTS.map((r) => [r.id, r.dates]),
+      [
+        ['aging', null],
+        ['unbilled', null],
+        ['monthly', 'service'],
+        ['activity', 'posted'],
+        ['payments', 'posted'],
+        ['denials', 'posted'],
+        ['write-offs', 'closed'],
+        ['payers', 'service'],
+        ['hcpcs', 'service'],
+        ['levels', 'service'],
+        ['work-queue', null],
+        ['productivity', 'completed'],
+        ['imports', 'received']
+      ]
+    );
+  });
+
+  it('gives each report a unique URL-safe id and Title Case title', () => {
     assert.equal(new Set(REPORTS.map((r) => r.id)).size, REPORTS.length);
     assert.equal(new Set(REPORTS.map((r) => r.title)).size, REPORTS.length);
     for (const r of REPORTS) {
       assert.match(r.id, /^[a-z]+(-[a-z]+)*$/);
       assert.equal(r.title, titleCaseLabel(r.title));
-      assert.match(r.description, /^[A-Z].*\.$/);
-      assert.equal(findReport(r.id), r);
     }
+  });
+
+  it('describes each report in a sentence', () => {
+    for (const r of REPORTS) assert.match(r.description, /^[A-Z].*\.$/, r.id);
+  });
+
+  it('finds reports by id and nothing for unknown ids', () => {
+    for (const r of REPORTS) assert.equal(findReport(r.id), r);
     assert.equal(findReport('nope'), undefined);
+    assert.equal(findReport(''), undefined);
+  });
+
+  it('offers groupings only on the reports that can be grouped', () => {
+    assert.deepEqual(
+      REPORTS.filter((r) => r.groups).map((r) => [r.id, groupsOf(r.id)]),
+      [
+        ['aging', ['payer', 'class']],
+        ['denials', ['payer', 'reason']],
+        ['payers', ['payer', 'class']],
+        ['work-queue', ['queue', 'assignee']]
+      ]
+    );
   });
 
   it('labels every column and group once in Title Case', () => {
@@ -28,18 +70,28 @@ describe('report catalog', () => {
   });
 
   it('labels the first column for the chosen group', () => {
-    const aging = findReport('aging');
-    assert.equal(aging?.columns('payer')[0]?.label, 'Owed By');
-    assert.equal(aging?.columns('class')[0]?.label, 'Financial Class');
-    assert.equal(findReport('work-queue')?.columns('assignee')[0]?.label, 'Assignee');
+    const first = (id: string, group: string | null) => findReport(id)?.columns(group)[0]?.label;
+    assert.equal(first('aging', 'payer'), 'Owed By');
+    assert.equal(first('aging', 'class'), 'Financial Class');
+    assert.equal(first('work-queue', 'assignee'), 'Assignee');
+  });
+});
+
+describe('groupOf', () => {
+  const aging = findReport('aging');
+  assert.ok(aging);
+
+  it('finds the chosen group', () => {
+    assert.deepEqual(groupOf(aging, 'class'), { value: 'class', label: 'Financial Class' });
   });
 
-  it('falls back to the first group for unknown values', () => {
-    const aging = findReport('aging');
-    assert.ok(aging);
-    assert.equal(groupOf(aging, 'class')?.label, 'Financial Class');
-    assert.equal(groupOf(aging, 'bogus')?.value, 'payer');
-    assert.equal(groupOf(aging, null)?.value, 'payer');
+  it('falls back to the first group for unknown or missing values', () => {
+    assert.deepEqual(groupOf(aging, 'bogus'), { value: 'payer', label: 'Payer' });
+    assert.deepEqual(groupOf(aging, null), { value: 'payer', label: 'Payer' });
+  });
+
+  it('has no group for reports that cannot be grouped', () => {
     assert.equal(groupOf({ groups: null }, 'class'), null);
+    assert.equal(groupOf({ groups: [] }, 'class'), null);
   });
 });

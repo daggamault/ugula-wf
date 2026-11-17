@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { isPickList } from './pick-lists.ts';
+import { isPickList, PICK_LISTS } from './pick-lists.ts';
 
 describe('pick lists', () => {
   it('names the NEMSIS defined and suggested lists', () => {
-    assert.ok(isPickList('impression'));
-    assert.ok(isPickList('procedure'));
-    assert.ok(!isPickList('toString'));
+    for (const list of PICK_LISTS) assert.equal(isPickList(list), true, list);
+    assert.equal(isPickList('toString'), false);
+    assert.equal(isPickList('Impression'), false);
+    assert.equal(isPickList(null), false);
   });
 });

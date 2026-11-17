@@ -19,6 +19,9 @@ describe('zipCode', () => {
     assert.equal(zipCode('62704'), '62704');
     assert.equal(zipCode('62704-1234'), '627041234');
     assert.equal(zipCode('6270'), null);
+    assert.equal(zipCode('6270412'), null);
+    assert.equal(zipCode('6270412345'), null);
+    assert.equal(zipCode(''), null);
     assert.equal(zipCode(null), null);
   });
 });

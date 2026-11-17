@@ -27,24 +27,36 @@ describe('dayIn', () => {
 });
 
 describe('report service', () => {
+  const page = { items: [{ balance_cents: 5 }], total: 1, page: 1, pageSize: 100 };
+  const totals = { total: '1', balance_cents: 5 };
   const service = () => {
     const recording = createRecordingDb(() => [{ total: '1', balance_cents: 5 }]);
     return { ...recording, service: createReportService({ db: recording.db, now: () => now }) };
   };
 
-  it('runs a report as of today in the time zone, echoing its period and group', async () => {
+  it('runs an undated report as of today in the time zone, in its first group by default', async () => {
     const { service: s, queries } = service();
-    const aging = await s.run('t-1', 'aging', { tz: 'America/New_York', page: 1 });
-    assert.ok(aging.ok);
-    assert.equal(aging.value.asOf, '2026-10-31');
-    assert.equal(aging.value.range, null);
-    assert.equal(aging.value.group, 'payer');
-    assert.equal(aging.value.total, 1);
-    const monthly = await s.run('t-1', 'monthly', { from: '2026-01-01', tz: 'UTC', page: 1 });
-    assert.ok(monthly.ok);
-    assert.deepEqual(monthly.value.range, { from: '2026-01-01', to: '2026-11-01' });
-    assert.equal(monthly.value.group, null);
+    assert.deepEqual(await s.run('t-1', 'aging', { tz: 'America/New_York', page: 1 }), {
+      ok: true,
+      value: { asOf: '2026-10-31', range: null, group: 'payer', ...page, totals }
+    });
     assert.ok(queries.every((q) => q.parameters.includes('t-1')));
+  });
+
+  it('echoes the period of a dated report, ending today when no end is given', async () => {
+    const { service: s, queries } = service();
+    assert.deepEqual(await s.run('t-1', 'monthly', { from: '2026-01-01', tz: 'UTC', page: 1 }), {
+      ok: true,
+      value: {
+        asOf: '2026-11-01',
+        range: { from: '2026-01-01', to: '2026-11-01' },
+        group: null,
+        ...page,
+        totals
+      }
+    });
+    assert.ok(queries[1]?.parameters.includes('2026-01-01'));
+    assert.ok(queries[1]?.parameters.includes('2026-11-01'));
   });
 
   it("counts days in the agency's time zone, whatever zone the browser is in", async () => {
@@ -57,17 +69,23 @@ describe('report service', () => {
       tz: 'UTC',
       page: 1
     });
-    assert.ok(aging.ok);
-    assert.equal(aging.value.asOf, '2026-10-31');
+    assert.equal(aging.ok && aging.value.asOf, '2026-10-31');
   });
 
-  it('rejects unknown reports and groups a report does not offer', async () => {
-    const { service: s } = service();
-    const missing = await s.run('t-1', 'nope', { tz: 'UTC', page: 1 });
-    assert.ok(!missing.ok && missing.failure.code === 'not_found');
-    const badGroup = await s.run('t-1', 'aging', { tz: 'UTC', group: 'queue', page: 1 });
-    assert.ok(!badGroup.ok && badGroup.failure.code === 'invalid');
-    const ungrouped = await s.run('t-1', 'monthly', { tz: 'UTC', group: 'payer', page: 1 });
-    assert.ok(!ungrouped.ok && ungrouped.failure.code === 'invalid');
+  it('rejects unknown reports and groups a report does not offer without querying', async () => {
+    const { service: s, queries } = service();
+    assert.deepEqual(await s.run('t-1', 'nope', { tz: 'UTC', page: 1 }), {
+      ok: false,
+      failure: { code: 'not_found', message: 'There is no report called “nope”.' }
+    });
+    assert.deepEqual(await s.run('t-1', 'aging', { tz: 'UTC', group: 'queue', page: 1 }), {
+      ok: false,
+      failure: { code: 'invalid', message: "This report can't be grouped by “queue”." }
+    });
+    assert.deepEqual(await s.run('t-1', 'monthly', { tz: 'UTC', group: 'payer', page: 1 }), {
+      ok: false,
+      failure: { code: 'invalid', message: "This report can't be grouped by “payer”." }
+    });
+    assert.equal(queries.length, 0);
   });
 });

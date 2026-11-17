@@ -1,14 +1,23 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { render, screen, userEvent, within } from '../testing-dom.ts';
 import { Centered } from './centered.tsx';
 
 describe('Centered', () => {
-  it('centers a page on the screen with the theme toggle in the corner', () => {
-    const html = renderToStaticMarkup(createElement(Centered, { children: 'Body' }));
-    assert.ok(html.startsWith('<main class="grid min-h-dvh place-items-center p-4">'));
-    assert.ok(html.includes('fixed top-4 right-4'));
-    assert.ok(html.endsWith('Body</main>'));
+  it('holds the page in the main landmark, after the theme toggle', () => {
+    render(createElement(Centered, { children: createElement('p', null, 'Body') }));
+    const main = screen.getByRole('main');
+    assert.equal(main.lastElementChild?.textContent, 'Body');
+    within(main).getByRole('button', { name: 'Switch to Dark Mode' });
+  });
+
+  it('switches the theme from the corner toggle', async () => {
+    render(createElement(Centered, { children: 'Body' }));
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Switch to Dark Mode' }));
+    assert.equal(document.documentElement.classList.contains('dark'), true);
+    await screen.findByRole('button', { name: 'Switch to Light Mode' });
+    document.documentElement.classList.remove('dark');
+    localStorage.clear();
   });
 });

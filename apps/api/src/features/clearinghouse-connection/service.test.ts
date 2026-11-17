@@ -30,9 +30,6 @@ const serviceOf = (rows: (q: { sql: string }) => unknown[], allowLocal = false) 
   return { service: createConnectionService({ db, seal, allowLocal }), queries };
 };
 
-const messageOf = (r: { ok: true } | { ok: false; failure: { message: string } }) =>
-  r.ok ? '' : r.failure.message;
-
 describe('clearinghouse connection service', () => {
   it('reads the connection without its secret and says whether secrets can be stored', async () => {
     const { service, queries } = serviceOf(() => [row]);
@@ -55,11 +52,14 @@ describe('clearinghouse connection service', () => {
 
   it('seals a new secret for the agency, and keeps the stored one when none is given', async () => {
     const { service, queries } = serviceOf(() => [row]);
-    assert.ok((await service.save('t1', input)).ok);
+    assert.deepEqual(await service.save('t1', input), { ok: true, value: { connection: row } });
     assert.ok(queries[0]?.sql.includes('on conflict ("agency_id") do update set'));
     assert.ok(queries[0]?.parameters.includes('sealed(hunter2@t1)'));
     assert.ok(!queries[0]?.parameters.includes('hunter2'));
-    assert.ok((await service.save('t1', { ...input, secret: null })).ok);
+    assert.deepEqual(await service.save('t1', { ...input, secret: null }), {
+      ok: true,
+      value: { connection: row }
+    });
     assert.ok(queries[1]?.sql.startsWith('update "clearinghouse_connections"'));
     assert.ok(!queries[1]?.sql.includes('"sftp_secret" ='));
   });
@@ -71,32 +71,43 @@ describe('clearinghouse connection service', () => {
       sftpHost: 'evil.example.com',
       secret: null
     });
-    assert.equal(messageOf(moved), SECRET_FOR_ENDPOINT);
+    assert.deepEqual(moved, {
+      ok: false,
+      failure: { code: 'invalid', message: SECRET_FOR_ENDPOINT }
+    });
     assert.ok(queries[0]?.sql.includes('"sftp_host" = $'));
     assert.ok(queries[0]?.parameters.includes('evil.example.com'));
   });
 
   it('needs a password for a new connection and a key to store one', async () => {
     const missing = await serviceOf(() => []).service.save('t1', { ...input, secret: null });
-    assert.match(messageOf(missing), /password for the new connection/);
+    assert.deepEqual(missing, {
+      ok: false,
+      failure: { code: 'invalid', message: 'Enter the SFTP password for the new connection' }
+    });
     const keyless = createConnectionService({
       db: createRecordingDb(() => []).db,
       seal: null,
       allowLocal: false
     });
-    const refused = await keyless.save('t1', input);
-    assert.equal(messageOf(refused), NO_SECRET_KEY);
+    assert.deepEqual(await keyless.save('t1', input), {
+      ok: false,
+      failure: { code: 'conflict', message: NO_SECRET_KEY }
+    });
     assert.doesNotMatch(NO_SECRET_KEY, /CLEARINGHOUSE_/);
   });
 
   it('refuses private servers and the mock outside development', async () => {
     const strict = serviceOf(() => [row]);
-    const refused = await strict.service.save('t1', { ...input, sftpHost: '127.0.0.1' });
-    assert.equal(messageOf(refused), 'The SFTP host must be a public server');
+    assert.deepEqual(await strict.service.save('t1', { ...input, sftpHost: '127.0.0.1' }), {
+      ok: false,
+      failure: { code: 'invalid', message: 'The SFTP host must be a public server' }
+    });
     assert.equal(strict.queries.length, 0);
     const local = serviceOf(() => [row], true);
-    assert.ok(
-      (await local.service.save('t1', { ...input, vendor: 'mock', sftpHost: 'localhost' })).ok
+    assert.deepEqual(
+      await local.service.save('t1', { ...input, vendor: 'mock', sftpHost: 'localhost' }),
+      { ok: true, value: { connection: row } }
     );
   });
 
@@ -104,7 +115,9 @@ describe('clearinghouse connection service', () => {
     const { service, queries } = serviceOf(() => [{}]);
     assert.deepEqual(await service.remove('t1'), { ok: true, value: { removed: true } });
     assert.ok(queries[0]?.sql.startsWith('delete from "clearinghouse_connections"'));
-    const none = await serviceOf(() => []).service.remove('t1');
-    assert.equal(none.ok ? null : none.failure.code, 'not_found');
+    assert.deepEqual(await serviceOf(() => []).service.remove('t1'), {
+      ok: false,
+      failure: { code: 'not_found', message: 'This agency has no clearinghouse connection' }
+    });
   });
 });
