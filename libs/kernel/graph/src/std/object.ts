@@ -97,7 +97,7 @@ export const objectNodes: NodeDef[] = [
     keywords: ['record', 'split', 'fields', 'object'],
     summary: fieldsSummary,
     config: fieldsConfig,
-    inputs: [pin('object', OBJECT, { description: 'The record to split.' })],
+    inputs: [pin('object', OBJECT, { optional: true, description: 'The record to split.' })],
     outputs: (c) => fieldPins(c, true, 'The value of this field.'),
     compute: ({ object }, { fields }) =>
       Object.fromEntries(fields.map((f) => [f.name, obj(object ?? {})[f.name] ?? null]))
