@@ -76,13 +76,13 @@ const AddButton = ({ children, onClick }: { children: string; onClick: () => voi
   </Button>
 );
 
-type CellInputProps = Omit<InputProps, 'value' | 'onChange'> & {
+export type CellInputProps = Omit<InputProps, 'value' | 'onChange'> & {
   value: Json | undefined;
   parse: (text: string) => Json;
   onValue: (value: Json) => void;
 };
 
-const CellInput = ({ value, parse, onValue, ...rest }: CellInputProps) => {
+export const CellInput = ({ value, parse, onValue, ...rest }: CellInputProps) => {
   const [text, setText] = useState(() => formatCell(value));
   const shown = deepEqual(parse(text), value ?? null) ? text : formatCell(value);
   return (
@@ -97,7 +97,7 @@ const CellInput = ({ value, parse, onValue, ...rest }: CellInputProps) => {
   );
 };
 
-const cellHint = (column: Column) =>
+export const cellHint = (column: Column) =>
   columnKind(column.type) === 'list'
     ? 'Separate items with commas.'
     : columnKind(column.type) === 'boolean'
