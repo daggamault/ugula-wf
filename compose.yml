@@ -140,7 +140,8 @@ services:
       --host 0.0.0.0
       --port 8080
       --n-gpu-layers all
-      --ctx-size 32768
+      --ctx-size ${COMPLETIONS_CTX_SIZE:?COMPLETIONS_CTX_SIZE is required}
+      --parallel ${COMPLETIONS_SLOTS:?COMPLETIONS_SLOTS is required}
       --reasoning off
       --no-webui
     healthcheck:
