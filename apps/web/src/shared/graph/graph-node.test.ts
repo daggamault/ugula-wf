@@ -289,7 +289,11 @@ describe('GraphNode header', () => {
     show({ kind: 'pure' });
     const header = within(card()).getByRole('banner');
     assert.equal(header.textContent, 'Add');
-    assert.equal(hasClass(header, 'border-t-4'), false);
+  });
+
+  it('gives a pure node the same top border as every other kind', () => {
+    show({ kind: 'pure' });
+    assert.equal(hasClass(within(card()).getByRole('banner'), 'border-t-4'), true);
   });
 
   it('colors the header by the kind of node', () => {

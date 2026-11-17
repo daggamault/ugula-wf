@@ -31,7 +31,7 @@ const statusClasses: Record<NodeStatus, string> = {
 const KIND_CLASSES: Readonly<Record<NodeKind, string>> = {
   entry: 'border-t-node-entry bg-node-entry/15',
   action: 'border-t-node-action bg-node-action/15',
-  pure: 'border-t-node-pure bg-node-pure/10',
+  pure: 'border-t-node-pure bg-node-pure/15',
   flow: 'border-t-node-flow bg-node-flow/15',
   human: 'border-t-node-human bg-node-human/15',
   table: 'border-t-node-table bg-node-table/15',
@@ -260,8 +260,7 @@ export const GraphNode = (props: NodeProps<GraphFlowNode>) => {
       <header
         title={description || undefined}
         className={classNamesOf(
-          'border-border flex flex-col gap-0.5 rounded-t-lg border-b px-3',
-          pure ? 'py-1' : 'border-t-4 py-1.5',
+          'border-border flex flex-col gap-0.5 rounded-t-lg border-t-4 border-b px-3 py-1.5',
           KIND_CLASSES[kind]
         )}
       >
