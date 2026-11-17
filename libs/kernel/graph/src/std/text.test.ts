@@ -35,6 +35,13 @@ describe('text nodes', () => {
     );
   });
 
+  it('writes cents as dollars', async () => {
+    assert.deepEqual((await run('std.text.money', { cents: 125050 })).outputs, {
+      text: '$1,250.50'
+    });
+    assert.deepEqual((await run('std.text.money', {})).outputs, { text: null });
+  });
+
   it('transforms and tests text', async () => {
     const out = async (type: string, inputs: Values, config: Json = {}) =>
       (await run(type, inputs, config)).outputs;

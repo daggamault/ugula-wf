@@ -117,6 +117,24 @@ export const objectNodes: NodeDef[] = [
     compute: ({ a, b }) => ({ object: { ...obj(a ?? {}), ...obj(b ?? {}) } })
   }),
   pureNode({
+    type: 'std.object.compact',
+    title: 'Drop Empty Fields',
+    category: CATEGORY,
+    description:
+      'Gives a copy of a record without its empty fields, so merging it over another keeps the values it does not fill in.',
+    level: 'basic',
+    keywords: ['record', 'empty', 'blank', 'remove', 'clean', 'compact', 'object'],
+    inputs: [pin('object', OBJECT, { optional: true, description: 'The record.' })],
+    outputs: [pin('object', OBJECT, { description: 'The record without empty fields.' })],
+    compute: ({ object }) => ({
+      object: Object.fromEntries(
+        Object.entries(obj(object ?? {})).filter(
+          ([, x]) => x !== null && x !== '' && !(Array.isArray(x) && x.length === 0)
+        )
+      )
+    })
+  }),
+  pureNode({
     type: 'std.object.keys',
     title: 'Keys',
     category: CATEGORY,

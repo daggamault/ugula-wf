@@ -1,7 +1,7 @@
 import * as v from 'valibot';
 import { pin, pureNode } from '../define.ts';
 import { fail } from '../errors.ts';
-import { MAX_RANGE } from '../expr-functions.ts';
+import { formatMoney, MAX_RANGE } from '../expr-functions.ts';
 import { getPath, toText } from '../json.ts';
 import type { Json, NodeDef } from '../types.ts';
 import { oneLine } from './expression.ts';
@@ -147,6 +147,21 @@ export const textNodes: NodeDef[] = [
     compute: ({ items, separator }) => ({
       text: (items as Json[]).map(toText).join(separator as string)
     })
+  }),
+  pureNode({
+    type: 'std.text.money',
+    title: 'Money',
+    category: CATEGORY,
+    description: 'Writes an amount in cents as dollars, such as 1250 as $12.50.',
+    level: 'basic',
+    keywords: ['money', 'dollars', 'cents', 'currency', 'format', 'amount'],
+    inputs: [pin('cents', 'number', { optional: true, description: 'The amount in cents.' })],
+    outputs: [
+      pin('text', 'string', {
+        description: 'The amount in dollars, or nothing when it is missing.'
+      })
+    ],
+    compute: ({ cents }) => ({ text: cents === null ? null : formatMoney(cents as number) })
   }),
   pureNode({
     type: 'std.text.substring',

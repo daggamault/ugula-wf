@@ -12,6 +12,10 @@ const unitConfig = v.object({
 
 type UnitConfig = v.InferOutput<typeof unitConfig>;
 
+const periodConfig = v.object({
+  unit: v.optional(v.picklist(['day', 'month', 'year']), 'month')
+});
+
 const toDate = (x: unknown) => new Date(x as string);
 
 const intoMonth = (d: Date) => d.getTime() - Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
@@ -53,11 +57,19 @@ export const timeNodes: NodeDef[] = [
     summary: ({ unit }) => `Adds ${unit}`,
     config: unitConfig,
     inputs: [
-      pin('time', 'datetime', { description: 'The date and time to start from.' }),
-      pin('amount', 'number', { description: 'How many units to add; negative goes back.' })
+      pin('time', 'datetime', { optional: true, description: 'The date and time to start from.' }),
+      pin('amount', 'number', {
+        optional: true,
+        description: 'How many units to add; negative goes back.'
+      })
     ],
-    outputs: [pin('time', 'datetime', { description: 'The new date and time.' })],
+    outputs: [
+      pin('time', 'datetime', {
+        description: 'The new date and time, or nothing when either is missing.'
+      })
+    ],
     compute: ({ time, amount }, { unit }) => {
+      if (time === null || amount === null) return { time: null };
       const d = toDate(time);
       const n = amount as number;
       if (unit === 'years') addMonths(d, n * 12);
@@ -77,11 +89,16 @@ export const timeNodes: NodeDef[] = [
     summary: ({ unit }) => `In ${unit}`,
     config: unitConfig,
     inputs: [
-      pin('start', 'datetime', { description: 'The start.' }),
-      pin('end', 'datetime', { description: 'The end.' })
+      pin('start', 'datetime', { optional: true, description: 'The start.' }),
+      pin('end', 'datetime', { optional: true, description: 'The end.' })
     ],
-    outputs: [pin('amount', 'integer', { description: 'How many whole units lie between.' })],
+    outputs: [
+      pin('amount', 'integer', {
+        description: 'How many whole units lie between, or nothing when either is missing.'
+      })
+    ],
     compute: ({ start, end }, { unit }) => {
+      if (start === null || end === null) return { amount: null };
       const [a, b] = [toDate(start), toDate(end)];
       const amount =
         unit === 'years'
@@ -90,6 +107,33 @@ export const timeNodes: NodeDef[] = [
             ? monthsBetween(a, b)
             : Math.trunc((b.getTime() - a.getTime()) / UNIT_MS[unit]);
       return { amount };
+    }
+  }),
+  pureNode<v.InferOutput<typeof periodConfig>>({
+    type: 'std.time.start-of',
+    title: 'Start Of',
+    category: CATEGORY,
+    description:
+      'The first moment of the day, month or year a date and time falls in, in UTC, such as the first of the month for a monthly report.',
+    level: 'basic',
+    keywords: ['time', 'date', 'start', 'first', 'month', 'year', 'day', 'beginning'],
+    summary: ({ unit }) => `Start of the ${unit}`,
+    config: periodConfig,
+    inputs: [pin('time', 'datetime', { optional: true, description: 'The date and time.' })],
+    outputs: [
+      pin('time', 'datetime', {
+        description: 'The start of its day, month or year, or nothing when it is missing.'
+      })
+    ],
+    compute: ({ time }, { unit }) => {
+      if (time === null) return { time: null };
+      const d = toDate(time);
+      const start = Date.UTC(
+        d.getUTCFullYear(),
+        unit === 'year' ? 0 : d.getUTCMonth(),
+        unit === 'day' ? d.getUTCDate() : 1
+      );
+      return { time: new Date(start).toISOString() };
     }
   }),
   pureNode({

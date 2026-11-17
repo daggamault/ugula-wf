@@ -14,6 +14,16 @@ const out = async (type: string, inputs: Values, config: Json = {}) =>
   (await run(type, inputs, config)).outputs;
 
 describe('object nodes', () => {
+  it('drops empty fields', async () => {
+    assert.deepEqual(
+      await out('std.object.compact', { object: { a: 1, b: null, c: '', d: [], e: false } }),
+      {
+        object: { a: 1, e: false }
+      }
+    );
+    assert.deepEqual(await out('std.object.compact', {}), { object: {} });
+  });
+
   it('makes and breaks typed objects', async () => {
     const fields = [
       { name: 'id', type: 'string' },

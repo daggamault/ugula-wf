@@ -21,8 +21,8 @@ Every billing decision should be readable on the canvas, built from small primit
 
 - [x] **Rule per item:** Run Rule for Each, Keep Items Where and Find Item Where call a pure `node` graph once per item, keep types, and are pinned with the graph like any subworkflow.
 - [x] Decision tables give the matched rule's label or the `otherwise` label as the reason, so rules stop rebuilding reasons.
-- [ ] Missing primitives the rewrites need: money text, start of period, round to a step and direction, drop empty fields, sum and count by field.
-- [ ] Comparison, logic, math, text, list and time primitives become `basic`.
+- [x] Missing primitives the rewrites need: money text, start of period, drop empty fields, typed Make List and Join Lists, claim issue nodes; missing values pass through math, time and list nodes.
+- [x] Comparison, logic, math, text, list and time primitives become `basic`.
 
 ### 2. Rules as primitives (`.seeds/billing`)
 

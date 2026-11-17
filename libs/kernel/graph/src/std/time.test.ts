@@ -67,6 +67,22 @@ describe('time nodes', () => {
   });
 });
 
+describe('start of and missing times', () => {
+  it('finds the start of a period and passes missing times through', async () => {
+    const at = { time: '2026-03-15T10:30:00Z' };
+    assert.deepEqual(await out('std.time.start-of', at), { time: '2026-03-01T00:00:00.000Z' });
+    assert.deepEqual(await out('std.time.start-of', at, { unit: 'year' }), {
+      time: '2026-01-01T00:00:00.000Z'
+    });
+    assert.deepEqual(await out('std.time.start-of', at, { unit: 'day' }), {
+      time: '2026-03-15T00:00:00.000Z'
+    });
+    assert.deepEqual(await out('std.time.start-of'), { time: null });
+    assert.deepEqual(await out('std.time.add', { amount: 1 }), { time: null });
+    assert.deepEqual(await out('std.time.difference', { start: '2026-01-01' }), { amount: null });
+  });
+});
+
 describe('time summaries', () => {
   it('name the unit', () => {
     const summaryOf = (type: string) =>
