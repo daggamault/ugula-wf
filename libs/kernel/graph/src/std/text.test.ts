@@ -22,9 +22,11 @@ describe('text nodes', () => {
       ['claim', 'n', 'missing']
     );
     assert.deepEqual(tpl.outputs, { text: 'Claim C1 has 2 lines for today' });
-    assert.deepEqual((await run('std.text.template', {}, { template: ' [{x}] ' })).outputs, {
-      text: '[]'
+    const optional = { template: 'Payer[ (member {m.id})][, due {due}]' };
+    assert.deepEqual((await run('std.text.template', { m: { id: 'M1' } }, optional)).outputs, {
+      text: 'Payer (member M1)'
     });
+    assert.deepEqual((await run('std.text.template', {}, optional)).outputs, { text: 'Payer' });
     assert.deepEqual(
       (await run('std.text.template', {}, { template: 'plain {} {1a}' })).signature.inputs,
       []

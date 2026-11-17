@@ -10,6 +10,8 @@ const CATEGORY = 'Text';
 
 const PLACEHOLDER = /\{\s*([A-Za-z_$][\w$]*)((?:\.[\w$]+)*)\s*\}/g;
 
+const OPTIONAL_PART = /\[([^[\]]*)\]/g;
+
 const placeholderNames = (template: string) => [
   ...new Set([...template.matchAll(PLACEHOLDER)].map((m) => m[1] ?? ''))
 ];
@@ -61,7 +63,7 @@ export const textNodes: NodeDef[] = [
     title: 'Text Template',
     category: CATEGORY,
     description:
-      'Builds text from a pattern such as "Claim {number} for {name}"; each name in braces is a value to connect, and {patient.name} reads a field of one. Empty values leave nothing behind.',
+      'Builds text from a pattern such as "Claim {number} for {name}"; each name in braces is a value to connect, and {patient.name} reads a field of one. Empty values leave nothing behind, and a part in square brackets, such as "[ (member {memberId})]", is left out whole when a value in it is empty.',
     level: 'basic',
     keywords: ['text', 'template', 'format', 'message', 'merge', 'subject', 'summary'],
     summary: ({ template }) => oneLine(template),
@@ -71,14 +73,18 @@ export const textNodes: NodeDef[] = [
         pin(name, 'any', { optional: true, description: 'A value the text fills in.' })
       ),
     outputs: [pin('text', 'string', { description: 'The finished text.' })],
-    compute: (inputs, { template }) => ({
-      text: template
-        .replace(PLACEHOLDER, (_, name: string, path: string) =>
-          toText(getPath(inputs[name] ?? null, path))
-        )
-        .replace(/[ \t]{2,}/g, ' ')
-        .trim()
-    })
+    compute: (inputs, { template }) => {
+      const textAt = (name: string, path: string) => toText(getPath(inputs[name] ?? null, path));
+      const fill = (part: string) =>
+        part.replace(PLACEHOLDER, (_, name: string, path: string) => textAt(name, path));
+      const filled = (part: string) =>
+        [...part.matchAll(PLACEHOLDER)].every(([, name = '', path = '']) => textAt(name, path));
+      return {
+        text: fill(template.replace(OPTIONAL_PART, (_, part: string) => (filled(part) ? part : '')))
+          .replace(/[ \t]{2,}/g, ' ')
+          .trim()
+      };
+    }
   }),
   pureNode({
     type: 'std.text.length',
@@ -140,12 +146,12 @@ export const textNodes: NodeDef[] = [
     level: 'basic',
     keywords: ['text', 'combine', 'concatenate', 'list'],
     inputs: [
-      pin('items', { list: 'any' }, { description: 'The items to join.' }),
+      pin('items', { list: 'any' }, { optional: true, description: 'The items to join.' }),
       pin('separator', 'string', { default: '', description: 'What goes between the items.' })
     ],
     outputs: [pin('text', 'string', { description: 'The joined text.' })],
     compute: ({ items, separator }) => ({
-      text: (items as Json[]).map(toText).join(separator as string)
+      text: ((items ?? []) as Json[]).map(toText).join(separator as string)
     })
   }),
   pureNode({
