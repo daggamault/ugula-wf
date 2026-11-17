@@ -266,14 +266,18 @@ describe('createRunStore', () => {
     await db.destroy();
   });
 
-  it('prunes month-old steps of month-old active runs in bounded batches', async () => {
+  it('prunes month-old steps of active runs and events that started nothing, in batches', async () => {
     const { db, queries } = recordingDb([{}, {}, {}]);
-    assert.equal(await createRunStore({ db, boss: recordingBoss().boss }).prune(), 3);
+    assert.equal(await createRunStore({ db, boss: recordingBoss().boss }).prune(), 6);
     assert.equal(
       queries[0]?.sql,
       'delete from "workflow_run_steps" as "s" where (s.run_id, s.seq) in ((select "o"."run_id", "o"."seq" from "workflow_run_steps" as "o" inner join "workflow_runs" as "r" on "r"."id" = "o"."run_id" where "r"."status" in ($1, $2, $3) and "r"."created_at" < now() - interval \'30 days\' and "o"."started_at" < now() - interval \'30 days\' limit $4))'
     );
     assert.deepEqual(queries[0]?.parameters, ['running', 'suspended', 'faulted', 10_000]);
+    assert.equal(
+      queries[1]?.sql,
+      `delete from "events" as "e" where "e"."id" in (select "o"."id" from "events" as "o" where "o"."dispatched_at" < now() - interval '30 days' and not exists (select "er"."run_id" from "event_runs" as "er" where "er"."event_id" = "o"."id") limit $1)`
+    );
     await db.destroy();
   });
 });

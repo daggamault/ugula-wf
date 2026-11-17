@@ -122,6 +122,27 @@ export const createRunStore = ({ db, boss }: { db: Db; boss: QueueClient }): Run
           .limit(PRUNE_BATCH)})`
       )
       .executeTakeFirst();
-    return Number(numDeletedRows);
+    const events = await db
+      .deleteFrom('events as e')
+      .where(
+        'e.id',
+        'in',
+        db
+          .selectFrom('events as o')
+          .select('o.id')
+          .where('o.dispatched_at', '<', PRUNE_BEFORE)
+          .where(({ not, exists, selectFrom }) =>
+            not(
+              exists(
+                selectFrom('event_runs as er')
+                  .select('er.run_id')
+                  .whereRef('er.event_id', '=', 'o.id')
+              )
+            )
+          )
+          .limit(PRUNE_BATCH)
+      )
+      .executeTakeFirst();
+    return Number(numDeletedRows) + Number(events.numDeletedRows);
   }
 });
