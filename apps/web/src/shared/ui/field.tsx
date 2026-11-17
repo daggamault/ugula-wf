@@ -4,7 +4,7 @@ import { focusRingClasses } from './interactive.ts';
 
 export const fieldControlClasses = classNamesOf(
   focusRingClasses,
-  'border-border bg-surface placeholder:text-surface-fg-muted/70 aria-invalid:border-danger aria-invalid:focus-visible:outline-danger [&:enabled:not([readonly])]:hover:border-surface-fg/25 [&:enabled:not([readonly])]:hover:bg-surface-hover w-full rounded-lg border px-3 disabled:cursor-not-allowed disabled:opacity-50'
+  'border-border bg-surface placeholder:text-surface-fg-muted/70 aria-invalid:border-danger aria-invalid:focus-visible:outline-danger [&:enabled:not([readonly])]:hover:border-surface-fg/25 [&:enabled:not([readonly])]:hover:bg-surface-hover w-full rounded-lg border px-3 disabled:cursor-not-allowed disabled:opacity-50 autofill:bg-clip-padding autofill:shadow-[inset_0_0_0_100vmax_var(--color-surface)] autofill:[-webkit-text-fill-color:var(--color-surface-fg)]'
 );
 
 export const fieldTextClasses = 'text-base sm:text-sm';
