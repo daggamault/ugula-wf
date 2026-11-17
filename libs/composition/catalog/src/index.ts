@@ -1,5 +1,11 @@
 import { PERMISSIONS } from '@ugula/access';
-import { billingEvents, billingKinds, billingModels } from '@ugula/billing';
+import {
+  type BillingStores,
+  billingEvents,
+  billingKinds,
+  billingModels,
+  createBillingNodes
+} from '@ugula/billing';
 import {
   createModelNodes,
   createStdNodes,
@@ -9,15 +15,26 @@ import {
   STD_KINDS,
   type StdDeps
 } from '@ugula/graph';
-import { nemsisKinds, nemsisModels } from '@ugula/nemsis';
+import {
+  createNemsisNodes,
+  encounterModels,
+  type NemsisStores,
+  nemsisEvents,
+  nemsisKinds
+} from '@ugula/nemsis';
 
-type CatalogDeps = Omit<StdDeps, 'permissions'>;
+type CatalogDeps = Omit<StdDeps, 'permissions'> & {
+  nemsis?: NemsisStores;
+  billing?: BillingStores;
+};
 
 export const valueKinds = mergeKinds(STD_KINDS, nemsisKinds, billingKinds);
 
-export const workflowEvents: readonly EventDef[] = billingEvents;
+export const workflowEvents: readonly EventDef[] = [...nemsisEvents, ...billingEvents];
 
-export const createNodeCatalog = (std: CatalogDeps): NodeDef[] => [
+export const createNodeCatalog = ({ nemsis, billing, ...std }: CatalogDeps): NodeDef[] => [
   ...createStdNodes({ ...std, permissions: PERMISSIONS }),
-  ...createModelNodes([...nemsisModels, ...billingModels])
+  ...createNemsisNodes(nemsis ?? null),
+  ...createBillingNodes(billing ?? null),
+  ...createModelNodes([...encounterModels, ...billingModels])
 ];

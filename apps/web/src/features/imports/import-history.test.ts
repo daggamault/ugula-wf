@@ -22,17 +22,15 @@ const summary = (over: Partial<ImportSummary> = {}): ImportSummary => ({
   run_id: 'r1',
   run_status: 'suspended',
   uploaded_by_email: 'biller@example.com',
-  completed: 1,
-  waiting: 1,
-  stuck: 0,
-  failed: 1,
-  processing: 0,
+  created: 2,
+  revised: 1,
+  unchanged: 0,
   claims: 1,
   charges_cents: 114_220,
   ...over
 });
 
-const settled = { waiting: 0, failed: 0, stuck: 0, processing: 0 };
+const none = { created: 0, revised: 0, unchanged: 0 };
 
 /** The visible value of each cell, without the label shown on narrow screens. */
 const valuesOf = (row: HTMLElement) =>
@@ -46,46 +44,35 @@ const rowsOf = () =>
     .slice(1);
 
 describe('reportOutcomes', () => {
-  it('lists each outcome that needs someone, in a fixed order', () => {
-    assert.deepEqual(reportOutcomes(summary({ waiting: 1, failed: 2, stuck: 3, processing: 4 })), [
-      '1 waiting',
-      '2 failed',
-      '3 stuck',
-      '4 running'
+  it('counts new, revised and unchanged encounters, in a fixed order', () => {
+    assert.deepEqual(reportOutcomes({ created: 3, revised: 1, unchanged: 2 }), [
+      '3 new',
+      '1 revised',
+      '2 unchanged'
     ]);
   });
 
-  it('lists nothing once every report is settled', () => {
-    assert.deepEqual(reportOutcomes(summary(settled)), []);
+  it('lists nothing before any report is saved', () => {
+    assert.deepEqual(reportOutcomes(none), []);
   });
 });
 
 describe('importStatus', () => {
-  const done = summary({ run_status: 'completed', ...settled });
-
-  it('is completed once the split finished and every report is settled', () => {
-    assert.deepEqual(importStatus(done), { intent: 'success', label: 'Completed' });
-  });
-
-  it('stays in progress after the split while reports wait, run or are stuck', () => {
-    const pending = { intent: 'info', label: 'PCRs in Progress' };
-    assert.deepEqual(importStatus({ ...done, waiting: 2 }), pending);
-    assert.deepEqual(importStatus({ ...done, processing: 1 }), pending);
-    assert.deepEqual(importStatus({ ...done, stuck: 1 }), pending);
-  });
-
-  it('counts failed reports as settled', () => {
-    assert.deepEqual(importStatus({ ...done, failed: 1 }), {
+  it('follows the run reading the file', () => {
+    assert.deepEqual(importStatus({ run_status: 'completed' }), {
       intent: 'success',
       label: 'Completed'
     });
-  });
-
-  it('follows the split run while it has not completed', () => {
-    assert.deepEqual(importStatus(summary()), { intent: 'warning', label: 'Waiting' });
-    assert.deepEqual(importStatus(summary({ run_status: 'faulted' })), {
+    assert.deepEqual(importStatus({ run_status: 'faulted' }), {
       intent: 'danger',
       label: 'Stuck'
+    });
+  });
+
+  it('waits until a run reads the file', () => {
+    assert.deepEqual(importStatus({ run_status: null }), {
+      intent: 'info',
+      label: 'Waiting to Be Read'
     });
   });
 });
@@ -100,7 +87,7 @@ describe('sourceOf', () => {
 });
 
 describe('ImportHistory', () => {
-  it('shows each file with its source, status, counts, charges and what needs attention', () => {
+  it('shows each file with its source, status, counts, charges and encounters', () => {
     render(
       createElement(ImportHistory, {
         imports: [
@@ -111,7 +98,7 @@ describe('ImportHistory', () => {
             source: 'sftp',
             run_status: 'completed',
             uploaded_by_email: null,
-            ...settled
+            ...none
           })
         ]
       })
@@ -125,7 +112,7 @@ describe('ImportHistory', () => {
       '3',
       '1',
       '$1,142.20',
-      '1 waiting, 1 failed',
+      '2 new, 1 revised',
       'Open'
     ]);
     assert.deepEqual(valuesOf(second), [
@@ -135,7 +122,7 @@ describe('ImportHistory', () => {
       '3',
       '1',
       '$1,142.20',
-      'Nothing',
+      'None yet',
       'Open'
     ]);
   });
@@ -144,7 +131,7 @@ describe('ImportHistory', () => {
     render(createElement(ImportHistory, { imports: [] }));
     assert.deepEqual(
       screen.getAllByRole('columnheader').map((h) => h.textContent),
-      ['File', 'Received', 'Status', 'PCRs', 'Claims', 'Charges', 'Needs Attention', 'Actions']
+      ['File', 'Received', 'Status', 'PCRs', 'Claims', 'Charges', 'Encounters', 'Actions']
     );
     assert.equal(screen.getByText('Actions').className, 'sr-only');
   });

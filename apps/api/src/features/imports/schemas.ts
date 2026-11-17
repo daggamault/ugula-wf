@@ -2,14 +2,7 @@ import * as v from 'valibot';
 import { pageEntries } from '../../shared/paging.ts';
 import { searchText } from '../../shared/search.ts';
 
-export const INGEST_WORKFLOW = 'billing.receive-nemsis-file';
-
-const graphKey = v.pipe(v.string(), v.regex(/^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/));
-
-export const importFormSchema = v.object({
-  file: v.instance(File),
-  workflow: v.optional(graphKey, INGEST_WORKFLOW)
-});
+export const importFormSchema = v.object({ file: v.instance(File) });
 
 export const sftpAuthSchema = v.looseObject({
   username: v.pipe(v.string(), v.nonEmpty()),
@@ -26,15 +19,7 @@ export const sftpEventSchema = v.looseObject({
 
 export type SftpEvent = v.InferOutput<typeof sftpEventSchema>;
 
-const IMPORT_SORTS = [
-  'received',
-  'file',
-  'reports',
-  'claims',
-  'charges',
-  'status',
-  'attention'
-] as const;
+const IMPORT_SORTS = ['received', 'file', 'reports', 'claims', 'charges', 'status'] as const;
 
 export type ImportSort = (typeof IMPORT_SORTS)[number];
 
@@ -43,7 +28,7 @@ export const searchImportsQuery = v.object({
   ...pageEntries(IMPORT_SORTS, 'received', 'desc')
 });
 
-const REPORT_SORTS = ['position', 'pcr', 'patient', 'status', 'claim', 'total'] as const;
+const REPORT_SORTS = ['position', 'pcr', 'patient', 'outcome', 'claim', 'total'] as const;
 
 export type ReportSort = (typeof REPORT_SORTS)[number];
 

@@ -4,7 +4,8 @@ export {
   type Adjustment,
   type AdjustmentGroup,
   type LineAdjudication,
-  MAX_LINE_MODIFIERS
+  MAX_LINE_MODIFIERS,
+  MODIFIER_PATTERN
 } from './adjudications.ts';
 export {
   CLASSIFICATION_LABELS,
@@ -32,7 +33,15 @@ export {
   RELATIONSHIP_LABELS,
   SELF
 } from './claim-details.ts';
-export { CLAIM_STATUS_LABELS, CLAIM_STATUSES, type ClaimStatus } from './claims.ts';
+export {
+  CLAIM_STATUS_LABELS,
+  CLAIM_STATUSES,
+  type ClaimChargeLine,
+  type ClaimCoverage,
+  type ClaimInput,
+  type ClaimStatus,
+  readClaim
+} from './claims.ts';
 export {
   AFTER_DOWNLOAD,
   type AfterDownload,
@@ -120,8 +129,9 @@ export {
   RURALITIES,
   type Rurality
 } from './medicare-fees.ts';
-export { billingModels } from './models.ts';
+export { billingModels, CHARGE_LINE, CLAIM, CLAIM_TYPE, COVERAGE } from './models.ts';
 export { nameKey } from './names.ts';
+export { createBillingNodes, PATIENT_DETAILS } from './nodes.ts';
 export { dailyNumberOf, dollarsToCents, money } from './numbers.ts';
 export {
   type Address,
@@ -150,11 +160,14 @@ export {
   payerQuery
 } from './payers.ts';
 export type {
+  BillingStores,
+  ClaimStore,
   FeeSchedules,
   FeeStore,
+  FoundPayer,
   PatientStore,
   PayerStore,
-  ReferenceStore
+  SavedClaim
 } from './stores.ts';
 export { type InterchangeAcknowledgment, readTA1 } from './ta1.ts';
 export { type InboundKind, readX12 } from './x12.ts';

@@ -4,6 +4,7 @@ import {
   ENTRY_TYPE,
   type GraphDef,
   INPUT_TYPE,
+  type Json,
   type NodeInstance,
   RETURN_TYPE,
   type Signature
@@ -99,7 +100,7 @@ describe('createCatalog palette', () => {
   });
 
   it('files a std composite under the category of its sibling nodes', () => {
-    assert.equal(find('nemsis.pcr.break')[0]?.category, 'NEMSIS');
+    assert.equal(find('encounter.break')[0]?.category, 'Encounter');
     assert.equal(find('std.math.average')[0]?.category, 'Math');
   });
 
@@ -184,8 +185,19 @@ describe('createCatalog titleOf', () => {
     assert.equal(catalog.titleOf(node('acme.score')), 'Score');
   });
 
-  it('uses the core titles of the entry and return nodes', () => {
-    assert.equal(catalog.titleOf(node(ENTRY_TYPE)), 'Entry');
+  it('titles the start by what starts the workflow, and the return as Return', () => {
+    const events = [
+      { type: 'encounter.created', label: 'Encounter Created', description: '', payload: [] }
+    ];
+    const titled = createCatalog(testNodes, { events });
+    const start = (trigger: Json) => titled.titleOf(node(ENTRY_TYPE, { config: { trigger } }));
+    assert.equal(titled.titleOf(node(ENTRY_TYPE)), 'Start');
+    assert.equal(
+      start({ kind: 'event', event: 'encounter.created', where: {} }),
+      'On Encounter Created'
+    );
+    assert.equal(start({ kind: 'schedule', every: 'day', hour: 6 }), 'On Schedule');
+    assert.equal(titled.titleOf(node(ENTRY_TYPE, { label: 'Begin' })), 'Begin');
     assert.equal(catalog.titleOf(node(RETURN_TYPE)), 'Return');
   });
 

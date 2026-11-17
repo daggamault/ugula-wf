@@ -38,7 +38,7 @@ describe('documentationHints', () => {
   it('names the node a hint is about by its title rather than its label', () => {
     assert.deepEqual(documentationHints(def(), createCatalog(testNodes)), [
       'Describe the input "x"',
-      'Entry: Write the label "go here" in Title Case'
+      'Start: Write the label "go here" in Title Case'
     ]);
   });
 

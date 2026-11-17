@@ -15,15 +15,16 @@ const renderView = (over: Partial<ClaimDetail> = {}, tab: ClaimTab = 'overview')
   renderToStaticMarkup(createElement(ClaimView, { claim: { ...claim, ...over }, codes: {}, tab }));
 
 describe('ClaimView', () => {
-  it('shows the claim for review: summary, documentation, lines and ordered payers', () => {
+  it('shows the claim for review: decisions, reasons, encounter, lines and ordered payers', () => {
     const html = renderView();
     assert.ok(html.includes('Needs Review'));
     assert.ok(html.includes('Doe, Jane'));
     assert.ok(html.includes('Claim 20261001-0012') && html.includes('Patient 20260915-0003'));
     assert.ok(html.includes('Encounter 20261001-0007') && html.includes('PCR PCR-1001'));
-    assert.ok(html.includes('Emergency Transport'));
-    assert.ok(html.includes('12.4 miles loaded'));
-    assert.ok(html.includes('A0427'));
+    assert.ok(html.includes('Emergency Transport') && html.includes('12.4 miles'));
+    assert.ok(html.includes('Emergency response') && html.includes('Pt found sitting.'));
+    assert.ok(html.includes('href="/imports/i1"') && html.includes('href="/patients/p1"'));
+    assert.ok(html.includes('A0427') && html.includes('>RH<'));
     assert.ok(html.includes('1. </span>Medicare') && html.includes('2. </span>Blue Plan'));
     assert.equal(html.match(/Not in Payer Directory/g)?.length, 1);
     assert.ok(html.includes('href="/claims/c1?tab=data"'));
@@ -38,7 +39,7 @@ describe('ClaimView', () => {
   it('shows the claim data read only on its tab, with no form anywhere', () => {
     const data = renderView({}, 'data');
     assert.ok(data.includes('Date of Service') && data.includes('R07.9') && data.includes('I10'));
-    assert.ok(data.includes('1 Main St, Springfield, IL 62704') && data.includes('St. Mary'));
+    assert.ok(data.includes('1 Main St, Springfield, IL 62704') && data.includes('Apr 12, 1958'));
     for (const tab of ['overview', 'data'] as const) {
       assert.ok(!/<form|<input|<select|<textarea|<fieldset/.test(renderView({}, tab)), tab);
     }

@@ -24,6 +24,9 @@ const setup = ({
     if (q.sql.includes('from "nemsis_elements"'))
       return [{ element: 'eRecord.01', name: 'Patient Care Report Number' }];
     if (q.sql.includes('from "nemsis_codes"')) return [];
+    if (q.sql.includes('from "imports" as "i"')) {
+      return q.parameters.includes('i1') ? [{ id: 'i1', file_name: 'f.xml' }] : [];
+    }
     if (q.sql.includes('from "import_reports"')) {
       return q.parameters.includes('rep-1')
         ? [
@@ -39,10 +42,21 @@ const setup = ({
           ]
         : [];
     }
-    if (q.sql.includes('from "imports" as "i"')) {
-      return q.parameters.includes('i1') ? [{ id: 'i1', file_name: 'f.xml' }] : [];
+    if (q.sql.includes('v.id as version_id')) {
+      return published
+        ? [
+            {
+              key: 'billing.import-pcr-file',
+              version_id: 'v1',
+              trigger: { kind: 'event', event: 'pcr_file.received' },
+              signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] }
+            }
+          ]
+        : [];
     }
-    if (q.sql.trimStart().startsWith('select')) return published ? [{ id: 'v1', version: 2 }] : [];
+    if (q.sql.startsWith('insert into "imports"')) return [{ id: 'i1' }];
+    if (q.sql.startsWith('insert into "events"')) return [{ id: 'e1' }];
+    if (q.sql.trimStart().startsWith('select')) return [];
     return [{ id: 'r1' }];
   });
   const stored: string[] = [];
@@ -75,33 +89,33 @@ const file = (text: string, name = 'pcrs.xml') => ({
 });
 
 describe('import service uploads', () => {
-  it('stores the upload, starts the workflow with a reference to it and emits NEMSIS File Received', async () => {
+  it('stores the upload, records the import and starts the workflows of PCR File Received', async () => {
     const { service, stored, jobs, queries } = setup();
-    const res = await service.upload('t-1', 'u-1', 'billing.receive-nemsis-file', file('<x/>'));
+    const res = await service.upload('t-1', 'u-1', file('<x/>'));
     assert.match(stored[0] ?? '', /^imports\/t-1\/[0-9a-f-]{36}\/pcrs\.xml$/);
-    assert.deepEqual(res, {
-      ok: true,
-      value: {
-        runId: 'r1',
-        file: { bucket: 'ugula', key: stored[0], size: 4, contentType: 'application/xml' }
-      }
-    });
-    assert.deepEqual(jobs, [{ data: { runId: 'r1', command: { type: 'advance' } }, priority: 2 }]);
+    const ref = { bucket: 'ugula', key: stored[0], size: 4, contentType: 'application/xml' };
+    assert.deepEqual(res, { ok: true, value: { importId: 'i1', runIds: ['r1'], file: ref } });
+    assert.equal(jobs.length, 1);
     const run = queries.find((q) => q.sql.startsWith('insert into "workflow_runs"'));
     assert.ok(run?.parameters.includes('v1'));
     const recorded = queries.find((q) => q.sql.startsWith('insert into "imports"'));
-    assert.deepEqual(recorded?.parameters.slice(0, 4), ['t-1', 'r1', 'upload', 'pcrs.xml']);
-    assert.equal(recorded?.parameters.at(-1), 'u-1');
+    assert.deepEqual(recorded?.parameters, [
+      't-1',
+      'upload',
+      'pcrs.xml',
+      JSON.stringify(ref),
+      'u-1'
+    ]);
     const event = queries.find((q) => q.sql.startsWith('insert into "events"'));
-    assert.deepEqual(event?.parameters.slice(0, 2), ['t-1', 'import.received']);
-    assert.match(String(event?.parameters[2]), /"fileName":"pcrs.xml"/);
+    assert.deepEqual(event?.parameters.slice(0, 2), ['t-1', 'pcr_file.received']);
+    assert.match(String(event?.parameters[2]), /"importId":"i1"/);
     assert.equal(event?.parameters[3], 'u-1');
   });
 
   it('rejects empty, oversized and unroutable uploads before storing anything', async () => {
     const { service, stored } = setup({ published: false });
     const failure = async (f: ReturnType<typeof file>) => {
-      const res = await service.upload('t-1', 'u-1', 'billing.receive-nemsis-file', f);
+      const res = await service.upload('t-1', 'u-1', f);
       return res.ok ? null : res.failure;
     };
     assert.deepEqual(await failure(file('')), { code: 'invalid', message: 'The file is empty' });
@@ -111,14 +125,14 @@ describe('import service uploads', () => {
     });
     assert.deepEqual(await failure(file('<x/>')), {
       code: 'not_found',
-      message: 'Workflow billing.receive-nemsis-file has no published version'
+      message: 'No published workflow starts when a PCR file is received'
     });
     assert.deepEqual(stored, []);
   });
 
   it('stores an upload of unknown type as raw bytes', async () => {
     const { service, contentTypes } = setup();
-    await service.upload('t-1', 'u-1', 'billing.receive-nemsis-file', {
+    await service.upload('t-1', 'u-1', {
       ...file('<x/>'),
       type: ''
     });
@@ -136,13 +150,13 @@ describe('import service uploads', () => {
       ok: true,
       value: { items: [], total: 0, page: 1, pageSize: 25 }
     });
-    const reports = queries.find((q) => q.sql.includes('from "import_reports" as "ir"'));
+    const reports = queries.find((q) => q.sql.includes('left join "encounters"'));
     assert.ok(reports?.parameters.includes('t-1') && reports.parameters.includes('i1'));
     const notFound = { ok: false, failure: { code: 'not_found', message: 'Import not found' } };
     const other = setup();
     assert.deepEqual(await other.service.reports('t-1', 'i9', page), notFound);
     assert.deepEqual(await other.service.find('t-1', 'i9'), notFound);
-    assert.ok(!other.queries.some((q) => q.sql.includes('from "import_reports" as "ir"')));
+    assert.ok(!other.queries.some((q) => q.sql.includes('left join "encounters"')));
   });
 
   it('reads one stored report of the agency with its XML', async () => {
@@ -219,7 +233,8 @@ describe('import service SFTP hooks', () => {
     assert.deepEqual(await service.receiveSftpEvent(event), {
       ok: true,
       value: {
-        runId: 'r1',
+        importId: 'i1',
+        runIds: ['r1'],
         file: {
           bucket: 'ugula',
           key: 'imports/t-1/sftp/2026/pcrs.xml',
@@ -238,7 +253,7 @@ describe('import service SFTP hooks', () => {
     });
     assert.equal(jobs.length, 1);
     const recorded = queries.find((q) => q.sql.startsWith('insert into "imports"'));
-    assert.deepEqual(recorded?.parameters.slice(0, 4), ['t-1', 'r1', 'sftp', 'pcrs.xml']);
+    assert.deepEqual(recorded?.parameters.slice(0, 3), ['t-1', 'sftp', 'pcrs.xml']);
     assert.equal(recorded?.parameters.at(-1), null);
     assert.deepEqual(await setup().service.receiveSftpEvent(event), {
       ok: false,
@@ -249,7 +264,7 @@ describe('import service SFTP hooks', () => {
       ok: false,
       failure: {
         code: 'not_found',
-        message: 'Workflow billing.receive-nemsis-file has no published version'
+        message: 'No published workflow starts when a PCR file is received'
       }
     });
     assert.deepEqual(unpublished.jobs, []);
@@ -281,14 +296,12 @@ describe('import service SFTP hooks', () => {
 describe('import service announcements and names', () => {
   it('announces new imports to the agency and names unnamed uploads safely', async () => {
     const { service, publishAfter, queries } = setup();
-    assert.ok(
-      (await service.upload('t-1', 'u-1', 'billing.receive-nemsis-file', file('<x/>', '  '))).ok
-    );
+    assert.ok((await service.upload('t-1', 'u-1', file('<x/>', '  '))).ok);
     assert.deepEqual(publishAfter, [{ agencyId: 't-1', event: { kind: 'import', id: null } }]);
     const recorded = queries.find((q) => q.sql.startsWith('insert into "imports"'));
-    assert.deepEqual(recorded?.parameters.slice(2, 4), ['upload', 'upload']);
+    assert.deepEqual(recorded?.parameters.slice(1, 3), ['upload', 'upload']);
     const refused = setup({ published: false });
-    await refused.service.upload('t-1', 'u-1', 'billing.receive-nemsis-file', file('<x/>'));
+    await refused.service.upload('t-1', 'u-1', file('<x/>'));
     assert.deepEqual(refused.publishAfter, []);
   });
 
@@ -299,8 +312,8 @@ describe('import service announcements and names', () => {
         publish: async () => Promise.reject(new Error('redis down'))
       }
     });
-    const res = await service.upload('t-1', 'u-1', 'billing.receive-nemsis-file', file('<x/>'));
-    assert.equal(res.ok && res.value.runId, 'r1');
+    const res = await service.upload('t-1', 'u-1', file('<x/>'));
+    assert.deepEqual(res.ok && res.value.runIds, ['r1']);
     assert.equal(jobs.length, 1);
   });
 

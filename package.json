@@ -34,6 +34,7 @@
     "@ugula/access": "workspace:*",
     "@ugula/auth": "workspace:*",
     "@ugula/billing": "workspace:*",
+    "@ugula/catalog": "workspace:*",
     "@ugula/config": "workspace:*",
     "@ugula/db": "workspace:*",
     "@ugula/graph": "workspace:*",

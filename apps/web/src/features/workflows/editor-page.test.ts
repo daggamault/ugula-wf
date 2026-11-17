@@ -655,7 +655,7 @@ describe('pinHint', () => {
   it('calls an unlabelled execution pin the flow', () => {
     assert.equal(
       pinHint(def, catalog, { node: 'entry', pin: 'exec', side: 'out' }),
-      'Nodes that connect to the flow on Entry.'
+      'Nodes that connect to the flow on Start.'
     );
   });
 

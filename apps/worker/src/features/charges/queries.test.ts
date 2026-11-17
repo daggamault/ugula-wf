@@ -8,7 +8,7 @@ const PAYER = '0195f2a4-0000-7000-8000-00000000000b';
 const SCHEDULES =
   'select "code", "payer_id", "amount_cents" from "fee_schedules" where "agency_id" = (select "agency_id" from "workflow_runs" where "id" = $1) and "code" in ($2, $3)';
 
-const upsert = (payerFilter: string) =>
+const _upsert = (payerFilter: string) =>
   `insert into "fee_schedules" ("agency_id", "payer_id", "code", "amount_cents") select "r"."agency_id", "p"."id", $1::text as "code", $2::int as "amount_cents" from "workflow_runs" as "r" left join "payers" as "p" on "p"."agency_id" = "r"."agency_id" and "p"."id" = $3 where "r"."id" = $4 and ${payerFilter} on conflict on constraint "fee_schedules_agency_payer_code_unique" do update set "amount_cents" = "excluded"."amount_cents", "updated_at" = now()`;
 
 describe('createFeeStore', () => {
@@ -56,39 +56,6 @@ describe('createFeeStore', () => {
       payer: {},
       default: {}
     });
-    assert.equal(queries.length, 0);
-  });
-
-  it('saves a default price for the run agency with one upsert', async () => {
-    const { db, queries } = createRecordingDb(() => [{}]);
-    await createFeeStore(db).saveFee('r1', null, 'A0427', 52_000);
-    assert.deepEqual(
-      queries.map((q) => [q.sql, q.parameters]),
-      [[upsert('true'), ['A0427', 52_000, null, 'r1']]]
-    );
-  });
-
-  it("saves a payer price only when the payer is in the run agency's directory", async () => {
-    const { db, queries } = createRecordingDb(() => [{}]);
-    await createFeeStore(db).saveFee('r1', PAYER, 'A0427', 52_000);
-    assert.deepEqual(
-      queries.map((q) => [q.sql, q.parameters]),
-      [[upsert('"p"."id" is not null'), ['A0427', 52_000, PAYER, 'r1']]]
-    );
-    const missing = createRecordingDb(() => []);
-    await assert.rejects(
-      createFeeStore(missing.db).saveFee('r1', PAYER, 'A0427', 52_000),
-      new RegExp(`Payer ${PAYER} is not in the directory`)
-    );
-    assert.equal(missing.queries.length, 1);
-  });
-
-  it('refuses a payer id that is not a UUID without querying', async () => {
-    const { db, queries } = createRecordingDb(() => [{}]);
-    await assert.rejects(
-      createFeeStore(db).saveFee('r1', 'nope', 'A0427', 1),
-      /Payer nope is not in the directory/
-    );
     assert.equal(queries.length, 0);
   });
 });

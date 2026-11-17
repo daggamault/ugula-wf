@@ -15,6 +15,8 @@ export type Adjustment = { group: AdjustmentGroup; reason: string; cents: number
 
 export const MAX_LINE_MODIFIERS = 4;
 
+export const MODIFIER_PATTERN = '^[A-Z0-9]{2}$';
+
 export type LineAdjudication = {
   line: number;
   code: string;

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { fail, ok } from '../../shared/result.ts';
-import { testAccess, withSession } from '../../shared/testing.ts';
+import { withSession } from '../../shared/testing.ts';
 import { createImportRoutes, createSftpRoutes } from './routes.ts';
 import type { ImportService } from './service.ts';
 
@@ -12,16 +12,15 @@ const service = {
     calls.push(['search', agencyId, page]);
     return ok({ imports: [] });
   },
-  upload: async (
-    agencyId: string,
-    userId: string,
-    workflow: string,
-    file: { name: string; bytes: Uint8Array }
-  ) => {
-    calls.push([agencyId, userId, workflow, file.name, new TextDecoder().decode(file.bytes)]);
-    return workflow === 'billing.missing'
+  upload: async (agencyId: string, userId: string, file: { name: string; bytes: Uint8Array }) => {
+    calls.push([agencyId, userId, file.name, new TextDecoder().decode(file.bytes)]);
+    return file.name === 'none.xml'
       ? fail('not_found', 'nope')
-      : ok({ runId: 'r1', file: { bucket: 'b', key: 'k', size: 4, contentType: 'x' } });
+      : ok({
+          importId: 'i1',
+          runIds: ['r1'],
+          file: { bucket: 'b', key: 'k', size: 4, contentType: 'x' }
+        });
   },
   authenticateSftp: async (username: string, password: string) =>
     password === 'good'
@@ -83,43 +82,17 @@ describe('import routes', () => {
     const res = await request('/', form({ file: new File(['<x/>'], 'pcrs.xml') }));
     assert.equal(res.status, 201);
     assert.deepEqual(await res.json(), {
-      runId: 'r1',
+      importId: 'i1',
+      runIds: ['r1'],
       file: { bucket: 'b', key: 'k', size: 4, contentType: 'x' }
     });
-    assert.deepEqual(calls.at(-1), [
-      't-1',
-      'u-1',
-      'billing.receive-nemsis-file',
-      'pcrs.xml',
-      '<x/>'
-    ]);
-    const missing = form({ file: new File(['<x/>'], 'a.xml'), workflow: 'billing.missing' });
-    const unpublished = await request('/', missing);
-    assert.deepEqual([unpublished.status, await unpublished.json()], [404, { error: 'nope' }]);
-  });
-
-  it('starts workflows other than the NEMSIS ingest only for users who may create runs', async () => {
-    const biller = withSession(createImportRoutes(service), testAccess(['imports:create']));
-    const before = calls.length;
-    const other = form({ file: new File(['<x/>'], 'a.xml'), workflow: 'billing.watch-deadlines' });
-    const refused = await biller('/', other);
-    assert.equal(refused.status, 403);
-    assert.deepEqual(await refused.json(), {
-      error: 'Importing into another workflow needs the runs:create permission'
-    });
-    assert.equal(calls.length, before);
-    const ingest = form({
-      file: new File(['<x/>'], 'a.xml'),
-      workflow: 'billing.receive-nemsis-file'
-    });
-    assert.equal((await biller('/', ingest)).status, 201);
+    assert.deepEqual(calls.at(-1), ['t-1', 'u-1', 'pcrs.xml', '<x/>']);
+    const unrouted = await request('/', form({ file: new File(['<x/>'], 'none.xml') }));
+    assert.deepEqual([unrouted.status, await unrouted.json()], [404, { error: 'nope' }]);
   });
 
   it('rejects missing files and oversized bodies', async () => {
-    assert.equal(
-      (await request('/', form({ workflow: 'billing.receive-nemsis-file' }))).status,
-      400
-    );
+    assert.equal((await request('/', form({ name: 'pcrs.xml' }))).status, 400);
     const big = await request('/', form({ file: new File(['x'.repeat(200_000)], 'big.xml') }));
     assert.equal(big.status, 413);
   });

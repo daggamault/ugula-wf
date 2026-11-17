@@ -1,28 +1,19 @@
 import {
-  AMBULANCE_CONDITIONS,
   CLAIM_STATUSES,
   CLASSIFICATIONS,
-  CONDITION_LIMIT,
   DIAGNOSIS_LIMIT,
-  FACILITY_STAYS,
   HCPCS_PATTERN,
   ICD10_PATTERN,
   INSURED_RELATIONSHIPS,
-  MAX_DOCUMENTED_COUNT,
-  MAX_EMPLOYER_SIZE,
-  MSP_ACCIDENTS,
+  MAX_LINE_MODIFIERS,
+  MODIFIER_PATTERN,
   ORIGIN_DESTINATION_CODES,
-  PCS_TYPES,
   SERVICE_LEVELS,
-  SIGNATURE_STATUSES,
-  TRANSPORT_REASONS,
-  UNIT_SCALE,
-  US_STATE_PATTERN,
-  ZIP_CODE_PATTERN
+  UNIT_SCALE
 } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
-import { agencyNoActionForeignKey, agencySetNullForeignKey } from './foreign-keys.ts';
+import { agencySetNullForeignKey } from './foreign-keys.ts';
 import { dailyNumberCheck, dailyNumberTrigger } from './numbers.ts';
 
 const list = (values: readonly string[]) => sql.join(values.map((v) => sql.lit(v)));
@@ -30,6 +21,8 @@ const list = (values: readonly string[]) => sql.join(values.map((v) => sql.lit(v
 const DESTINATION_CODES = Object.keys(ORIGIN_DESTINATION_CODES);
 
 const ORIGIN_CODES = DESTINATION_CODES.filter((c) => c !== 'X');
+
+const MODIFIERS_TEXT = `^(${MODIFIER_PATTERN.slice(1, -1)})*$`;
 
 const buildClaimsTable = (db: Kysely<Database>) =>
   db.schema
@@ -39,59 +32,27 @@ const buildClaimsTable = (db: Kysely<Database>) =>
     .addColumn('agency_id', 'uuid', (col) =>
       col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
-    .addColumn('patient_id', 'uuid')
-    .addColumn('import_report_id', 'uuid', (col) => col.unique())
-    .addColumn('pcr_number', 'text')
-    .addColumn('classification', 'text')
-    .addColumn('level', 'text')
-    .addColumn('is_emergency', 'boolean')
-    .addColumn('loaded_miles', 'numeric')
-    .addColumn('total_cents', 'integer', (col) => col.notNull().defaultTo(0))
+    .addColumn('encounter_id', 'uuid', (col) => col.notNull())
+    .addColumn('patient_id', 'uuid', (col) => col.notNull())
+    .addColumn('status', 'text', (col) => col.notNull().defaultTo('needs_review'))
+    .addColumn('classification', 'text', (col) => col.notNull())
     .addColumn('service_date', 'date')
+    .addColumn('level', 'text', (col) => col.notNull())
+    .addColumn('is_emergency', 'boolean', (col) => col.notNull())
+    .addColumn('loaded_miles', 'numeric')
     .addColumn('origin_code', 'text')
     .addColumn('destination_code', 'text')
-    .addColumn('pickup_address_line', 'text')
-    .addColumn('pickup_city', 'text')
-    .addColumn('pickup_state', 'text')
-    .addColumn('pickup_postal_code', 'text')
-    .addColumn('destination_name', 'text')
-    .addColumn('destination_address_line', 'text')
-    .addColumn('destination_city', 'text')
-    .addColumn('destination_state', 'text')
-    .addColumn('destination_postal_code', 'text')
-    .addColumn('signature', 'text', (col) => col.notNull().defaultTo('missing'))
-    .addColumn('signature_note', 'text')
-    .addColumn('has_pcs', 'boolean')
-    .addColumn('pcs_signed_on', 'date')
-    .addColumn('transport_reason', 'text')
-    .addColumn('condition_codes', sql`text[]`, (col) => col.notNull().defaultTo(sql`'{}'`))
-    .addColumn('prior_authorization', 'text')
-    .addColumn('weight_kg', 'numeric')
-    .addColumn('at_scene_at', 'timestamptz')
-    .addColumn('left_scene_at', 'timestamptz')
-    .addColumn('at_destination_at', 'timestamptz')
-    .addColumn('is_deceased', 'boolean', (col) => col.notNull().defaultTo(false))
-    .addColumn('non_covered_miles', 'numeric')
-    .addColumn('patient_count', 'smallint')
-    .addColumn('closest_facility_miles', 'numeric')
-    .addColumn('has_abn', 'boolean')
-    .addColumn('abn_signed_on', 'date')
-    .addColumn('is_denial_expected', 'boolean')
-    .addColumn('has_msp_employer_plan', 'boolean')
-    .addColumn('has_msp_esrd', 'boolean')
-    .addColumn('has_msp_disability', 'boolean')
-    .addColumn('msp_employer_size', 'integer')
-    .addColumn('msp_accident', 'text')
-    .addColumn('prior_authorization_expires_on', 'date')
-    .addColumn('pcs_type', 'text')
-    .addColumn('round_trips', 'smallint')
-    .addColumn('admitted_on', 'date')
-    .addColumn('facility_stay', 'text')
-    .addColumn('status', 'text', (col) => col.notNull().defaultTo('needs_review'))
-    .addColumn('facility_id', 'uuid')
-    .addColumn('source_key', 'text', (col) => col.notNull())
+    .addColumn('total_cents', 'integer', (col) => col.notNull().defaultTo(0))
+    .addColumn('reasons', sql`text[]`, (col) => col.notNull().defaultTo(sql`'{}'`))
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
+    .addForeignKeyConstraint(
+      'claims_encounter_id_fkey',
+      ['agency_id', 'encounter_id'],
+      'encounters',
+      ['agency_id', 'id'],
+      (fk) => fk.onDelete('no action').onUpdate('cascade')
+    )
     .addForeignKeyConstraint(
       'claims_patient_id_fkey',
       ['agency_id', 'patient_id'],
@@ -99,87 +60,23 @@ const buildClaimsTable = (db: Kysely<Database>) =>
       ['agency_id', 'id'],
       (fk) => fk.onDelete('no action').onUpdate('cascade')
     )
-    .addUniqueConstraint('claims_agency_id_source_key_unique', ['agency_id', 'source_key'])
     .addUniqueConstraint('claims_agency_id_id_unique', ['agency_id', 'id'])
     .addUniqueConstraint('claims_agency_id_number_unique', ['agency_id', 'number'])
+    .addUniqueConstraint('claims_agency_id_encounter_id_unique', ['agency_id', 'encounter_id'])
     .addCheckConstraint('claims_number_check', dailyNumberCheck)
-    .addCheckConstraint('claims_total_check', sql`total_cents >= 0`)
+    .addCheckConstraint('claims_status_check', sql`status in (${list(CLAIM_STATUSES)})`)
+    .addCheckConstraint(
+      'claims_classification_check',
+      sql`classification in (${list(CLASSIFICATIONS)})`
+    )
     .addCheckConstraint('claims_level_check', sql`level in (${list(SERVICE_LEVELS)})`)
     .addCheckConstraint('claims_loaded_miles_check', sql`loaded_miles >= 0`)
     .addCheckConstraint(
       'claims_origin_destination_check',
       sql`(origin_code is null) = (destination_code is null) and origin_code in (${list(ORIGIN_CODES)}) and destination_code in (${list(DESTINATION_CODES)})`
     )
-    .addCheckConstraint(
-      'claims_pickup_state_check',
-      sql`pickup_state ~ ${sql.lit(US_STATE_PATTERN)}`
-    )
-    .addCheckConstraint(
-      'claims_pickup_postal_code_check',
-      sql`pickup_postal_code ~ ${sql.lit(ZIP_CODE_PATTERN)}`
-    )
-    .addCheckConstraint(
-      'claims_destination_state_check',
-      sql`destination_state ~ ${sql.lit(US_STATE_PATTERN)}`
-    )
-    .addCheckConstraint(
-      'claims_destination_postal_code_check',
-      sql`destination_postal_code ~ ${sql.lit(ZIP_CODE_PATTERN)}`
-    )
-    .addCheckConstraint('claims_signature_check', sql`signature in (${list(SIGNATURE_STATUSES)})`)
-    .addCheckConstraint(
-      'claims_transport_reason_check',
-      sql`transport_reason in (${list(Object.keys(TRANSPORT_REASONS))})`
-    )
-    .addCheckConstraint(
-      'claims_condition_codes_check',
-      sql`condition_codes <@ array[${list(Object.keys(AMBULANCE_CONDITIONS))}]::text[] and cardinality(condition_codes) <= ${sql.lit(CONDITION_LIMIT)}`
-    )
-    .addCheckConstraint('claims_weight_check', sql`weight_kg > 0`)
-    .addCheckConstraint('claims_non_covered_miles_check', sql`non_covered_miles > 0`)
-    .addCheckConstraint(
-      'claims_patient_count_check',
-      sql`patient_count between 1 and ${sql.lit(MAX_DOCUMENTED_COUNT)}`
-    )
-    .addCheckConstraint('claims_closest_facility_miles_check', sql`closest_facility_miles >= 0`)
-    .addCheckConstraint(
-      'claims_msp_accident_check',
-      sql`msp_accident in (${list(Object.keys(MSP_ACCIDENTS))})`
-    )
-    .addCheckConstraint(
-      'claims_msp_employer_size_check',
-      sql`msp_employer_size between 1 and ${sql.lit(MAX_EMPLOYER_SIZE)}`
-    )
-    .addCheckConstraint('claims_pcs_type_check', sql`pcs_type in (${list(Object.keys(PCS_TYPES))})`)
-    .addCheckConstraint(
-      'claims_round_trips_check',
-      sql`round_trips between 0 and ${sql.lit(MAX_DOCUMENTED_COUNT)}`
-    )
-    .addCheckConstraint(
-      'claims_facility_stay_check',
-      sql`facility_stay in (${list(Object.keys(FACILITY_STAYS))})`
-    )
-    .addCheckConstraint('claims_status_check', sql`status in (${list(CLAIM_STATUSES)})`)
-    .addCheckConstraint(
-      'claims_classification_check',
-      sql`classification in (${list(CLASSIFICATIONS)})`
-    )
-    .addCheckConstraint('claims_patient_check', sql`patient_id is not null`)
-    .addCheckConstraint(
-      'claims_service_check',
-      sql`level is not null and is_emergency is not null and service_date is not null`
-    )
-    .addCheckConstraint('claims_abn_signed_on_check', sql`abn_signed_on is null or has_abn`);
-
-const buildClaimsFacilityForeignKey = () =>
-  agencyNoActionForeignKey({ table: 'claims', column: 'facility_id', references: 'facilities' });
-
-const buildClaimsImportReportForeignKey = () =>
-  agencySetNullForeignKey({
-    table: 'claims',
-    column: 'import_report_id',
-    references: 'import_reports'
-  });
+    .addCheckConstraint('claims_total_check', sql`total_cents >= 0`)
+    .addCheckConstraint('claims_reasons_check', sql`array_position(reasons, '') is null`);
 
 const buildClaimLinesTable = (db: Kysely<Database>) =>
   db.schema
@@ -189,12 +86,17 @@ const buildClaimLinesTable = (db: Kysely<Database>) =>
     )
     .addColumn('position', 'smallint', (col) => col.notNull())
     .addColumn('code', 'text', (col) => col.notNull())
+    .addColumn('modifiers', sql`text[]`, (col) => col.notNull().defaultTo(sql`'{}'`))
     .addColumn('units', sql`numeric(8, ${sql.lit(UNIT_SCALE)})`, (col) => col.notNull())
     .addColumn('unit_cents', 'integer', (col) => col.notNull())
     .addColumn('total_cents', 'integer', (col) => col.notNull())
     .addPrimaryKeyConstraint('claim_lines_pkey', ['claim_id', 'position'])
     .addCheckConstraint('claim_lines_position_check', sql`position >= 1`)
     .addCheckConstraint('claim_lines_code_check', sql`code ~ ${sql.lit(HCPCS_PATTERN)}`)
+    .addCheckConstraint(
+      'claim_lines_modifiers_check',
+      sql`cardinality(modifiers) <= ${sql.lit(MAX_LINE_MODIFIERS)} and array_to_string(modifiers, '') ~ ${sql.lit(MODIFIERS_TEXT)}`
+    )
     .addCheckConstraint('claim_lines_units_check', sql`units > 0`)
     .addCheckConstraint('claim_lines_amounts_check', sql`unit_cents >= 0 and total_cents >= 0`);
 
@@ -207,7 +109,6 @@ const buildClaimCoveragesTable = (db: Kysely<Database>) =>
     .addColumn('position', 'smallint', (col) => col.notNull())
     .addColumn('payer_name', 'text', (col) => col.notNull())
     .addColumn('payer_id', 'uuid')
-    .addColumn('payer_code', 'text')
     .addColumn('member_id', 'text')
     .addColumn('group_id', 'text')
     .addColumn('relationship', 'text', (col) => col.notNull())
@@ -261,14 +162,7 @@ const buildClaimsIndexes = (db: Kysely<Database>) => [
     .createIndex('idx_claims_agency_service_date')
     .on('claims')
     .columns(['agency_id', 'service_date']),
-  db.schema
-    .createIndex('claims_agency_pcr_number_unique')
-    .on('claims')
-    .unique()
-    .columns(['agency_id', 'pcr_number'])
-    .where('pcr_number', 'is not', null),
   db.schema.createIndex('idx_claims_patient_id').on('claims').column('patient_id'),
-  db.schema.createIndex('idx_claims_facility_id').on('claims').column('facility_id'),
   db.schema
     .createIndex('claim_coverages_claim_payer_name_unique')
     .on('claim_coverages')
@@ -280,8 +174,6 @@ const buildClaimsIndexes = (db: Kysely<Database>) => [
 export const createClaimsTables = async (db: Kysely<Database>) => {
   await buildClaimsTable(db).execute();
   await dailyNumberTrigger('claims', 'claim').execute(db);
-  await buildClaimsFacilityForeignKey().execute(db);
-  await buildClaimsImportReportForeignKey().execute(db);
   await buildClaimLinesTable(db).execute();
   await buildClaimCoveragesTable(db).execute();
   await buildClaimCoveragesPayerForeignKey().execute(db);

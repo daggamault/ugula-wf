@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { RunQueueClient } from '@ugula/run-queue';
-import { buildFindPublishedGraphs, buildLatestVersion } from './graph-versions.ts';
-import { resolveWorkflowVersion, signalRuns, startRun } from './runs.ts';
+import { signalRuns, startRun } from './runs.ts';
 import { createRecordingDb } from './testing.ts';
 
 describe('startRun', () => {
@@ -116,40 +115,5 @@ describe('signalRuns', () => {
       }
     ]);
     await db.destroy();
-  });
-});
-
-describe('resolveWorkflowVersion', () => {
-  it('takes the newest visible version, then resolves it to the agency override', async () => {
-    const { db, queries } = createRecordingDb((q) =>
-      q.sql.includes('from unnest')
-        ? [{ id: 'v-agency', key: 'billing.claim', version: 2, definition: {} }]
-        : [{ version: 2 }]
-    );
-    assert.deepEqual(await resolveWorkflowVersion(db, 't', 'billing.claim'), {
-      id: 'v-agency',
-      version: 2
-    });
-    const [latest, resolve] = queries;
-    assert.equal(latest?.sql, buildLatestVersion('t', 'billing.claim').compile(db).sql);
-    assert.deepEqual(latest?.parameters, ['billing.claim', 't']);
-    assert.equal(
-      resolve?.sql,
-      buildFindPublishedGraphs('t', [{ key: 'billing.claim', version: 2 }]).compile(db).sql
-    );
-    assert.deepEqual(resolve?.parameters, [['billing.claim'], [2], 't']);
-    await db.destroy();
-  });
-
-  it('finds nothing when no version is published or none resolves', async () => {
-    const none = createRecordingDb();
-    assert.equal(await resolveWorkflowVersion(none.db, 't', 'billing.claim'), undefined);
-    assert.equal(none.queries.length, 1);
-    const unresolved = createRecordingDb((q) =>
-      q.sql.includes('from unnest') ? [] : [{ version: 1 }]
-    );
-    assert.equal(await resolveWorkflowVersion(unresolved.db, 't', 'billing.claim'), undefined);
-    await none.db.destroy();
-    await unresolved.db.destroy();
   });
 });

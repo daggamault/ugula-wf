@@ -8,12 +8,10 @@ import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
 import { type SearchView, withBack } from '../../shared/url-state.ts';
 import type { ImportSummary } from './client.ts';
 
-const REPORTS_PENDING: StatusBadgeStyle = { intent: 'info', label: 'PCRs in Progress' };
+const WAITING: StatusBadgeStyle = { intent: 'info', label: 'Waiting to Be Read' };
 
-export const importStatus = (i: ImportSummary) =>
-  i.run_status === 'completed' && i.waiting + i.processing + i.stuck > 0
-    ? REPORTS_PENDING
-    : runStatusStyles[i.run_status];
+export const importStatus = (i: Pick<ImportSummary, 'run_status'>) =>
+  i.run_status ? runStatusStyles[i.run_status] : WAITING;
 
 const SOURCES: Readonly<Record<ImportSummary['source'], string>> = {
   upload: 'Upload',
@@ -21,12 +19,11 @@ const SOURCES: Readonly<Record<ImportSummary['source'], string>> = {
   manual: 'Workflow run'
 };
 
-export const reportOutcomes = (i: ImportSummary) =>
+export const reportOutcomes = (i: Pick<ImportSummary, 'created' | 'revised' | 'unchanged'>) =>
   [
-    i.waiting ? `${i.waiting} waiting` : '',
-    i.failed ? `${i.failed} failed` : '',
-    i.stuck ? `${i.stuck} stuck` : '',
-    i.processing ? `${i.processing} running` : ''
+    i.created ? `${i.created} new` : '',
+    i.revised ? `${i.revised} revised` : '',
+    i.unchanged ? `${i.unchanged} unchanged` : ''
   ].filter(Boolean);
 
 export const IMPORT_TABLE = {
@@ -36,8 +33,7 @@ export const IMPORT_TABLE = {
     reports: 'desc',
     claims: 'desc',
     charges: 'desc',
-    status: 'asc',
-    attention: 'desc'
+    status: 'asc'
   },
   sort: 'received'
 } as const;
@@ -61,7 +57,7 @@ export const ImportHistory = ({
       { label: 'PCRs', sort: 'reports' },
       { label: 'Claims', sort: 'claims' },
       { label: 'Charges', isSecondary: true, sort: 'charges' },
-      { label: 'Needs Attention', sort: 'attention' },
+      { label: 'Encounters' },
       { label: 'Actions', isLabelHidden: true, isCompact: true }
     ]}
   >
@@ -98,7 +94,7 @@ export const ImportHistory = ({
             {formatCents(i.charges_cents)}
           </TableCell>
           <TableCell isMuted={!outcomes.length}>
-            {outcomes.length ? outcomes.join(', ') : 'Nothing'}
+            {outcomes.length ? outcomes.join(', ') : 'None yet'}
           </TableCell>
           <TableCell kind="actions">
             <OpenLink

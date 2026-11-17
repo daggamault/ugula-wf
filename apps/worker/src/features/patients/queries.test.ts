@@ -90,27 +90,6 @@ describe('createPatientStore', () => {
     );
   });
 
-  it('loads an agency patient by id, ignoring malformed ids and missing patients', async () => {
-    const { db, queries } = createRecordingDb((q) => (q.parameters[0] === row.id ? [row] : []));
-    const store = createPatientStore(db);
-    assert.deepEqual(await store.findPatient('r1', row.id), patient);
-    assert.equal(await store.findPatient('r1', '0195f2a4-0000-7000-8000-000000000009'), null);
-    assert.equal(await store.findPatient('r1', 'new'), null);
-    assert.deepEqual(
-      queries.map((q) => [q.sql, q.parameters]),
-      [
-        [
-          `select ${COLUMNS} from "patients" where "id" = $1 and "agency_id" = (select "agency_id" from "workflow_runs" where "id" = $2)`,
-          [row.id, 'r1']
-        ],
-        [
-          `select ${COLUMNS} from "patients" where "id" = $1 and "agency_id" = (select "agency_id" from "workflow_runs" where "id" = $2)`,
-          ['0195f2a4-0000-7000-8000-000000000009', 'r1']
-        ]
-      ]
-    );
-  });
-
   const newJane = {
     firstName: 'Jane',
     lastName: "O'Brien",
@@ -143,28 +122,10 @@ describe('createPatientStore', () => {
     'r1:s:create:0'
   ];
 
-  it('creates patients once per source key under an identity lock, without looking for a match', async () => {
-    const { db, queries } = createRecordingDb((q) => (q.sql.startsWith('insert') ? [row] : []));
-    const created = await createPatientStore(db).createPatient(
-      'r1',
-      'r1:s:create:0',
-      newJane,
-      false
-    );
-    assert.deepEqual(created, patient);
-    assert.deepEqual(
-      queries.map((q) => [q.sql, q.parameters]),
-      [
-        [LOCK, [':obrien:1980-01-02', 'r1']],
-        [INSERT, insertParameters]
-      ]
-    );
-  });
-
-  it('reuses the same person created by a concurrent run when asked', async () => {
+  it('reuses the same person created meanwhile, under an identity lock', async () => {
     const { db, queries } = createRecordingDb((q) => (q.sql === SAME ? [row] : []));
     assert.deepEqual(
-      await createPatientStore(db).createPatient('r1', 'r1:s:create:0', newJane, true),
+      await createPatientStore(db).createPatient('r1', 'r1:s:create:0', newJane),
       patient
     );
     assert.deepEqual(
@@ -188,16 +149,23 @@ describe('createPatientStore', () => {
             ? [row]
             : []
       );
-      const created = await createPatientStore(db).createPatient(
-        'r1',
-        'r1:s:create:0',
-        { ...newJane, firstName: reported ?? '' },
-        true
-      );
+      const created = await createPatientStore(db).createPatient('r1', 'r1:s:create:0', {
+        ...newJane,
+        firstName: reported ?? ''
+      });
       assert.deepEqual(created, patient);
       assert.deepEqual(
-        queries.map((q) => q.sql),
-        [LOCK, SAME, INSERT]
+        queries.map((q) => [q.sql, q.parameters]),
+        [
+          [LOCK, [':obrien:1980-01-02', 'r1']],
+          [SAME, ['r1', 'obrien', '1980-01-02']],
+          [
+            INSERT,
+            reported === 'Jane'
+              ? insertParameters
+              : [...insertParameters.slice(0, 1), 'J.', ...insertParameters.slice(2)]
+          ]
+        ]
       );
     }
   });
@@ -215,7 +183,7 @@ describe('createPatientStore', () => {
     const { db, queries } = createRecordingDb(() => [
       { ...row, address_line: '9 Oak Ave', postal_code: '62702' }
     ]);
-    assert.deepEqual(await createPatientStore(db).updateAddress('r1', 'k', row.id, moved), {
+    assert.deepEqual(await createPatientStore(db).updateAddress('r1', row.id, moved), {
       ...patient,
       ...moved
     });
@@ -229,13 +197,10 @@ describe('createPatientStore', () => {
     const { db, queries } = createRecordingDb(() => []);
     const store = createPatientStore(db);
     await assert.rejects(
-      store.updateAddress('r1', 'k', row.id, moved),
+      store.updateAddress('r1', row.id, moved),
       new RegExp(`Patient ${row.id} does not exist`)
     );
-    await assert.rejects(
-      store.updateAddress('r1', 'k', 'nope', moved),
-      /Patient nope does not exist/
-    );
+    await assert.rejects(store.updateAddress('r1', 'nope', moved), /Patient nope does not exist/);
     assert.deepEqual(queries[1]?.parameters, [
       '9 Oak Ave',
       'Springfield',

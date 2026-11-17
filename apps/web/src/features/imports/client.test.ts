@@ -39,7 +39,7 @@ describe('createImportsClient', () => {
   });
 
   it('uploads the file as multipart form data to the chosen agency', async () => {
-    const result = { runId: 'r1' };
+    const result = { importId: 'i1', runIds: ['r1'] };
     const { client, calls } = recordingApi(result);
     const file = new File(['<x/>'], 'pcrs.xml');
     assert.equal(await client.upload(file, 'a-1'), result);

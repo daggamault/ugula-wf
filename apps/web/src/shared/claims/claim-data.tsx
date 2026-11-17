@@ -51,35 +51,19 @@ export const ClaimDataView = ({
           emptyValue
         )}
       </Detail>
-      <Detail label="Pickup Type">
+      <Detail label="Origin Modifier">
         {c.origin_code ? <CodeLabel value={modifierCode(c.origin_code)} /> : emptyValue}
       </Detail>
-      <Detail label="Destination Type">
+      <Detail label="Destination Modifier">
         {c.destination_code ? <CodeLabel value={modifierCode(c.destination_code)} /> : emptyValue}
       </Detail>
+      <Detail label="Patient Born">{formatDate(c.birth_date)}</Detail>
       <Detail label="Patient Mailing Address">
         {addressText({
           addressLine: c.address_line,
           city: c.city,
           state: c.state,
           postalCode: c.postal_code
-        }) ?? emptyValue}
-      </Detail>
-      <Detail label="Pickup">
-        {addressText({
-          addressLine: c.pickup_address_line,
-          city: c.pickup_city,
-          state: c.pickup_state,
-          postalCode: c.pickup_postal_code
-        }) ?? emptyValue}
-      </Detail>
-      <Detail label="Destination">
-        {addressText({
-          name: c.destination_name,
-          addressLine: c.destination_address_line,
-          city: c.destination_city,
-          state: c.destination_state,
-          postalCode: c.destination_postal_code
         }) ?? emptyValue}
       </Detail>
     </DetailList>

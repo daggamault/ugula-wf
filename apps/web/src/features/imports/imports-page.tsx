@@ -34,7 +34,8 @@ export const ImportsPage = ({ client, live }: ImportsPageProps) => {
           search.page,
           items.map((i) => i.id)
         )) ||
-      (e.kind === 'run' && (runs.has(e.id) || (e.parentId !== null && runs.has(e.parentId)))),
+      (e.kind === 'run' && runs.has(e.id)) ||
+      e.kind === 'claim',
     history.reload,
     LIST_RELOAD_MS
   );

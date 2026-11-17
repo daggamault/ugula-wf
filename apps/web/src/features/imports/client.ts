@@ -4,9 +4,12 @@ import type { RunStatus } from '../../shared/ui/run-status-badge.tsx';
 import type { Page } from '../../shared/url-state.ts';
 
 type ImportResult = {
-  runId: string;
+  importId: string;
+  runIds: string[];
   file: { bucket: string; key: string; size: number; contentType: string };
 };
+
+export type ReportOutcome = 'created' | 'revised' | 'unchanged';
 
 export type ImportSummary = {
   id: string;
@@ -14,14 +17,12 @@ export type ImportSummary = {
   source: 'upload' | 'sftp' | 'manual';
   report_count: number | null;
   created_at: string;
-  run_id: string;
-  run_status: RunStatus;
+  run_id: string | null;
+  run_status: RunStatus | null;
   uploaded_by_email: string | null;
-  completed: number;
-  waiting: number;
-  stuck: number;
-  failed: number;
-  processing: number;
+  created: number;
+  revised: number;
+  unchanged: number;
   claims: number;
   charges_cents: number;
 };
@@ -31,16 +32,14 @@ export type ImportReport = {
   position: number;
   number: string;
   pcr_number: string | null;
-  run_status: RunStatus | null;
+  outcome: ReportOutcome | null;
+  encounter_number: string | null;
+  encounter_revision: number | null;
   claim_id: string | null;
   claim_status: ClaimStatus | null;
   total_cents: number | null;
   first_name: string | null;
   last_name: string | null;
-  task_id: string | null;
-  task_title: string | null;
-  task_subject: string | null;
-  task_kind: 'task' | 'fault' | null;
 };
 
 export const createImportsClient = (api: Api) => ({

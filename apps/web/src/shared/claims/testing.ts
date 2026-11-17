@@ -1,11 +1,16 @@
-import type { ClaimDetail } from './claim-detail.ts';
+import type { ClaimDetail, EncounterLocation } from './claim-detail.ts';
+
+const place = (patch: Partial<EncounterLocation['address']>, name: string | null = null) => ({
+  name,
+  type: null,
+  address: { line: null, city: null, county: null, state: null, postalCode: null, ...patch }
+});
 
 export const claimDetail: ClaimDetail = {
   id: 'c1',
   number: '20261001-0012',
   patient_number: '20260915-0003',
   encounter_number: '20261001-0007',
-  import_report_id: 'r1',
   import_id: 'i1',
   import_file_name: 'october.xml',
   pcr_number: 'PCR-1001',
@@ -17,10 +22,41 @@ export const claimDetail: ClaimDetail = {
   created_at: '2026-10-01T00:00:00Z',
   first_name: 'Jane',
   last_name: 'Doe',
+  encounter_id: 'e1',
+  encounter_revision: 1,
+  encounter: {
+    pcrNumber: 'PCR-1001',
+    times: {
+      call: null,
+      unitNotified: null,
+      enRoute: null,
+      atScene: '2026-10-01T10:05:00Z',
+      atPatient: null,
+      leftScene: '2026-10-01T10:25:00Z',
+      atDestination: '2026-10-01T10:40:00Z',
+      transferOfCare: null,
+      backInService: null
+    },
+    pickup: place({ line: '9 Elm St', state: '17', postalCode: '62704' }),
+    destination: place({}, 'St. Mary'),
+    narrative: 'Pt found sitting.'
+  },
   classification: 'emergency',
   is_emergency: true,
   loaded_miles: '12.4',
-  lines: [{ position: 1, code: 'A0427', units: 1, unit_cents: 95_000, total_cents: 95_000 }],
+  origin_code: null,
+  destination_code: null,
+  reasons: ['Emergency response', 'ALS assessment performed'],
+  lines: [
+    {
+      position: 1,
+      code: 'A0427',
+      modifiers: ['RH'],
+      units: 1,
+      unit_cents: 95_000,
+      total_cents: 95_000
+    }
+  ],
   birth_date: '1958-04-12',
   patient_id: 'p1',
   coverages: [
@@ -29,7 +65,6 @@ export const claimDetail: ClaimDetail = {
       position: 1,
       payer: 'Medicare',
       payer_id: 'p-m',
-      payer_code: null,
       member_id: '1EG4',
       group_id: null,
       relationship: '18',
@@ -41,7 +76,6 @@ export const claimDetail: ClaimDetail = {
       position: 2,
       payer: 'Blue Plan',
       payer_id: null,
-      payer_code: null,
       member_id: null,
       group_id: null,
       relationship: '01',
@@ -50,50 +84,9 @@ export const claimDetail: ClaimDetail = {
     }
   ],
   diagnoses: ['R079', 'I10'],
-  facility_id: null,
-  facility_name: null,
-  origin_code: null,
-  destination_code: null,
-  pickup_address_line: '9 Elm St',
-  pickup_city: null,
-  pickup_state: 'IL',
-  pickup_postal_code: '62704',
-  destination_name: 'St. Mary',
-  destination_address_line: null,
-  destination_city: null,
-  destination_state: null,
-  destination_postal_code: null,
   gender: 'F',
   address_line: '1 Main St',
   city: 'Springfield',
   state: 'IL',
-  postal_code: '62704',
-  signature: 'signed',
-  signature_note: null,
-  has_pcs: null,
-  pcs_signed_on: null,
-  transport_reason: 'A',
-  condition_codes: ['09'],
-  prior_authorization: null,
-  weight_kg: '81.6',
-  at_scene_at: '2026-10-01T10:05:00Z',
-  left_scene_at: '2026-10-01T10:25:00Z',
-  patient_count: null,
-  closest_facility_miles: null,
-  has_abn: null,
-  abn_signed_on: null,
-  is_denial_expected: null,
-  has_msp_employer_plan: null,
-  has_msp_esrd: null,
-  has_msp_disability: null,
-  msp_employer_size: null,
-  msp_accident: null,
-  prior_authorization_expires_on: null,
-  pcs_type: null,
-  round_trips: null,
-  admitted_on: null,
-  facility_stay: null,
-  is_deceased: false,
-  non_covered_miles: null,
-  at_destination_at: '2026-10-01T10:40:00Z'
+  postal_code: '62704'
 };

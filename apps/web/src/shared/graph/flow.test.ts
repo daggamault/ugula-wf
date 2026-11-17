@@ -64,7 +64,7 @@ describe('edgeId', () => {
 
 describe('foldedSide', () => {
   it('folds the outputs of break nodes and the inputs of make nodes', () => {
-    assert.equal(foldedSide('nemsis.pcr.break'), 'out');
+    assert.equal(foldedSide('encounter.break'), 'out');
     assert.equal(foldedSide('std.object.make'), 'in');
   });
 
@@ -388,10 +388,10 @@ describe('moveNodes, updateNode and withSignature', () => {
 describe('revealPin and folds', () => {
   const pcr: GraphDef = {
     ...def,
-    nodes: [...def.nodes, { id: 'pcr1', type: 'nemsis.pcr.break', version: 1 }]
+    nodes: [...def.nodes, { id: 'pcr1', type: 'encounter.break', version: 1 }]
   };
   const out =
-    catalog.signatureOf({ id: 'p', type: 'nemsis.pcr.break', version: 1 }, pcr)?.outputs[0]?.name ??
+    catalog.signatureOf({ id: 'p', type: 'encounter.break', version: 1 }, pcr)?.outputs[0]?.name ??
     '';
 
   it('folds a break node down to no outputs until one is used', () => {

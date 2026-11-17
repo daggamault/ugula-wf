@@ -1,17 +1,12 @@
-import { PERMISSIONS } from '@ugula/access';
-import { billingEvents, billingKinds, billingModels } from '@ugula/billing';
+import { createNodeCatalog, valueKinds, workflowEvents } from '@ugula/catalog';
 import {
   combineSources,
-  createModelNodes,
   createRegistry,
-  createStdNodes,
   documentationIssues,
   isRecord,
-  mergeKinds,
   type NodeDef,
   type NodeInstance,
   refKey,
-  STD_KINDS,
   SUBWORKFLOW_TRIGGER,
   stdGraphSource,
   TABLE_NODE_KINDS,
@@ -21,15 +16,11 @@ import {
   triggerOf,
   validateGraph
 } from '@ugula/graph';
-import { nemsisKinds, nemsisModels } from '@ugula/nemsis';
 import * as v from 'valibot';
 import type { SeedTable } from './builder.ts';
 import type { SeedGraph } from './graphs.ts';
 
-export const graphNodes = (): NodeDef[] => [
-  ...createStdNodes({ fetch, permissions: PERMISSIONS }),
-  ...createModelNodes([...nemsisModels, ...billingModels])
-];
+export const graphNodes = (): NodeDef[] => createNodeCatalog({ fetch });
 
 export const graphProblems = (graphs: SeedGraph[], nodes: NodeDef[]) => {
   const byRef = new Map(
@@ -38,8 +29,8 @@ export const graphProblems = (graphs: SeedGraph[], nodes: NodeDef[]) => {
   const registry = createRegistry(
     nodes,
     combineSources(stdGraphSource, (ref) => byRef.get(refKey(ref))),
-    mergeKinds(STD_KINDS, nemsisKinds, billingKinds),
-    billingEvents
+    valueKinds,
+    workflowEvents
   );
   const nodeTypes = new Set(nodes.map((n) => n.type));
   return graphs.flatMap((g) =>

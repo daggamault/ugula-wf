@@ -227,7 +227,7 @@ describe('GraphCanvas', () => {
     show(def, { editable: false });
     assert.deepEqual(
       screen.getAllByRole('article', { hidden: true }).map((a) => a.getAttribute('aria-label')),
-      ['Entry', 'Add']
+      ['Start', 'Add']
     );
     assert.deepEqual(
       screen.getAllByRole('button').map((b) => b.getAttribute('aria-label')),

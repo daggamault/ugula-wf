@@ -18,7 +18,11 @@ const drag = (type: string, types: string[], files: File[] = []) => {
 const uploadingTo = (uploads: string[]): Pick<ImportsClient, 'upload'> => ({
   upload: async (file) => {
     uploads.push(file.name);
-    return { runId: 'r', file: { bucket: 'b', key: 'k', size: 1, contentType: 'text/xml' } };
+    return {
+      importId: 'i',
+      runIds: ['r'],
+      file: { bucket: 'b', key: 'k', size: 1, contentType: 'text/xml' }
+    };
   }
 });
 

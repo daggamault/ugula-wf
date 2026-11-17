@@ -2,12 +2,11 @@ import { timingSafeEqual } from 'node:crypto';
 import { sValidator } from '@hono/standard-validator';
 import { Hono, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import { type AgencyEnv, hasPermission } from '../../shared/access.ts';
+import type { AgencyEnv } from '../../shared/access.ts';
 import { FORM_OVERHEAD_BYTES } from '../../shared/files.ts';
 import { idParam, invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
 import {
-  INGEST_WORKFLOW,
   importFormSchema,
   listImportReportsQuery,
   searchImportsQuery,
@@ -59,18 +58,11 @@ export const createImportRoutes = (service: ImportService) =>
       }),
       sValidator('form', importFormSchema, invalidRequest),
       async (c) => {
-        const { file, workflow } = c.req.valid('form');
-        const access = c.get('access');
-        if (workflow !== INGEST_WORKFLOW && !hasPermission(access, 'runs:create')) {
-          return c.json(
-            { error: 'Importing into another workflow needs the runs:create permission' },
-            403
-          );
-        }
-        const { agencyId, userId } = access;
+        const { file } = c.req.valid('form');
+        const { agencyId, userId } = c.get('access');
         return respond(
           c,
-          await service.upload(agencyId, userId, workflow, {
+          await service.upload(agencyId, userId, {
             name: file.name,
             type: file.type,
             bytes: new Uint8Array(await file.arrayBuffer())

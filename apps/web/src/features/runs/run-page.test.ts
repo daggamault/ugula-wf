@@ -262,7 +262,7 @@ describe('RunView interactions', () => {
     view(async () => undefined, [step(1, ''), step(2, 'payers/')]);
     assert.ok(screen.getByRole('heading', { name: 'Run Data' }));
     await act(() => nodeEl('entry').click());
-    assert.ok(screen.getByRole('heading', { name: 'Entry' }));
+    assert.ok(screen.getByRole('heading', { name: 'Start' }));
     assert.ok(screen.getByText('It ran 1 time on this path, newest first.'));
     assert.ok(!screen.queryByRole('heading', { name: 'Run Data' }));
   });

@@ -8,7 +8,11 @@ const file = (name: string, type = '') => new File(['<x/>'], name, { type });
 
 const scope = { agencyId: 'a-1', signal: new AbortController().signal };
 
-const RECEIVED = { runId: 'r1', file: { bucket: 'b', key: 'k', size: 1, contentType: 'x' } };
+const RECEIVED = {
+  importId: 'i1',
+  runIds: ['r1'],
+  file: { bucket: 'b', key: 'k', size: 1, contentType: 'x' }
+};
 
 const recordingClient = (fail: Record<string, Error> = {}, onUpload?: () => void) => {
   const uploads: [string, string | null][] = [];
@@ -28,8 +32,8 @@ const receivedToast = (name: string): ToastInput => ({
   key: `import:${name}`,
   title: `${name} received`,
   description:
-    'Its reports are being read and matched. Tasks appear in your queues as they need you.',
-  action: { label: 'View Imports', to: '/imports' }
+    'Its reports are being read into encounters, and each billable one into a claim for review.',
+  action: { label: 'View Import', to: '/imports/i1' }
 });
 
 describe('isXmlFile', () => {

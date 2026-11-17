@@ -1,8 +1,7 @@
 import { verifyPassword } from '@ugula/auth';
-import { EVENT_TYPES } from '@ugula/billing';
-import { type Db, emitEvent, resolveWorkflowVersion, startRun } from '@ugula/db';
+import { type Db, emitAndDispatch, findEventWorkflows } from '@ugula/db';
 import type { Json } from '@ugula/graph';
-import { reportTerms, reportXml } from '@ugula/nemsis';
+import { NEMSIS_EVENTS, reportTerms, reportXml } from '@ugula/nemsis';
 import type { RunQueueClient } from '@ugula/run-queue';
 import { type BlobRef, type BlobStore, importsPrefix } from '@ugula/storage';
 import { safeName, type UploadedFile, uploadKey } from '../../shared/files.ts';
@@ -20,7 +19,7 @@ import {
   type NewImport,
   searchImports
 } from './queries.ts';
-import { INGEST_WORKFLOW, type ReportSort, type SftpEvent } from './schemas.ts';
+import type { ReportSort, SftpEvent } from './schemas.ts';
 
 type SftpStorage = {
   bucket: string;
@@ -38,7 +37,11 @@ type ImportServiceDeps = {
   sftp: SftpStorage;
 };
 
-type SftpReceipt = { runId: string; file: BlobRef } | { ignored: true };
+type Ingested = { importId: string; runIds: string[]; file: BlobRef };
+
+type SftpReceipt = Ingested | { ignored: true };
+
+const noWorkflow = fail('not_found', 'No published workflow starts when a PCR file is received');
 
 const sftpPrefix = (agencyId: string) => `${importsPrefix(agencyId)}sftp/`;
 
@@ -78,33 +81,26 @@ export const createImportService = ({
   sftp,
   publish
 }: ImportServiceDeps) => {
-  const unpublished = (workflow: string) =>
-    fail('not_found', `Workflow ${workflow} has no published version`);
+  const hasWorkflow = async (agencyId: string) =>
+    (await findEventWorkflows(db, agencyId, NEMSIS_EVENTS.pcrFileReceived)).length > 0;
 
   const ingest = async (
     agencyId: string,
-    versionId: string,
     file: BlobRef,
     origin: Pick<NewImport, 'source' | 'fileName' | 'uploadedBy'>
   ) => {
-    const runId = await db.transaction().execute(async (tx) => {
-      const id = await startRun(tx, boss, {
+    const ingested = await db.transaction().execute(async (tx) => {
+      const { id } = await insertImport(tx, { agencyId, file, ...origin });
+      const { runIds } = await emitAndDispatch(tx, boss, {
         agencyId,
-        versionId,
-        inputs: { file },
-        interactive: true
-      });
-      const created = await insertImport(tx, { agencyId, runId: id, file, ...origin });
-      await emitEvent(tx, {
-        agencyId,
-        type: EVENT_TYPES.importReceived,
-        payload: { importId: created.id, file, fileName: origin.fileName },
+        type: NEMSIS_EVENTS.pcrFileReceived,
+        payload: { importId: id, file, fileName: origin.fileName },
         createdBy: origin.uploadedBy
       });
-      return id;
+      return { importId: id, runIds, file };
     });
     await publish(agencyId, { kind: 'import', id: null }).catch(() => undefined);
-    return ok({ runId, file });
+    return ok(ingested);
   };
 
   return {
@@ -131,19 +127,18 @@ export const createImportService = ({
       return ok({ report: meta, data, xml: reportXml(data), dictionary });
     },
 
-    upload: async (agencyId: string, userId: string, workflow: string, file: UploadedFile) => {
+    upload: async (agencyId: string, userId: string, file: UploadedFile) => {
       if (!file.bytes.byteLength) return fail('invalid', 'The file is empty');
       if (file.bytes.byteLength > maxBytes) {
         return fail('invalid', `The file is larger than ${maxBytes} bytes`);
       }
-      const version = await resolveWorkflowVersion(db, agencyId, workflow);
-      if (!version) return unpublished(workflow);
+      if (!(await hasWorkflow(agencyId))) return noWorkflow;
       const ref = await blobs.putBytes(
         uploadKey(agencyId, file.name),
         file.bytes,
         file.type || 'application/octet-stream'
       );
-      return ingest(agencyId, version.id, ref, {
+      return ingest(agencyId, ref, {
         source: 'upload',
         fileName: file.name.trim() || safeName(file.name),
         uploadedBy: userId
@@ -169,11 +164,9 @@ export const createImportService = ({
       if (!path) return fail('invalid', 'The SFTP path is not a safe relative file path');
       const agency = await findSftpAgency(db, event.username);
       if (!agency) return fail('not_found', `No agency uses SFTP account ${event.username}`);
-      const version = await resolveWorkflowVersion(db, agency.id, INGEST_WORKFLOW);
-      if (!version) return unpublished(INGEST_WORKFLOW);
+      if (!(await hasWorkflow(agency.id))) return noWorkflow;
       return ingest(
         agency.id,
-        version.id,
         {
           bucket: sftp.bucket,
           key: `${sftpPrefix(agency.id)}${path}`,

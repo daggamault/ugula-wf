@@ -65,6 +65,15 @@ type CatalogSources = {
 export const eventLabel = (events: readonly EventDef[], type: string) =>
   events.find((e) => e.type === type)?.label ?? type;
 
+const entryTitle = (inst: NodeInstance, events: readonly EventDef[]) => {
+  const trigger = entryTrigger(inst.config);
+  return trigger.kind === 'event'
+    ? `On ${eventLabel(events, trigger.event)}`
+    : trigger.kind === 'schedule'
+      ? 'On Schedule'
+      : 'Start';
+};
+
 const entrySummary = (inst: NodeInstance, events: readonly EventDef[]) =>
   triggerSummary(entryTrigger(inst.config), (type) => eventLabel(events, type));
 
@@ -216,15 +225,12 @@ export const createCatalog = (
     },
     titleOf: (inst) =>
       inst.label ??
+      (inst.type === ENTRY_TYPE ? entryTitle(inst, events) : undefined) ??
       (inst.type === INPUT_TYPE ? inputTitle(inst) : undefined) ??
       registry.node(inst)?.title ??
       stdGraphInfo[refKey(inst)]?.title ??
       stubs.get(refKey(inst))?.name ??
-      (inst.type === ENTRY_TYPE
-        ? 'Start'
-        : inst.type === RETURN_TYPE
-          ? 'Return'
-          : titleFromKey(inst.type)),
+      (inst.type === RETURN_TYPE ? 'Return' : titleFromKey(inst.type)),
     describe: (inst) =>
       inst.type === ENTRY_TYPE
         ? ENTRY_DESCRIPTION

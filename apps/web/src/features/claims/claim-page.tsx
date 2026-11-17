@@ -3,9 +3,9 @@ import { UserIcon } from 'lucide-react';
 import { ChargeLines } from '../../shared/claims/charge-lines.tsx';
 import { ClaimDataView } from '../../shared/claims/claim-data.tsx';
 import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
-import { DocumentationPanel } from '../../shared/claims/claim-documentation.tsx';
+import { EncounterPanel } from '../../shared/claims/claim-encounter.tsx';
 import { PayersPanel } from '../../shared/claims/claim-payers.tsx';
-import { ClaimSummaryPanel, pricedLinesOf } from '../../shared/claims/claim-summary.tsx';
+import { ClaimSummaryPanel, ReasonsPanel } from '../../shared/claims/claim-summary.tsx';
 import { patientName } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
@@ -29,7 +29,7 @@ type ClaimPageProps = {
 export type ClaimTab = 'overview' | 'data';
 
 const patientOf = (c: Pick<ClaimDetail, 'first_name' | 'last_name'>) =>
-  patientName(c.last_name, c.first_name) ?? 'Patient not matched yet';
+  patientName(c.last_name, c.first_name) ?? 'Unnamed patient';
 
 export const CLAIM_TABS: readonly { value: ClaimTab; label: string }[] = [
   { value: 'overview', label: 'Overview' },
@@ -65,12 +65,10 @@ export const ClaimView = ({
         </span>
       }
       actions={
-        claim.patient_id ? (
-          <ButtonLink to={`/patients/${claim.patient_id}`} variant="outline">
-            <UserIcon aria-hidden="true" className="size-4" />
-            Patient
-          </ButtonLink>
-        ) : null
+        <ButtonLink to={`/patients/${claim.patient_id}`} variant="outline">
+          <UserIcon aria-hidden="true" className="size-4" />
+          Patient
+        </ButtonLink>
       }
     >
       {error ? <Alert>{error}</Alert> : null}
@@ -84,11 +82,14 @@ export const ClaimView = ({
       />
       {tab === 'overview' ? (
         <>
-          <ClaimSummaryPanel claim={claim} />
-          <DocumentationPanel claim={claim} />
+          <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+            <ClaimSummaryPanel claim={claim} />
+            <ReasonsPanel reasons={claim.reasons} />
+          </div>
+          <EncounterPanel claim={claim} />
           <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
             <SectionPanel title="Charges">
-              <ChargeLines lines={pricedLinesOf(claim.lines)} codes={codes} />
+              <ChargeLines lines={claim.lines} codes={codes} />
             </SectionPanel>
             <PayersPanel coverages={claim.coverages} />
           </div>

@@ -32,7 +32,7 @@ describe('claim service', () => {
     assert.ok(res.ok);
     assert.deepEqual(res.value.claim, claim);
     assert.deepEqual(res.value.codes, { hcpcs: { A0427: 'ALS1 emergency' } });
-    assert.deepEqual(queries[0]?.parameters.slice(0, 2), ['t-1', 'c1']);
+    assert.deepEqual(queries[0]?.parameters.slice(-2), ['t-1', 'c1']);
   });
 
   it('reports a claim outside the agency as missing', async () => {

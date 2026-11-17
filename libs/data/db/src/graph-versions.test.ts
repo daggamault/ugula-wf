@@ -4,12 +4,10 @@ import { type CompiledQuery, sql } from 'kysely';
 import { buildCopyRunTables, buildPinRunTables } from './data-tables.ts';
 import {
   buildFindPublishedGraphs,
-  buildLatestVersion,
   buildPinRunGraphs,
   dependencyOf,
   findDefinitions,
   findPublishedGraphs,
-  findRuleBundle,
   findRunGraphs,
   pinRunGraphs,
   pinRunsGraphs,
@@ -150,39 +148,12 @@ describe('pinRunsGraphs', () => {
 });
 
 describe('latest versions', () => {
-  it('finds the latest published workflow version of the graph at the bottom: system, then agency', async () => {
-    const db = createDummyDb();
-    const compiled = buildLatestVersion('t-1', 'billing.claim').compile(db);
-    assert.equal(flat(compiled), newestSql('$1', " and g.kind = 'workflow'", '$2'));
-    assert.deepEqual(compiled.parameters, ['billing.claim', 't-1']);
-    await db.destroy();
-  });
-
   it('resolves the graph in effect for a key from the newest version at the bottom', async () => {
     const db = createDummyDb();
     const compiled = sql`select ${resolvedGraph('t-1', sql`'k'`)}`.compile(db);
     const newest = (agency: string) => `( ${newestSql("'k'", '', agency)})`;
     assert.equal(flat(compiled), `select ${resolvedSql("'k'", newest('$1'), '$2', newest('$3'))}`);
     assert.deepEqual(compiled.parameters, ['t-1', 't-1', 't-1']);
-    await db.destroy();
-  });
-});
-
-describe('findRuleBundle', () => {
-  it('resolves a rule at its newest system version and every graph it calls, without a run', async () => {
-    const rows = [{ id: 'v-1', key: 'billing.claim-issues', version: 2, definition: {} }];
-    const { db, queries } = createRecordingDb(() => rows);
-    assert.deepEqual(await findRuleBundle(db, 't-1', 'billing.claim-issues'), rows);
-    assert.equal(
-      flat(queries[0]),
-      `with recursive bundle (id, key, version) as ( select r.id, req.key, req.version from (select $1::text as key, ( select max(v.version) from graphs g join graph_versions v on v.graph_id = g.id where g.key = $2::text and g.agency_id is null and v.published_at is not null ) as version) req cross join lateral ${resolvedSql('"req"."key"', '"req"."version"', '$3')} r where r.id is not null union ${dependencies} ${resolvedSql('"dep"."key"', '"dep"."version"', '$4')} r where r.id is not null ) select b.id, b.key, b.version, gv.definition from bundle b join graph_versions gv on gv.id = b.id order by b.key, b.version`
-    );
-    assert.deepEqual(queries[0]?.parameters, [
-      'billing.claim-issues',
-      'billing.claim-issues',
-      't-1',
-      't-1'
-    ]);
     await db.destroy();
   });
 });

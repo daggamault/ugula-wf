@@ -19,11 +19,9 @@ const summary: ImportSummary = {
   run_id: 'r1',
   run_status: 'completed',
   uploaded_by_email: 'biller@example.com',
-  completed: 3,
-  waiting: 0,
-  stuck: 0,
-  failed: 0,
-  processing: 0,
+  created: 3,
+  revised: 0,
+  unchanged: 0,
   claims: 3,
   charges_cents: 114_220
 };
@@ -45,7 +43,11 @@ const fakeClient = (over: Partial<ImportsClient> = {}) => {
     },
     upload: async (file: File, agencyId: string | null) => {
       uploads.push([file.name, agencyId]);
-      return { runId: 'r2', file: { bucket: 'b', key: 'k', size: 1, contentType: 'text/xml' } };
+      return {
+        importId: 'i2',
+        runIds: ['r2'],
+        file: { bucket: 'b', key: 'k', size: 1, contentType: 'text/xml' }
+      };
     },
     ...over
   } as ImportsClient;
@@ -134,7 +136,11 @@ describe('ImportsPage', () => {
       upload: () =>
         new Promise((resolve) => {
           finish = () =>
-            resolve({ runId: 'r', file: { bucket: 'b', key: 'k', size: 1, contentType: 'x' } });
+            resolve({
+              importId: 'i',
+              runIds: ['r'],
+              file: { bucket: 'b', key: 'k', size: 1, contentType: 'x' }
+            });
         })
     });
     show(client);

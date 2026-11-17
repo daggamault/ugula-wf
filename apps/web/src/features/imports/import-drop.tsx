@@ -30,7 +30,7 @@ export const DropOverlay = ({ isVisible }: { isVisible: boolean }) => (
       </span>
       <p className="text-2xl font-extrabold tracking-tight">Drop NEMSIS Files to Import</p>
       <p className="text-surface-fg-muted max-w-md text-sm">
-        Each patient care report becomes its own draft claim, ready for review.
+        Each patient care report becomes an encounter, and each billable one a claim for review.
       </p>
     </div>
   </div>

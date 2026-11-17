@@ -113,6 +113,9 @@ const ELEMENTS: Readonly<Record<string, string>> = {
   'eOther.19': 'Date/time of signature',
   'eOther.20': 'Signature last name',
   'eOther.21': 'Signature first name',
+  'eOther.09': 'Type of document attached',
+  'eOther.10': 'File type of the attachment',
+  'eOther.22': 'File name of the attachment',
   'eCrew.01': 'Crew member ID',
   'eCrew.02': 'Crew member level',
   'eCrew.03': 'Crew member role'

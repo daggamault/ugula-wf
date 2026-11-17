@@ -8,6 +8,7 @@ import { createCmsTables } from './cms.ts';
 import { createCodesTable } from './codes.ts';
 import { parseConfig } from './config.ts';
 import { createDataTablesTables } from './data-tables.ts';
+import { createEncountersTable } from './encounters.ts';
 import { createEventEmitters, createEventsTables, EVENT_FUNCTIONS } from './events.ts';
 import { createExtensions } from './extensions.ts';
 import { createFacilitiesTables } from './facilities.ts';
@@ -15,7 +16,7 @@ import { createFeeSchedulesTable } from './fee-schedules.ts';
 import { createGeonamesPostalCodesTable } from './geonames-postal-codes.ts';
 import { createGnisPlacesTable } from './gnis-places.ts';
 import { createGraphsTables } from './graphs.ts';
-import { createImportsTables } from './imports.ts';
+import { createImportsTables, linkImportReportsToEncounters } from './imports.ts';
 import { createNemsisDictionaryTables } from './nemsis-dictionary.ts';
 import { createNotificationsTables } from './notifications.ts';
 import { createDailyNumbers, DAILY_NUMBER_FUNCTIONS } from './numbers.ts';
@@ -112,6 +113,8 @@ const steps = [
   createClearinghouseConnectionsTable,
   createFeeSchedulesTable,
   createImportsTables,
+  createEncountersTable,
+  linkImportReportsToEncounters,
   createFacilitiesTables,
   createClaimsTables,
   createNotificationsTables,

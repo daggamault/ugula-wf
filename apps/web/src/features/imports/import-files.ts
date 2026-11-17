@@ -25,14 +25,14 @@ export const importFiles = async (
       continue;
     }
     try {
-      await client.upload(file, agencyId);
+      const { importId } = await client.upload(file, agencyId);
       received += 1;
       notify({
         key: `import:${file.name}`,
         title: `${file.name} received`,
         description:
-          'Its reports are being read and matched. Tasks appear in your queues as they need you.',
-        action: { label: 'View Imports', to: '/imports' }
+          'Its reports are being read into encounters, and each billable one into a claim for review.',
+        action: { label: 'View Import', to: `/imports/${importId}` }
       });
     } catch (err) {
       notify({

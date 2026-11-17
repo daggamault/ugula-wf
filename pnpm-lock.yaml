@@ -184,6 +184,9 @@ importers:
       '@ugula/billing':
         specifier: workspace:*
         version: link:libs/domain/billing
+      '@ugula/catalog':
+        specifier: workspace:*
+        version: link:libs/composition/catalog
       '@ugula/config':
         specifier: workspace:*
         version: link:libs/kernel/config

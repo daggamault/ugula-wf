@@ -76,16 +76,15 @@ const details = () =>
     .map((t) => [t.textContent, t.nextElementSibling?.textContent]);
 
 describe('ClaimDataView', () => {
-  it('shows the service date, diagnoses, pickup and destination types and addresses', () => {
-    show({ origin_code: 'R', destination_code: 'H', destination_city: 'Springfield' });
+  it('shows the service date, diagnoses, modifiers and the patient', () => {
+    show({ origin_code: 'R', destination_code: 'H' });
     assert.deepEqual(details(), [
       ['Date of Service', 'Oct 1, 2026'],
       ['Diagnosis Codes', 'Chest pain R07.9I10'],
-      ['Pickup Type', 'Residence R'],
-      ['Destination Type', 'Hospital H'],
-      ['Patient Mailing Address', '1 Main St, Springfield, IL 62704'],
-      ['Pickup', '9 Elm St, IL 62704'],
-      ['Destination', 'St. Mary, Springfield']
+      ['Origin Modifier', 'Residence R'],
+      ['Destination Modifier', 'Hospital H'],
+      ['Patient Born', 'Apr 12, 1958'],
+      ['Patient Mailing Address', '1 Main St, Springfield, IL 62704']
     ]);
   });
 
@@ -102,22 +101,18 @@ describe('ClaimDataView', () => {
   it('shows a dash for each value the claim lacks', () => {
     show({
       diagnoses: [],
+      birth_date: null,
       address_line: null,
       city: null,
       state: null,
-      postal_code: null,
-      pickup_address_line: null,
-      pickup_state: null,
-      pickup_postal_code: null,
-      destination_name: null
+      postal_code: null
     });
     assert.deepEqual(details().slice(1), [
       ['Diagnosis Codes', '—'],
-      ['Pickup Type', '—'],
-      ['Destination Type', '—'],
-      ['Patient Mailing Address', '—'],
-      ['Pickup', '—'],
-      ['Destination', '—']
+      ['Origin Modifier', '—'],
+      ['Destination Modifier', '—'],
+      ['Patient Born', '—'],
+      ['Patient Mailing Address', '—']
     ]);
     assert.ok(!screen.queryByRole('list'));
   });

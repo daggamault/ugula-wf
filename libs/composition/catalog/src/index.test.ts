@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { PERMISSIONS } from '@ugula/access';
-import { billingKinds, billingModels } from '@ugula/billing';
+import { billingKinds, billingModels, createBillingNodes } from '@ugula/billing';
 import {
   createModelNodes,
   createRegistry,
@@ -14,7 +14,7 @@ import {
   stdGraphSource,
   unknownKinds
 } from '@ugula/graph';
-import { nemsisKinds, nemsisModels } from '@ugula/nemsis';
+import { createNemsisNodes, encounterModels, nemsisKinds } from '@ugula/nemsis';
 import { createNodeCatalog, valueKinds, workflowEvents } from './index.ts';
 
 const UNWIRED: GraphDef = {
@@ -54,11 +54,13 @@ const lowerWordOf = (title: string) =>
     .find((w, i) => /^[a-z]/.test(w) && !(i > 0 && MINOR_WORDS.has(w)));
 
 describe('createNodeCatalog', () => {
-  it('lists the standard and model nodes in that order', () => {
+  it('lists the standard, encounter, billing and record nodes in that order', () => {
     const typesOf = (nodes: { type: string }[]) => nodes.map((n) => n.type);
     assert.deepEqual(typesOf(createNodeCatalog({ fetch })), [
       ...typesOf(createStdNodes({ fetch, permissions: PERMISSIONS })),
-      ...typesOf(createModelNodes([...nemsisModels, ...billingModels]))
+      ...typesOf(createNemsisNodes(null)),
+      ...typesOf(createBillingNodes(null)),
+      ...typesOf(createModelNodes([...encounterModels, ...billingModels]))
     ]);
   });
 
@@ -71,7 +73,7 @@ describe('createNodeCatalog', () => {
       []
     );
     assert.deepEqual(
-      ['std.text.length', 'nemsis.pcr.break', 'billing.claim.make'].filter(
+      ['std.text.length', 'encounter.break', 'encounter.save', 'claim.make', 'claim.save'].filter(
         (t) => !types.includes(t)
       ),
       []
@@ -94,7 +96,7 @@ describe('createNodeCatalog', () => {
           ? []
           : [...node.signature.inputs, ...node.signature.outputs].map((p) => p.label ?? '')
       ),
-      ...[...nemsisModels, ...billingModels].flatMap((m) => m.fields.map((f) => f.label))
+      ...[...encounterModels, ...billingModels].flatMap((m) => m.fields.map((f) => f.label))
     ];
     for (const label of labels) assert.doesNotMatch(label, rawName, label);
   });
@@ -129,7 +131,7 @@ describe('createNodeCatalog', () => {
           return [];
         }
       }),
-      ...[...nemsisModels, ...billingModels].flatMap((m) => m.fields.map((f) => f.type))
+      ...[...encounterModels, ...billingModels].flatMap((m) => m.fields.map((f) => f.type))
     ];
     assert.deepEqual([...new Set(types.flatMap((t) => unknownKinds(t, valueKinds)))], []);
   });
@@ -153,14 +155,13 @@ describe('workflowEvents', () => {
     }
   });
 
-  it('documents every payload field with a declared kind, all optional', () => {
+  it('documents every payload field with a declared kind', () => {
     for (const e of workflowEvents) {
       for (const p of e.payload) {
         assert.ok(
           p.label && lowerWordOf(p.label) === undefined && p.description,
           `${e.type}.${p.name}`
         );
-        assert.equal(p.optional, true, `${e.type}.${p.name}`);
         assert.deepEqual(unknownKinds(p.type, valueKinds), [], `${e.type}.${p.name}`);
       }
     }

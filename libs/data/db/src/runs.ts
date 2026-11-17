@@ -1,7 +1,7 @@
 import { advance, enqueueRuns, type RunQueueClient, resume, start } from '@ugula/run-queue';
 import { type Kysely, sql } from 'kysely';
 import { sqlExecutor } from './client.ts';
-import { buildLatestVersion, findPublishedGraphs, pinRunGraphs } from './graph-versions.ts';
+import { pinRunGraphs } from './graph-versions.ts';
 import type { Database } from './schema.ts';
 
 type NewRun = {
@@ -66,15 +66,4 @@ export const signalRuns = async (
     waiting.map((r) => resume(r.id, r.wait_id, { payload: signal.payload }))
   );
   return waiting.length;
-};
-
-export const resolveWorkflowVersion = async (
-  db: Kysely<Database>,
-  agencyId: string,
-  key: string
-): Promise<{ id: string; version: number } | undefined> => {
-  const latest = (await buildLatestVersion(agencyId, key).execute(db)).rows[0];
-  if (!latest) return undefined;
-  const [found] = await findPublishedGraphs(db, agencyId, [{ key, version: latest.version }]);
-  return found && { id: found.id, version: found.version };
 };

@@ -15,23 +15,13 @@ const issues = (schema: v.GenericSchema, input: unknown) =>
 describe('importFormSchema', () => {
   const file = new File(['<x/>'], 'a.xml');
 
-  it('takes a file and defaults the workflow to the NEMSIS ingest', () => {
-    assert.deepEqual(v.parse(importFormSchema, { file }), {
-      file,
-      workflow: 'billing.receive-nemsis-file'
-    });
-    assert.deepEqual(v.parse(importFormSchema, { file, workflow: 'acme.ingest' }), {
-      file,
-      workflow: 'acme.ingest'
-    });
+  it('takes a file', () => {
+    assert.deepEqual(v.parse(importFormSchema, { file }), { file });
   });
 
-  it('refuses a missing file and a workflow that is not a graph key', () => {
+  it('refuses a missing file', () => {
     assert.deepEqual(issues(importFormSchema, { file: 'nope' }), [
       'Invalid type: Expected File but received "nope"'
-    ]);
-    assert.deepEqual(issues(importFormSchema, { file, workflow: 'Bad Key' }), [
-      'Invalid format: Expected /^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$/ but received "Bad Key"'
     ]);
   });
 });
@@ -69,7 +59,7 @@ describe('listImportReportsQuery', () => {
 
   it('refuses sorts of the import list', () => {
     assert.deepEqual(issues(listImportReportsQuery, { sort: 'file' }), [
-      'Invalid type: Expected ("position" | "pcr" | "patient" | "status" | "claim" | "total") but received "file"'
+      'Invalid type: Expected ("position" | "pcr" | "patient" | "outcome" | "claim" | "total") but received "file"'
     ]);
   });
 });

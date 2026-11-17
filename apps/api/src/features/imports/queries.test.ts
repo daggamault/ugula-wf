@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { resolveWorkflowVersion } from '@ugula/db';
 import { createRecordingDb } from '@ugula/db/testing';
 import {
   findDictionary,
@@ -13,41 +12,15 @@ import {
 } from './queries.ts';
 
 const IMPORT_COLUMNS =
-  'select "i"."id", "i"."file_name", "i"."source", "i"."report_count", "i"."created_at", "i"."run_id", "r"."status" as "run_status", "u"."email" as "uploaded_by_email", "reports"."completed", "reports"."waiting", "reports"."stuck", "reports"."failed", "reports"."processing", "claimed"."claims", "claimed"."charges_cents"';
+  'select "i"."id", "i"."file_name", "i"."source", "i"."report_count", "i"."created_at", "i"."run_id", "r"."status" as "run_status", "u"."email" as "uploaded_by_email", "reports"."created", "reports"."revised", "reports"."unchanged", "claimed"."claims", "claimed"."charges_cents"';
 const IMPORT_FROM =
-  'from "imports" as "i" inner join "workflow_runs" as "r" on "r"."id" = "i"."run_id" left join "users" as "u" on "u"."id" = "i"."uploaded_by_id" left join lateral (select (count(*) filter (where ch.status = $1))::int as "completed", (count(*) filter (where ch.status = $2))::int as "waiting", (count(*) filter (where ch.status = $3))::int as "stuck", (count(*) filter (where ch.status = $4))::int as "failed", (count(*) filter (where ch.status = $5))::int as "processing" from "workflow_runs" as "ch" where "ch"."parent_id" = "i"."run_id") as "reports" on true left join lateral (select count(*)::int as "claims", coalesce(sum(c.total_cents), 0)::float8 as "charges_cents" from "claims" as "c" inner join "import_reports" as "ir" on "ir"."id" = "c"."import_report_id" where "ir"."import_id" = "i"."id") as "claimed" on true where "i"."agency_id" = $6';
-const STATUSES = ['completed', 'suspended', 'faulted', 'failed', 'running'];
+  'from "imports" as "i" left join "workflow_runs" as "r" on "r"."id" = "i"."run_id" left join "users" as "u" on "u"."id" = "i"."uploaded_by_id" left join lateral (select (count(*) filter (where ir.outcome = $1))::int as "created", (count(*) filter (where ir.outcome = $2))::int as "revised", (count(*) filter (where ir.outcome = $3))::int as "unchanged" from "import_reports" as "ir" where "ir"."import_id" = "i"."id") as "reports" on true left join lateral (select count(*)::int as "claims", coalesce(sum(c.total_cents), 0)::float8 as "charges_cents" from "claims" as "c" where "c"."encounter_id" in (select "ir"."encounter_id" from "import_reports" as "ir" where "ir"."import_id" = "i"."id" and "ir"."encounter_id" is not null)) as "claimed" on true where "i"."agency_id" = $4';
+const OUTCOMES = ['created', 'revised', 'unchanged'];
 
 const REPORT_COLUMNS =
-  'select "ir"."id", "ir"."position", "ir"."number", "ir"."pcr_number", "r"."status" as "run_status", "c"."id" as "claim_id", "c"."status" as "claim_status", "c"."total_cents", "p"."first_name", "p"."last_name", "t"."id" as "task_id", "t"."title" as "task_title", "t"."subject" as "task_subject", "t"."kind" as "task_kind"';
-const REPORT_FROM = `from "import_reports" as "ir" inner join "imports" as "i" on "i"."id" = "ir"."import_id" left join "workflow_runs" as "r" on "r"."parent_id" = "i"."run_id" and r.inputs -> 'report' ->> 'key' = ir.report_key left join "claims" as "c" on "c"."import_report_id" = "ir"."id" left join "patients" as "p" on "p"."id" = "c"."patient_id" left join lateral (select "t"."id", "t"."title", "t"."subject", "t"."kind" from "tasks" as "t" where "t"."run_id" = "r"."id" and "t"."status" = $1 order by "t"."created_at" limit $2) as "t" on true where "i"."agency_id" = $3 and "i"."id" = $4`;
-
-describe('resolveWorkflowVersion', () => {
-  it('takes the newest version number of the graph at the bottom, then resolves the override in effect for it', async () => {
-    const { db, queries } = createRecordingDb((q) =>
-      q.sql.includes('from unnest')
-        ? [{ id: 'v-agency', key: 'billing.receive-nemsis-file', version: 3, definition: {} }]
-        : [{ version: 3 }]
-    );
-    assert.deepEqual(await resolveWorkflowVersion(db, 't-1', 'billing.receive-nemsis-file'), {
-      id: 'v-agency',
-      version: 3
-    });
-    const [latest, resolved] = queries.map((q) => ({ ...q, sql: q.sql.replace(/\s+/g, ' ') }));
-    assert.ok(latest?.sql.includes("g.kind = 'workflow' and g.is_active"));
-    assert.ok(latest?.sql.includes('order by g.agency_id is not null, v.version desc'));
-    assert.deepEqual(latest?.parameters.slice(0, 2), ['billing.receive-nemsis-file', 't-1']);
-    assert.deepEqual(resolved?.parameters.slice(0, 2), [['billing.receive-nemsis-file'], [3]]);
-    await db.destroy();
-  });
-
-  it('finds nothing when no version is published', async () => {
-    const { db, queries } = createRecordingDb();
-    assert.equal(await resolveWorkflowVersion(db, 't-1', 'billing.receive-nemsis-file'), undefined);
-    assert.equal(queries.length, 1);
-    await db.destroy();
-  });
-});
+  'select "ir"."id", "ir"."position", "ir"."number", "ir"."pcr_number", "ir"."outcome", "e"."number" as "encounter_number", "e"."revision" as "encounter_revision", "c"."id" as "claim_id", "c"."status" as "claim_status", "c"."total_cents", "p"."first_name", "p"."last_name"';
+const REPORT_FROM =
+  'from "import_reports" as "ir" left join "encounters" as "e" on "e"."id" = "ir"."encounter_id" left join "claims" as "c" on "c"."encounter_id" = "ir"."encounter_id" left join "patients" as "p" on "p"."id" = "c"."patient_id" where "ir"."agency_id" = $1 and "ir"."import_id" = $2';
 
 describe('findSftpAgency', () => {
   it('finds the password hash of an active agency by SFTP username', async () => {
@@ -66,23 +39,21 @@ describe('findSftpAgency', () => {
 describe('insertImport', () => {
   const upload = {
     agencyId: 't-1',
-    runId: 'r1',
     source: 'upload',
     fileName: 'pcrs.xml',
     file: { bucket: 'b', key: 'k' },
     uploadedBy: 'u1'
   } as const;
 
-  it('records an import against its ingest run and uploader', async () => {
+  it('records an import with its file and uploader, before any run reads it', async () => {
     const { db, queries } = createRecordingDb(() => [{ id: 'i1' }]);
     assert.deepEqual(await insertImport(db, upload), { id: 'i1' });
     assert.equal(
       queries[0]?.sql,
-      'insert into "imports" ("agency_id", "run_id", "source", "file_name", "file", "uploaded_by_id") values ($1, $2, $3, $4, $5, $6) returning "id"'
+      'insert into "imports" ("agency_id", "source", "file_name", "file", "uploaded_by_id") values ($1, $2, $3, $4, $5) returning "id"'
     );
     assert.deepEqual(queries[0]?.parameters, [
       't-1',
-      'r1',
       'upload',
       'pcrs.xml',
       '{"bucket":"b","key":"k"}',
@@ -94,7 +65,7 @@ describe('insertImport', () => {
   it('records an SFTP import without an uploader', async () => {
     const { db, queries } = createRecordingDb(() => [{ id: 'i1' }]);
     await insertImport(db, { ...upload, source: 'sftp', uploadedBy: null });
-    assert.deepEqual(queries[0]?.parameters.slice(2), [
+    assert.deepEqual(queries[0]?.parameters.slice(1), [
       'sftp',
       'pcrs.xml',
       '{"bucket":"b","key":"k"}',
@@ -113,14 +84,14 @@ describe('insertImport', () => {
 describe('searchImports', () => {
   const page = { page: 1, pageSize: 10, sort: 'file', dir: 'asc' } as const;
 
-  it('lists the agency imports with per-report outcomes and the claims they opened', async () => {
+  it('lists the agency imports with their new, revised and unchanged PCRs and the claims made', async () => {
     const { db, queries } = createRecordingDb();
     await searchImports(db, 't-1', page);
     assert.equal(
       queries[0]?.sql,
-      `${IMPORT_COLUMNS}, count(*) over () as "total" ${IMPORT_FROM} order by lower(i.file_name) asc nulls last, "i"."id" asc limit $7 offset $8`
+      `${IMPORT_COLUMNS}, count(*) over () as "total" ${IMPORT_FROM} order by lower(i.file_name) asc nulls last, "i"."id" asc limit $5 offset $6`
     );
-    assert.deepEqual(queries[0]?.parameters, [...STATUSES, 't-1', 10, 0]);
+    assert.deepEqual(queries[0]?.parameters, [...OUTCOMES, 't-1', 10, 0]);
     await db.destroy();
   });
 
@@ -129,44 +100,24 @@ describe('searchImports', () => {
     await searchImports(db, 't-1', { ...page, q: 'PCRS_', sort: 'received', dir: 'desc' });
     assert.ok(
       queries[0]?.sql.endsWith(
-        `${IMPORT_FROM} and (lower(i.file_name) like $7 or lower(u.email) like $8) order by "i"."created_at" desc nulls last, "i"."id" desc limit $9 offset $10`
+        `${IMPORT_FROM} and (lower(i.file_name) like $5 or lower(u.email) like $6) order by "i"."created_at" desc nulls last, "i"."id" desc limit $7 offset $8`
       )
     );
-    assert.deepEqual(queries[0]?.parameters.slice(5), ['t-1', '%pcrs\\_%', '%pcrs\\_%', 10, 0]);
+    assert.deepEqual(queries[0]?.parameters.slice(3), ['t-1', '%pcrs\\_%', '%pcrs\\_%', 10, 0]);
     await db.destroy();
   });
 
-  it('sorts by reports, claims, charges, status or how many PCRs still need attention', async () => {
+  it('sorts by reports, claims, charges or status', async () => {
     const { db, queries } = createRecordingDb();
-    for (const sort of ['reports', 'claims', 'charges', 'status', 'attention'] as const) {
+    for (const sort of ['reports', 'claims', 'charges', 'status'] as const) {
       await searchImports(db, 't-1', { ...page, sort, dir: 'desc' });
     }
     assert.deepEqual(
       queries.map((q) => q.sql.slice(q.sql.lastIndexOf(' order by '))),
-      [
-        '"i"."report_count"',
-        '"claimed"."claims"',
-        '"claimed"."charges_cents"',
-        '(r.status, reports.waiting + reports.processing + reports.stuck > 0)',
-        'reports.waiting + reports.failed + reports.stuck + reports.processing'
-      ].map((by) => ` order by ${by} desc nulls last, "i"."id" desc limit $7 offset $8`)
+      ['"i"."report_count"', '"claimed"."claims"', '"claimed"."charges_cents"', '"r"."status"'].map(
+        (by) => ` order by ${by} desc nulls last, "i"."id" desc limit $5 offset $6`
+      )
     );
-    await db.destroy();
-  });
-
-  it('counts the imports separately when a later page is empty', async () => {
-    const { db, queries } = createRecordingDb((q) =>
-      q.sql.startsWith('select count') ? [{ total: '12' }] : []
-    );
-    assert.deepEqual(await searchImports(db, 't-1', { ...page, page: 2 }), {
-      items: [],
-      total: 12,
-      page: 2,
-      pageSize: 10
-    });
-    assert.deepEqual(queries[0]?.parameters.slice(-2), [10, 10]);
-    assert.equal(queries[1]?.sql, `select count(*) as "total" ${IMPORT_FROM}`);
-    assert.deepEqual(queries[1]?.parameters, [...STATUSES, 't-1']);
     await db.destroy();
   });
 });
@@ -175,14 +126,14 @@ describe('findImport', () => {
   it('opens one import of the agency with its outcomes', async () => {
     const { db, queries } = createRecordingDb();
     assert.equal(await findImport(db, 't-1', 'i1'), undefined);
-    assert.equal(queries[0]?.sql, `${IMPORT_COLUMNS} ${IMPORT_FROM} and "i"."id" = $7`);
-    assert.deepEqual(queries[0]?.parameters, [...STATUSES, 't-1', 'i1']);
+    assert.equal(queries[0]?.sql, `${IMPORT_COLUMNS} ${IMPORT_FROM} and "i"."id" = $5`);
+    assert.deepEqual(queries[0]?.parameters, [...OUTCOMES, 't-1', 'i1']);
     await db.destroy();
   });
 });
 
 describe('listImportReports', () => {
-  it('pages each report of an agency import with its run, claim, patient and open task', async () => {
+  it('pages each report of an agency import with its outcome, encounter, claim and patient', async () => {
     const { db, queries } = createRecordingDb();
     await listImportReports(db, 't-1', 'i1', {
       page: 1,
@@ -192,16 +143,16 @@ describe('listImportReports', () => {
     });
     assert.equal(
       queries[0]?.sql,
-      `${REPORT_COLUMNS}, count(*) over () as "total" ${REPORT_FROM} order by "ir"."position" asc nulls last, "ir"."id" asc limit $5 offset $6`
+      `${REPORT_COLUMNS}, count(*) over () as "total" ${REPORT_FROM} order by "ir"."position" asc nulls last, "ir"."id" asc limit $3 offset $4`
     );
-    assert.deepEqual(queries[0]?.parameters, ['open', 1, 't-1', 'i1', 25, 0]);
+    assert.deepEqual(queries[0]?.parameters, ['t-1', 'i1', 25, 0]);
     await db.destroy();
   });
 
-  it('sorts by PCR, patient, run status, claim status or total', async () => {
+  it('sorts by PCR, patient, outcome, claim status or total', async () => {
     const { db, queries } = createRecordingDb(() => [{ id: 'ir1', total: '1' }]);
     const page = { page: 1, pageSize: 25, dir: 'desc' } as const;
-    for (const sort of ['pcr', 'patient', 'status', 'claim', 'total'] as const) {
+    for (const sort of ['pcr', 'patient', 'outcome', 'claim', 'total'] as const) {
       await listImportReports(db, 't-1', 'i1', { ...page, sort });
     }
     assert.deepEqual(
@@ -209,28 +160,11 @@ describe('listImportReports', () => {
       [
         '"ir"."pcr_number"',
         "lower(p.last_name || ' ' || p.first_name)",
-        '"r"."status"',
+        '"ir"."outcome"',
         '"c"."status"',
         '"c"."total_cents"'
-      ].map((by) => ` order by ${by} desc nulls last, "ir"."id" desc limit $5 offset $6`)
+      ].map((by) => ` order by ${by} desc nulls last, "ir"."id" desc limit $3 offset $4`)
     );
-    await db.destroy();
-  });
-
-  it('counts the reports within the agency import when a later page is empty', async () => {
-    const { db, queries } = createRecordingDb((q) =>
-      q.sql.startsWith('select count') ? [{ total: '11' }] : []
-    );
-    const page = await listImportReports(db, 't-1', 'i1', {
-      page: 2,
-      pageSize: 10,
-      sort: 'patient',
-      dir: 'asc'
-    });
-    assert.deepEqual(page, { items: [], total: 11, page: 2, pageSize: 10 });
-    assert.deepEqual(queries[0]?.parameters, ['open', 1, 't-1', 'i1', 10, 10]);
-    assert.equal(queries[1]?.sql, `select count(*) as "total" ${REPORT_FROM}`);
-    assert.deepEqual(queries[1]?.parameters, ['open', 1, 't-1', 'i1']);
     await db.destroy();
   });
 });

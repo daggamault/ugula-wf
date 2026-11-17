@@ -49,7 +49,10 @@ export const createDailyNumbers = async (db: Kysely<Database>) => {
   await assignDailyNumberFunction.execute(db);
 };
 
-export const dailyNumberTrigger = (table: 'claims' | 'patients' | 'import_reports', kind: string) =>
+export const dailyNumberTrigger = (
+  table: 'claims' | 'encounters' | 'patients' | 'import_reports',
+  kind: string
+) =>
   sql`create trigger ${sql.id(`${table}_number`)}
   before insert on ${sql.table(table)}
   for each row execute function assign_daily_number(${sql.lit(kind)})`;

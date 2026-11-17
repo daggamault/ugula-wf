@@ -64,35 +64,23 @@ export const createPatientStore = (db: Kysely<Database>): PatientStore => ({
       .execute();
     return rows.map(toPatient);
   },
-  findPatient: async (runId, id) => {
-    if (!isUuid(id)) return null;
-    const row = await db
-      .selectFrom('patients')
-      .select(COLUMNS)
-      .where('id', '=', id)
-      .where('agency_id', '=', runAgency(db, runId))
-      .executeTakeFirst();
-    return row ? toPatient(row) : null;
-  },
-  createPatient: (runId, sourceKey, p, reuseMatch) =>
+  createPatient: (runId, sourceKey, p) =>
     db.transaction().execute(async (tx) => {
       const lastNameKey = nameKey(p.lastName);
       const identity = `:${lastNameKey}:${p.birthDate}`;
       await sql`select pg_advisory_xact_lock(hashtextextended(agency_id::text || ${identity}, 0)) from workflow_runs where id = ${runId}`.execute(
         tx
       );
-      if (reuseMatch) {
-        const rows = await tx
-          .selectFrom('patients')
-          .select(COLUMNS)
-          .where('agency_id', '=', runAgency(tx, runId))
-          .where('last_name_key', '=', lastNameKey)
-          .where('birth_date', '=', p.birthDate)
-          .orderBy('created_at')
-          .execute();
-        const same = rows.map(toPatient).find((r) => isSamePerson(p, r));
-        if (same) return same;
-      }
+      const rows = await tx
+        .selectFrom('patients')
+        .select(COLUMNS)
+        .where('agency_id', '=', runAgency(tx, runId))
+        .where('last_name_key', '=', lastNameKey)
+        .where('birth_date', '=', p.birthDate)
+        .orderBy('created_at')
+        .execute();
+      const same = rows.map(toPatient).find((r) => isSamePerson(p, r));
+      if (same) return same;
       return toPatient(
         await tx
           .insertInto('patients')
@@ -118,7 +106,7 @@ export const createPatientStore = (db: Kysely<Database>): PatientStore => ({
           .executeTakeFirstOrThrow()
       );
     }),
-  updateAddress: async (runId, _sourceKey, patientId, a) => {
+  updateAddress: async (runId, patientId, a) => {
     const row = await db
       .updateTable('patients')
       .set({

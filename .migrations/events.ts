@@ -1,9 +1,16 @@
 import { EVENT_TYPES } from '@ugula/billing';
 import { type Database, EVENTS_CHANNEL } from '@ugula/db';
 import { EVENT_TYPE_PATTERN } from '@ugula/graph';
+import { NEMSIS_EVENTS } from '@ugula/nemsis';
 import { type Kysely, sql } from 'kysely';
 
-export const EVENT_FUNCTIONS = ['notify_workflow_events', 'emit_task_completed_event'] as const;
+export const EVENT_FUNCTIONS = [
+  'notify_workflow_events',
+  'emit_task_completed_event',
+  'emit_encounter_created_event',
+  'emit_encounter_revised_event',
+  'emit_claim_created_event'
+] as const;
 
 const buildEventsTable = (db: Kysely<Database>) =>
   db.schema
@@ -99,8 +106,70 @@ const taskTrigger = sql`
   for each row when (new.status = 'completed' and old.status is distinct from 'completed')
   execute function emit_task_completed_event()`;
 
+const encounterCreatedFunction = sql`
+  create function emit_encounter_created_event() returns trigger language plpgsql as $$
+  begin
+    insert into events (agency_id, type, payload)
+    values (new.agency_id, ${sql.lit(NEMSIS_EVENTS.encounterCreated)}, jsonb_build_object(
+      'encounterId', new.id,
+      'pcrNumber', new.pcr_number
+    ));
+    return null;
+  end;
+  $$`;
+
+const encounterCreatedTrigger = sql`
+  create trigger encounters_emit_created
+  after insert on encounters
+  for each row execute function emit_encounter_created_event()`;
+
+const encounterRevisedFunction = sql`
+  create function emit_encounter_revised_event() returns trigger language plpgsql as $$
+  begin
+    insert into events (agency_id, type, payload)
+    values (new.agency_id, ${sql.lit(NEMSIS_EVENTS.encounterRevised)}, jsonb_build_object(
+      'encounterId', new.id,
+      'pcrNumber', new.pcr_number,
+      'revision', new.revision
+    ));
+    return null;
+  end;
+  $$`;
+
+const encounterRevisedTrigger = sql`
+  create trigger encounters_emit_revised
+  after update of revision on encounters
+  for each row when (new.revision > old.revision)
+  execute function emit_encounter_revised_event()`;
+
+const claimCreatedFunction = sql`
+  create function emit_claim_created_event() returns trigger language plpgsql as $$
+  begin
+    insert into events (agency_id, type, payload)
+    values (new.agency_id, ${sql.lit(EVENT_TYPES.claimCreated)}, jsonb_build_object(
+      'claimId', new.id,
+      'encounterId', new.encounter_id
+    ));
+    return null;
+  end;
+  $$`;
+
+const claimCreatedTrigger = sql`
+  create trigger claims_emit_created
+  after insert on claims
+  for each row execute function emit_claim_created_event()`;
+
 export const createEventEmitters = async (db: Kysely<Database>) => {
-  for (const statement of [taskFunction, taskTrigger]) {
+  for (const statement of [
+    taskFunction,
+    taskTrigger,
+    encounterCreatedFunction,
+    encounterCreatedTrigger,
+    encounterRevisedFunction,
+    encounterRevisedTrigger,
+    claimCreatedFunction,
+    claimCreatedTrigger
+  ]) {
     await statement.execute(db);
   }
 };

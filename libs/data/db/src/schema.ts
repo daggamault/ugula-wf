@@ -8,16 +8,11 @@ import type {
   CodeSet,
   CorrectionMethod,
   FacilityKind,
-  FacilityStay,
   InsuredRelationship,
-  MspAccident,
-  PcsType,
   PlanType,
   Rurality,
   ServiceLevel,
-  Sex,
-  SignatureStatus,
-  TransportReason
+  Sex
 } from '@ugula/billing';
 import type { StepEvent } from '@ugula/graph';
 import type { PickList } from '@ugula/nemsis';
@@ -30,8 +25,6 @@ type NullableTimestamp = ColumnType<
   Date | string | null | undefined,
   Date | string | null
 >;
-
-type NullableDate = ColumnType<string | null, string | null | undefined, string | null>;
 
 export const USER_TYPES = ['platform', 'organization'] as const;
 
@@ -467,57 +460,29 @@ export type ClaimsTable = {
   id: Generated<string>;
   number: GeneratedAlways<string>;
   agency_id: string;
-  patient_id: string | null;
-  import_report_id: string | null;
-  pcr_number: string | null;
-  classification: Classification | null;
-  level: ServiceLevel | null;
-  is_emergency: boolean | null;
-  loaded_miles: ColumnType<string | null, number | null, number | null>;
-  total_cents: Generated<number>;
+  encounter_id: string;
+  patient_id: string;
+  status: Generated<ClaimStatus>;
+  classification: Classification;
   service_date: ColumnType<string | null, string | null, string | null>;
+  level: ServiceLevel;
+  is_emergency: boolean;
+  loaded_miles: ColumnType<string | null, number | null, number | null>;
   origin_code: string | null;
   destination_code: string | null;
-  pickup_address_line: string | null;
-  pickup_city: string | null;
-  pickup_state: string | null;
-  pickup_postal_code: string | null;
-  destination_name: string | null;
-  destination_address_line: string | null;
-  destination_city: string | null;
-  destination_state: string | null;
-  destination_postal_code: string | null;
-  signature: ColumnType<SignatureStatus, SignatureStatus | undefined, SignatureStatus>;
-  signature_note: string | null;
-  has_pcs: boolean | null;
-  pcs_signed_on: ColumnType<string | null, string | null | undefined, string | null>;
-  transport_reason: TransportReason | null;
-  condition_codes: ColumnType<string[], string[] | undefined, string[]>;
-  prior_authorization: string | null;
-  weight_kg: ColumnType<string | null, number | null | undefined, number | null>;
-  at_scene_at: NullableTimestamp;
-  left_scene_at: NullableTimestamp;
-  at_destination_at: NullableTimestamp;
-  is_deceased: Generated<boolean>;
-  non_covered_miles: ColumnType<string | null, number | null | undefined, number | null>;
-  patient_count: number | null;
-  closest_facility_miles: ColumnType<string | null, number | null | undefined, number | null>;
-  has_abn: boolean | null;
-  abn_signed_on: NullableDate;
-  is_denial_expected: boolean | null;
-  has_msp_employer_plan: boolean | null;
-  has_msp_esrd: boolean | null;
-  has_msp_disability: boolean | null;
-  msp_employer_size: number | null;
-  msp_accident: MspAccident | null;
-  prior_authorization_expires_on: NullableDate;
-  pcs_type: PcsType | null;
-  round_trips: number | null;
-  admitted_on: NullableDate;
-  facility_stay: FacilityStay | null;
-  status: Generated<ClaimStatus>;
-  facility_id: ColumnType<string | null, string | null | undefined, string | null>;
-  source_key: string;
+  total_cents: Generated<number>;
+  reasons: ColumnType<string[], string[] | undefined, string[]>;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+};
+
+type EncountersTable = {
+  id: Generated<string>;
+  number: GeneratedAlways<string>;
+  agency_id: string;
+  pcr_number: string;
+  revision: Generated<number>;
+  data: JsonColumn;
   created_at: Timestamp;
   updated_at: Timestamp;
 };
@@ -542,6 +507,7 @@ type ClaimLinesTable = {
   claim_id: string;
   position: number;
   code: string;
+  modifiers: ColumnType<string[], string[] | undefined, string[]>;
   units: ColumnType<string, number, number>;
   unit_cents: number;
   total_cents: number;
@@ -554,7 +520,6 @@ type ClaimCoveragesTable = {
   position: number;
   payer_name: string;
   payer_id: string | null;
-  payer_code: string | null;
   member_id: string | null;
   group_id: string | null;
   relationship: InsuredRelationship;
@@ -594,10 +559,14 @@ export const IMPORT_SOURCES = ['upload', 'sftp', 'manual'] as const;
 
 export type ImportSource = (typeof IMPORT_SOURCES)[number];
 
+export const REPORT_OUTCOMES = ['created', 'revised', 'unchanged'] as const;
+
+export type ReportOutcome = (typeof REPORT_OUTCOMES)[number];
+
 type ImportsTable = {
   id: Generated<string>;
   agency_id: string;
-  run_id: string;
+  run_id: string | null;
   source: ImportSource;
   file_name: string;
   file: JsonColumn;
@@ -615,6 +584,8 @@ type ImportReportsTable = {
   pcr_number: string | null;
   report: JsonColumn;
   report_key: string;
+  encounter_id: string | null;
+  outcome: ReportOutcome | null;
   created_at: Timestamp;
 };
 
@@ -713,6 +684,7 @@ export type Database = {
   fee_schedules: FeeSchedulesTable;
   imports: ImportsTable;
   import_reports: ImportReportsTable;
+  encounters: EncountersTable;
   claims: ClaimsTable;
   facilities: FacilitiesTable;
   claim_lines: ClaimLinesTable;

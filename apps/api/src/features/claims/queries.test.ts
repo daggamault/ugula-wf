@@ -20,8 +20,8 @@ const listOf = <Q extends { sql: string }>(queries: readonly Q[]) =>
 
 const CLAIM_IDS =
   'select "c"."id", count(*) over () as "total" from "claims" as "c" ' +
-  'left join "patients" as "p" on "p"."id" = "c"."patient_id" ' +
-  'left join "import_reports" as "ir" on "ir"."id" = "c"."import_report_id" ' +
+  'inner join "patients" as "p" on "p"."id" = "c"."patient_id" ' +
+  'inner join "encounters" as "e" on "e"."id" = "c"."encounter_id" ' +
   'where "c"."agency_id" = $1';
 
 describe('searchClaims', () => {
@@ -69,11 +69,7 @@ describe('searchClaims', () => {
         'array((select coalesce(dp.name, cc.payer_name) as "payer" from "claim_coverages" as "cc" left join "payers" as "dp"'
       )
     );
-    assert.ok(
-      details?.sql.includes(
-        '(select "er"."number" from "import_reports" as "er" where "er"."id" = "c"."import_report_id") as "encounter_number"'
-      )
-    );
+    assert.ok(details?.sql.includes('"e"."number" as "encounter_number"'));
     assert.ok(details?.sql.endsWith('where "c"."agency_id" = $1 and "c"."id" in ($2, $3)'));
     assert.deepEqual(details?.parameters, ['t-1', 'c2', 'c1']);
   });
@@ -86,8 +82,8 @@ describe('searchClaims', () => {
     assert.deepEqual(page.facets, { status: [{ value: 'needs_review', count: 4 }] });
     const facet = (by: string) =>
       `select ${by}::text as "value", null as "label", count(*) as "count" from "claims" as "c" ` +
-      'left join "patients" as "p" on "p"."id" = "c"."patient_id" ' +
-      'left join "import_reports" as "ir" on "ir"."id" = "c"."import_report_id" ' +
+      'inner join "patients" as "p" on "p"."id" = "c"."patient_id" ' +
+      'inner join "encounters" as "e" on "e"."id" = "c"."encounter_id" ' +
       'where "c"."agency_id" = $1 and "p"."last_name_key" like $2';
     assert.deepEqual(
       queries.filter((q) => isFacet(q.sql)).map((q) => [q.sql, q.parameters]),
@@ -157,7 +153,7 @@ describe('searchClaims', () => {
         [
           `${CLAIM_IDS} and "c"."patient_id" = $2 and lower(p.first_name) like $3 ` +
             'and "p"."last_name_key" like $4 and "p"."birth_date" = $5 and ' +
-            '("c"."pcr_number" = $6 or "c"."number" = $7 or "p"."number" = $8 or "ir"."number" = $9) ' +
+            '("e"."pcr_number" = $6 or "c"."number" = $7 or "p"."number" = $8 or "e"."number" = $9) ' +
             'order by "c"."created_at" desc nulls last, "c"."id" desc limit $10 offset $11',
           [
             't-1',
@@ -184,7 +180,7 @@ describe('searchClaims', () => {
       listOf(queries).map((q) => [q.sql, q.parameters]),
       [
         [
-          `${CLAIM_IDS} and "c"."pcr_number" = $2 order by "c"."created_at" desc nulls last, ` +
+          `${CLAIM_IDS} and "e"."pcr_number" = $2 order by "c"."created_at" desc nulls last, ` +
             '"c"."id" desc limit $3 offset $4',
           ['t-1', 'PCR-7', 25, 0]
         ]
@@ -209,8 +205,7 @@ describe('searchClaims', () => {
     assert.deepEqual(
       listOf(queries).map((q) => q.sql),
       [
-        `${CLAIM_IDS} order by (select "er"."number" from "import_reports" as "er" where ` +
-          '"er"."id" = "c"."import_report_id") desc nulls last, "c"."id" desc limit $2 offset $3',
+        `${CLAIM_IDS} order by "e"."number" desc nulls last, "c"."id" desc limit $2 offset $3`,
         `${CLAIM_IDS} order by lower(p.last_name || ' ' || p.first_name) desc nulls last, ` +
           '"c"."id" desc limit $2 offset $3'
       ]
@@ -224,19 +219,19 @@ describe('findClaim', () => {
     const { db, queries } = createRecordingDb(() => [claim]);
     assert.deepEqual(await findClaim(db, 't-1', 'c1'), claim);
     assert.equal(queries.length, 1);
-    assert.ok(queries[0]?.sql.endsWith('where "c"."agency_id" = $1 and "c"."id" = $2'));
-    assert.deepEqual(queries[0]?.parameters, ['t-1', 'c1']);
+    assert.ok(queries[0]?.sql.endsWith('where "c"."agency_id" = $2 and "c"."id" = $3'));
+    assert.deepEqual(queries[0]?.parameters, [1, 't-1', 'c1']);
   });
 
-  it('reads the import, facility, coverages, lines and diagnoses', async () => {
+  it('reads the encounter, its latest import, coverages, lines and diagnoses', async () => {
     const { db, queries } = createRecordingDb(() => []);
     assert.equal(await findClaim(db, 't-1', 'c1'), undefined);
     const sql = queries[0]?.sql ?? '';
     for (const part of [
-      'left join "imports" as "i" on "i"."id" = "ir"."import_id"',
-      'left join "facilities" as "f" on "f"."id" = "c"."facility_id"',
+      '"e"."data" as "encounter"',
+      'inner join "imports" as "i" on "i"."id" = "ir"."import_id" where "ir"."encounter_id" = "e"."id"',
       '"cc"."relationship", "cc"."insured_first_name", "cc"."insured_last_name" from "claim_coverages" as "cc"',
-      'from "claim_lines" as "l" where "l"."claim_id" = "c"."id" order by "l"."position"',
+      '"l"."modifiers", "l"."units", "l"."unit_cents", "l"."total_cents" from "claim_lines" as "l" where "l"."claim_id" = "c"."id" order by "l"."position"',
       'array((select "d"."code" from "claim_diagnoses" as "d" where "d"."claim_id" = "c"."id" order by "d"."position")) as "diagnoses"'
     ]) {
       assert.ok(sql.includes(part), part);

@@ -1,5 +1,6 @@
-import { type Database, IMPORT_SOURCES } from '@ugula/db';
+import { type Database, IMPORT_SOURCES, REPORT_OUTCOMES } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
+import { agencySetNullForeignKey } from './foreign-keys.ts';
 import { dailyNumberCheck, dailyNumberTrigger } from './numbers.ts';
 
 const buildImportsTable = (db: Kysely<Database>) =>
@@ -9,7 +10,7 @@ const buildImportsTable = (db: Kysely<Database>) =>
     .addColumn('agency_id', 'uuid', (col) =>
       col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
-    .addColumn('run_id', 'uuid', (col) => col.notNull().unique())
+    .addColumn('run_id', 'uuid', (col) => col.unique())
     .addColumn('source', 'text', (col) => col.notNull())
     .addColumn('file_name', 'text', (col) => col.notNull())
     .addColumn('file', 'jsonb', (col) => col.notNull())
@@ -23,7 +24,7 @@ const buildImportsTable = (db: Kysely<Database>) =>
       ['agency_id', 'run_id'],
       'workflow_runs',
       ['agency_id', 'id'],
-      (fk) => fk.onDelete('cascade').onUpdate('cascade')
+      (fk) => fk.onDelete('set null').onUpdate('cascade')
     )
     .addUniqueConstraint('imports_agency_id_id_unique', ['agency_id', 'id'])
     .addCheckConstraint(
@@ -44,6 +45,8 @@ const buildImportReportsTable = (db: Kysely<Database>) =>
     .addColumn('pcr_number', 'text')
     .addColumn('report', 'jsonb', (col) => col.notNull())
     .addColumn('report_key', 'text', (col) => col.notNull())
+    .addColumn('encounter_id', 'uuid')
+    .addColumn('outcome', 'text')
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addForeignKeyConstraint(
       'import_reports_import_id_fkey',
@@ -57,19 +60,34 @@ const buildImportReportsTable = (db: Kysely<Database>) =>
     .addUniqueConstraint('import_reports_agency_id_report_key_unique', ['agency_id', 'report_key'])
     .addCheckConstraint('import_reports_report_key_check', sql`report_key = report ->> 'key'`)
     .addCheckConstraint('import_reports_position_check', sql`position >= 0`)
-    .addCheckConstraint('import_reports_number_check', dailyNumberCheck);
+    .addCheckConstraint('import_reports_number_check', dailyNumberCheck)
+    .addCheckConstraint(
+      'import_reports_outcome_check',
+      sql`outcome in (${sql.join(REPORT_OUTCOMES.map((o) => sql.lit(o)))})`
+    );
 
 const buildImportsIndexes = (db: Kysely<Database>) => [
   db.schema
     .createIndex('idx_imports_agency_created')
     .on('imports')
     .columns(['agency_id', 'created_at desc']),
-  db.schema.createIndex('idx_imports_uploaded_by_id').on('imports').column('uploaded_by_id')
+  db.schema.createIndex('idx_imports_uploaded_by_id').on('imports').column('uploaded_by_id'),
+  db.schema
+    .createIndex('idx_import_reports_encounter_id')
+    .on('import_reports')
+    .column('encounter_id')
 ];
+
+export const linkImportReportsToEncounters = (db: Kysely<Database>) =>
+  agencySetNullForeignKey({
+    table: 'import_reports',
+    column: 'encounter_id',
+    references: 'encounters'
+  }).execute(db);
 
 export const createImportsTables = async (db: Kysely<Database>) => {
   await buildImportsTable(db).execute();
   await buildImportReportsTable(db).execute();
   for (const index of buildImportsIndexes(db)) await index.execute();
-  await dailyNumberTrigger('import_reports', 'encounter').execute(db);
+  await dailyNumberTrigger('import_reports', 'report').execute(db);
 };

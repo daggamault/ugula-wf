@@ -10,7 +10,6 @@ const coverage = (over: Partial<ClaimCoverage> = {}): ClaimCoverage => ({
   position: 1,
   payer: 'Medicare',
   payer_id: 'p1',
-  payer_code: null,
   member_id: '1EG4',
   group_id: null,
   relationship: '18',

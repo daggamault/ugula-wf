@@ -12,15 +12,24 @@ import { Redis } from 'ioredis';
 import { Client } from 'pg';
 import { PgBoss } from 'pg-boss';
 import { type Config, parseConfig } from './config.ts';
+import { createFeeStore } from './features/charges/queries.ts';
+import { announceClaims } from './features/claims/announce.ts';
+import { createClaimStore } from './features/claims/queries.ts';
+import { announceEncounters } from './features/encounters/announce.ts';
+import { createEncounterStore } from './features/encounters/queries.ts';
 import { startEventDispatcher } from './features/events/job.ts';
 import { registerHealthJob } from './features/health/job.ts';
+import { announceImports } from './features/imports/announce.ts';
+import { createReportStore } from './features/imports/reports.ts';
+import { createPatientStore } from './features/patients/queries.ts';
+import { createPayerStore } from './features/payers/queries.ts';
 import { registerScheduleJob, startDueSchedules } from './features/schedules/job.ts';
 import { createEngineCache } from './features/workflows/engines.ts';
 import { registerWorkflowJobs } from './features/workflows/job.ts';
 import { createRunStore } from './features/workflows/run-store.ts';
 import { createRunner } from './features/workflows/runner.ts';
 import { createListen } from './shared/listen.ts';
-import { coalescePublish, type Publish } from './shared/live.ts';
+import { coalescePublish, createAnnouncer, type Publish } from './shared/live.ts';
 import {
   createLoadGate,
   createProcessSampler,
@@ -29,6 +38,7 @@ import {
 } from './shared/load.ts';
 import { createPublicFetch } from './shared/public-fetch.ts';
 import { createRunScope } from './shared/run-scope.ts';
+import { createAgencyOf } from './shared/tenancy.ts';
 
 const connection = (config: Config) => ({
   host: config.DB_HOST,
@@ -99,11 +109,23 @@ if (import.meta.main) {
   const publicFetch = scope.fetch(createPublicFetch(fetch));
   const report = (message: string) => process.stderr.write(`${message}\n`);
   const now = () => new Date();
+  const agencyOf = createAgencyOf(db, scope.agencyOf);
+  const announce = createAnnouncer(agencyOf, publish);
   const runner = createRunner({
     store,
     engines: createEngineCache({
       nodes: createNodeCatalog({
-        fetch: publicFetch
+        fetch: publicFetch,
+        nemsis: {
+          reports: announceImports(createReportStore(db, blobs, agencyOf), announce),
+          encounters: announceEncounters(createEncounterStore(db), announce)
+        },
+        billing: {
+          patients: createPatientStore(db),
+          payers: createPayerStore(db),
+          fees: createFeeStore(db),
+          claims: announceClaims(createClaimStore(db), announce)
+        }
       }),
       loadDefinitions: (ids) => findDefinitions(db, ids),
       loadTables: (ids) => findTableDefinitions(db, ids)

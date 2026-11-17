@@ -1,5 +1,5 @@
 import { type CodeSet, normalizeCode, usState } from '@ugula/billing';
-import { type Db, describeCodes, type ImportSource, type RunStatus } from '@ugula/db';
+import { type Db, describeCodes, type ImportSource, type ReportOutcome } from '@ugula/db';
 import { codeSystemOf, type ReportDictionary, type ReportTerms } from '@ugula/nemsis';
 import { sql } from 'kysely';
 import { type PageRequest, paged } from '../../shared/paging.ts';
@@ -18,7 +18,6 @@ export const findSftpAgency = (db: Db, username: string) =>
 
 export type NewImport = {
   agencyId: string;
-  runId: string;
   source: ImportSource;
   fileName: string;
   file: unknown;
@@ -30,7 +29,6 @@ export const insertImport = (db: Db, i: NewImport) =>
     .insertInto('imports')
     .values({
       agency_id: i.agencyId,
-      run_id: i.runId,
       source: i.source,
       file_name: i.fileName,
       file: JSON.stringify(i.file),
@@ -56,8 +54,8 @@ export const findReport = (db: Db, agencyId: string, id: string) =>
     .where('i.agency_id', '=', agencyId)
     .executeTakeFirst();
 
-const childCount = (status: RunStatus) =>
-  sql<number>`(count(*) filter (where ch.status = ${status}))::int`;
+const outcomeCount = (outcome: ReportOutcome) =>
+  sql<number>`(count(*) filter (where ir.outcome = ${outcome}))::int`;
 
 const IMPORT_ORDER = {
   received: sql.ref('i.created_at'),
@@ -65,27 +63,24 @@ const IMPORT_ORDER = {
   reports: sql.ref('i.report_count'),
   claims: sql.ref('claimed.claims'),
   charges: sql.ref('claimed.charges_cents'),
-  status: sql`(r.status, reports.waiting + reports.processing + reports.stuck > 0)`,
-  attention: sql`reports.waiting + reports.failed + reports.stuck + reports.processing`
+  status: sql.ref('r.status')
 };
 
 const importRows = (db: Db, agencyId: string) =>
   db
     .selectFrom('imports as i')
-    .innerJoin('workflow_runs as r', 'r.id', 'i.run_id')
+    .leftJoin('workflow_runs as r', 'r.id', 'i.run_id')
     .leftJoin('users as u', 'u.id', 'i.uploaded_by_id')
     .leftJoinLateral(
       (eb) =>
         eb
-          .selectFrom('workflow_runs as ch')
+          .selectFrom('import_reports as ir')
           .select([
-            childCount('completed').as('completed'),
-            childCount('suspended').as('waiting'),
-            childCount('faulted').as('stuck'),
-            childCount('failed').as('failed'),
-            childCount('running').as('processing')
+            outcomeCount('created').as('created'),
+            outcomeCount('revised').as('revised'),
+            outcomeCount('unchanged').as('unchanged')
           ])
-          .whereRef('ch.parent_id', '=', 'i.run_id')
+          .whereRef('ir.import_id', '=', 'i.id')
           .as('reports'),
       (join) => join.onTrue()
     )
@@ -93,12 +88,17 @@ const importRows = (db: Db, agencyId: string) =>
       (eb) =>
         eb
           .selectFrom('claims as c')
-          .innerJoin('import_reports as ir', 'ir.id', 'c.import_report_id')
           .select([
             sql<number>`count(*)::int`.as('claims'),
             sql<number>`coalesce(sum(c.total_cents), 0)::float8`.as('charges_cents')
           ])
-          .whereRef('ir.import_id', '=', 'i.id')
+          .where('c.encounter_id', 'in', (q) =>
+            q
+              .selectFrom('import_reports as ir')
+              .select('ir.encounter_id')
+              .whereRef('ir.import_id', '=', 'i.id')
+              .where('ir.encounter_id', 'is not', null)
+          )
           .as('claimed'),
       (join) => join.onTrue()
     )
@@ -111,11 +111,9 @@ const importRows = (db: Db, agencyId: string) =>
       'i.run_id',
       'r.status as run_status',
       'u.email as uploaded_by_email',
-      'reports.completed',
-      'reports.waiting',
-      'reports.stuck',
-      'reports.failed',
-      'reports.processing',
+      'reports.created',
+      'reports.revised',
+      'reports.unchanged',
       'claimed.claims',
       'claimed.charges_cents'
     ])
@@ -139,7 +137,7 @@ const REPORT_ORDER = {
   position: sql.ref('ir.position'),
   pcr: sql.ref('ir.pcr_number'),
   patient: sql`lower(p.last_name || ' ' || p.first_name)`,
-  status: sql.ref('r.status'),
+  outcome: sql.ref('ir.outcome'),
   claim: sql.ref('c.status'),
   total: sql.ref('c.total_cents')
 };
@@ -153,44 +151,25 @@ export const listImportReports = (
   paged(
     db
       .selectFrom('import_reports as ir')
-      .innerJoin('imports as i', 'i.id', 'ir.import_id')
-      .leftJoin('workflow_runs as r', (j) =>
-        j
-          .onRef('r.parent_id', '=', 'i.run_id')
-          .on(sql<boolean>`r.inputs -> 'report' ->> 'key' = ir.report_key`)
-      )
-      .leftJoin('claims as c', 'c.import_report_id', 'ir.id')
+      .leftJoin('encounters as e', 'e.id', 'ir.encounter_id')
+      .leftJoin('claims as c', 'c.encounter_id', 'ir.encounter_id')
       .leftJoin('patients as p', 'p.id', 'c.patient_id')
-      .leftJoinLateral(
-        (eb) =>
-          eb
-            .selectFrom('tasks as t')
-            .select(['t.id', 't.title', 't.subject', 't.kind'])
-            .whereRef('t.run_id', '=', 'r.id')
-            .where('t.status', '=', 'open')
-            .orderBy('t.created_at')
-            .limit(1)
-            .as('t'),
-        (join) => join.onTrue()
-      )
       .select([
         'ir.id',
         'ir.position',
         'ir.number',
         'ir.pcr_number',
-        'r.status as run_status',
+        'ir.outcome',
+        'e.number as encounter_number',
+        'e.revision as encounter_revision',
         'c.id as claim_id',
         'c.status as claim_status',
         'c.total_cents',
         'p.first_name',
-        'p.last_name',
-        't.id as task_id',
-        't.title as task_title',
-        't.subject as task_subject',
-        't.kind as task_kind'
+        'p.last_name'
       ])
-      .where('i.agency_id', '=', agencyId)
-      .where('i.id', '=', importId),
+      .where('ir.agency_id', '=', agencyId)
+      .where('ir.import_id', '=', importId),
     page,
     REPORT_ORDER,
     sql.ref('ir.id')

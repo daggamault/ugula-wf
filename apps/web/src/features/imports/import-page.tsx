@@ -1,3 +1,4 @@
+import { CLAIM_STATUS_LABELS } from '@ugula/billing';
 import { ActivityIcon } from 'lucide-react';
 import { formatCents, formatDateTime, patientName } from '../../shared/format.ts';
 import { isOnPage, LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
@@ -6,14 +7,14 @@ import { Badge, type StatusBadgeStyle } from '../../shared/ui/badge.tsx';
 import { ButtonLink } from '../../shared/ui/button.tsx';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
 import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
-import { OpenLink, WorkLink } from '../../shared/ui/icon-button.tsx';
+import { OpenLink } from '../../shared/ui/icon-button.tsx';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
 import { useTableState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
-import type { ImportReport, ImportsClient } from './client.ts';
+import type { ImportReport, ImportsClient, ReportOutcome } from './client.ts';
 import { importStatus, sourceOf } from './import-history.tsx';
 
 type ImportPageProps = {
@@ -23,49 +24,29 @@ type ImportPageProps = {
   back?: string;
 };
 
-type ReportOutcome = StatusBadgeStyle & {
-  link: { kind: 'claim' | 'task'; name: string; to: string } | null;
+const OUTCOMES: Readonly<Record<ReportOutcome, StatusBadgeStyle>> = {
+  created: { intent: 'success', label: 'New' },
+  revised: { intent: 'info', label: 'Revised' },
+  unchanged: { label: 'Unchanged' }
 };
+
+const READING: StatusBadgeStyle = { intent: 'info', label: 'Reading' };
+
+export const reportOutcome = (r: Pick<ImportReport, 'outcome'>) =>
+  r.outcome ? OUTCOMES[r.outcome] : READING;
 
 const pcrOf = (r: ImportReport) => r.pcr_number ?? `PCR #${r.position + 1}`;
 
-const claimLink = (r: ImportReport) =>
-  r.claim_id
-    ? { kind: 'claim' as const, name: `claim for ${pcrOf(r)}`, to: `/claims/${r.claim_id}` }
-    : null;
-
-export const reportOutcome = (r: ImportReport): ReportOutcome => {
-  if (r.task_id) {
-    return {
-      intent: r.task_kind === 'fault' ? 'danger' : 'warning',
-      label: r.task_kind === 'fault' ? 'Stuck' : 'Waiting',
-      link: claimLink(r) ?? {
-        kind: 'task',
-        name: `task ${r.task_subject ?? r.task_title ?? pcrOf(r)}`,
-        to: `/tasks/${r.task_id}`
-      }
-    };
-  }
-  if (r.claim_id) return { intent: 'success', label: 'Claim Opened', link: claimLink(r) };
-  switch (r.run_status) {
-    case 'completed':
-      return { label: 'No Claim', link: null };
-    case 'failed':
-    case 'cancelled':
-      return { intent: 'danger', label: 'Failed', link: null };
-    case 'faulted':
-      return { intent: 'danger', label: 'Stuck', link: null };
-    default:
-      return { intent: 'info', label: 'Running', link: null };
-  }
-};
-
-export const patientOf = (r: ImportReport) =>
-  patientName(r.last_name, r.first_name) ?? r.task_subject ?? null;
-
 const REPORT_TABLE = {
   prefix: 'pcr',
-  sorts: { position: 'asc', pcr: 'asc', patient: 'asc', status: 'asc', total: 'desc' },
+  sorts: {
+    position: 'asc',
+    pcr: 'asc',
+    patient: 'asc',
+    outcome: 'asc',
+    claim: 'asc',
+    total: 'desc'
+  },
   sort: 'position'
 } as const;
 
@@ -83,7 +64,8 @@ export const ReportsTable = ({
       { label: 'Encounter', sort: 'position' },
       { label: 'PCR', sort: 'pcr' },
       { label: 'Patient', sort: 'patient' },
-      { label: 'Outcome', sort: 'status' },
+      { label: 'Outcome', sort: 'outcome' },
+      { label: 'Claim', sort: 'claim' },
       { label: 'Charges', sort: 'total' },
       { label: 'Actions', isLabelHidden: true, isCompact: true }
     ]}
@@ -93,21 +75,22 @@ export const ReportsTable = ({
       return (
         <TableRow key={r.id}>
           <TableCell>
-            <span className="font-medium tabular-nums">{r.number}</span>
+            <span className="font-medium tabular-nums">{r.encounter_number ?? emptyValue}</span>
           </TableCell>
           <TableCell>{r.pcr_number ?? emptyValue}</TableCell>
-          <TableCell kind="wrap">{patientOf(r) ?? emptyValue}</TableCell>
+          <TableCell kind="wrap">{patientName(r.last_name, r.first_name) ?? emptyValue}</TableCell>
           <TableCell>
             <Badge intent={outcome.intent}>{outcome.label}</Badge>
+          </TableCell>
+          <TableCell isMuted={!r.claim_status}>
+            {r.claim_status ? CLAIM_STATUS_LABELS[r.claim_status] : 'No claim'}
           </TableCell>
           <TableCell kind="numeric">
             {r.total_cents === null ? emptyValue : formatCents(r.total_cents)}
           </TableCell>
           <TableCell kind="actions">
-            {outcome.link?.kind === 'task' ? (
-              <WorkLink to={outcome.link.to} name={outcome.link.name} />
-            ) : outcome.link ? (
-              <OpenLink to={outcome.link.to} name={outcome.link.name} />
+            {r.claim_id ? (
+              <OpenLink to={`/claims/${r.claim_id}`} name={`claim for ${pcrOf(r)}`} />
             ) : null}
           </TableCell>
         </TableRow>
@@ -121,7 +104,7 @@ const ImportReports = ({
   live,
   importId,
   runId
-}: Omit<ImportPageProps, 'back'> & { runId: string }) => {
+}: Omit<ImportPageProps, 'back'> & { runId: string | null }) => {
   const table = useTableState(`/imports/${importId}`, REPORT_TABLE);
   const reports = useResource(`import-reports:${importId}:${table.apiQuery}`, (signal) =>
     client.reports(importId, table.apiQuery, signal)
@@ -136,13 +119,8 @@ const ImportReports = ({
           table.page,
           items.map((r) => r.claim_id)
         )) ||
-      (e.kind === 'task' &&
-        isOnPage(
-          e.id,
-          table.page,
-          items.map((r) => r.task_id)
-        )) ||
-      (e.kind === 'run' && (e.id === runId || e.parentId === runId)),
+      e.kind === 'import' ||
+      (e.kind === 'run' && e.id === runId),
     reports.reload,
     LIST_RELOAD_MS
   );
@@ -167,7 +145,7 @@ export const ImportPage = ({ client, live, importId, back = '/imports' }: Import
     live,
     (e) =>
       (e.kind === 'import' && (e.id === null || e.id === importId)) ||
-      (e.kind === 'run' && (e.id === runId || e.parentId === runId)),
+      (e.kind === 'run' && e.id === runId),
     found.reload
   );
   if (found.error) return <PageFailure message={found.error.message} />;
@@ -189,10 +167,12 @@ export const ImportPage = ({ client, live, importId, back = '/imports' }: Import
         </span>
       }
       actions={
-        <ButtonLink to={`/runs/${file.run_id}`} variant="outline">
-          <ActivityIcon aria-hidden="true" className="size-4" />
-          Open Run
-        </ButtonLink>
+        file.run_id ? (
+          <ButtonLink to={`/runs/${file.run_id}`} variant="outline">
+            <ActivityIcon aria-hidden="true" className="size-4" />
+            Open Run
+          </ButtonLink>
+        ) : null
       }
     >
       {file.run_status === 'failed' ? (
@@ -203,11 +183,13 @@ export const ImportPage = ({ client, live, importId, back = '/imports' }: Import
           <Detail label="PCRs" isEmphasized>
             {file.report_count ?? emptyValue}
           </Detail>
-          <Detail label="Claims Opened" isEmphasized>
+          <Detail label="New Encounters">{file.created}</Detail>
+          <Detail label="Revised">{file.revised}</Detail>
+          <Detail label="Unchanged">{file.unchanged}</Detail>
+          <Detail label="Claims" isEmphasized>
             {file.claims}
           </Detail>
           <Detail label="Charges">{formatCents(file.charges_cents)}</Detail>
-          <Detail label="Waiting">{file.waiting}</Detail>
         </DetailList>
       </SectionPanel>
       <SectionPanel title="PCRs">
