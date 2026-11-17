@@ -23,10 +23,16 @@ const agency = {
 
 const pagesOf = async (bytes: Uint8Array) => (await PDFDocument.load(bytes)).getPageCount();
 
+const titleOf = async (bytes: Uint8Array) =>
+  (await PDFDocument.load(bytes, { updateMetadata: false })).getTitle();
+
 describe('documents', () => {
   it('wraps long text into printable lines', () => {
     assert.deepEqual(wrap('one two three', 7), ['one two', 'three']);
     assert.deepEqual(wrap('café—ok'), ['cafeok']);
+    assert.deepEqual(wrap('  a   b  ', 3), ['a b']);
+    assert.deepEqual(wrap('unbreakable word', 4), ['unbreakable', 'word']);
+    assert.deepEqual(wrap(''), []);
   });
 
   it('lays a report out as sections of labelled values, skipping empty ones', () => {
@@ -51,6 +57,36 @@ describe('documents', () => {
       ]
     );
     assert.deepEqual(fieldSections(null), []);
+    assert.deepEqual(fieldSections([{ pcrNumber: 'PCR-1' }]), []);
+    assert.deepEqual(fieldSections('PCR-1'), []);
+  });
+
+  it('gives no top section when the report has only nested values, under the heading given', () => {
+    assert.deepEqual(
+      fieldSections(
+        { patient: { name: { last: 'Doe' }, transported: false, weightKg: 0 }, empty: {} },
+        'Report'
+      ),
+      [
+        {
+          heading: 'Patient',
+          rows: [
+            { label: 'Last', value: 'Doe' },
+            { label: 'Transported', value: 'false' },
+            { label: 'Weight Kg', value: '0' }
+          ]
+        }
+      ]
+    );
+    assert.deepEqual(fieldSections({ unit: 'M1', ok: true }, 'Report'), [
+      {
+        heading: 'Report',
+        rows: [
+          { label: 'Unit', value: 'M1' },
+          { label: 'Ok', value: 'true' }
+        ]
+      }
+    ]);
   });
 
   it('names the agency on every letterhead', () => {
@@ -60,6 +96,15 @@ describe('documents', () => {
       'Springfield, IL 62701',
       'Phone: 2175550100'
     ]);
+    assert.deepEqual(letterhead({ ...agency, addressLine: null, city: null, postalCode: null }), [
+      'Metro EMS',
+      'IL',
+      'Phone: 2175550100'
+    ]);
+    assert.deepEqual(
+      letterhead({ ...agency, addressLine: null, city: null, state: null, postalCode: null }),
+      ['Metro EMS', 'Phone: 2175550100']
+    );
   });
 
   it('renders sections across as many pages as they need', async () => {
@@ -72,7 +117,20 @@ describe('documents', () => {
       to: ['Someone'],
       sections: [{ heading: 'Rows', rows }]
     });
-    assert.ok((await pagesOf(pdf)) > 1);
+    assert.equal(await pagesOf(pdf), 3);
+    assert.equal(await titleOf(pdf), 'Test - Many rows');
+  });
+
+  it('renders a row with an empty value on its own line', async () => {
+    const pdf = await renderDocument({
+      title: 'Test',
+      subtitle: 'Blank',
+      issuedOn: '2026-11-01',
+      from: [],
+      to: [],
+      sections: [{ heading: 'Rows', rows: [{ label: 'Note', value: '' }] }]
+    });
+    assert.equal(await pagesOf(pdf), 1);
   });
 
   it('bundles the appeal letter, claim, report and the PDFs on the claim', async () => {
@@ -97,7 +155,41 @@ describe('documents', () => {
       '2026-11-01'
     );
     assert.equal(await pagesOf(packet), 2);
+    assert.equal(await titleOf(packet), 'Redetermination - Due by 2027-01-30');
     assert.equal(await pagesOf(await appendPdfs(attachment, [])), 1);
+  });
+
+  it('keeps the producer and issue date of the document it appends to', async () => {
+    const first = await renderDocument({
+      title: 'Appeal',
+      subtitle: 'Redetermination',
+      issuedOn: '2026-11-01',
+      from: [],
+      to: [],
+      sections: []
+    });
+    const merged = await PDFDocument.load(await appendPdfs(first, [first]), {
+      updateMetadata: false
+    });
+    assert.equal(merged.getProducer(), 'ugula');
+    assert.deepEqual(merged.getModificationDate(), new Date('2026-11-01T00:00:00Z'));
+    assert.deepEqual(await appendPdfs(first, [first]), await appendPdfs(first, [first]));
+  });
+
+  it('subtitles an appeal without a due date as an appeal', async () => {
+    const packet = await renderAppealPacket(
+      {
+        agency,
+        payer: 'Blue Plan',
+        level: 'Reconsideration',
+        dueOn: null,
+        claim: [],
+        report: [],
+        attachments: []
+      },
+      '2026-11-01'
+    );
+    assert.equal(await titleOf(packet), 'Reconsideration - Appeal');
   });
 
   it('totals what a facility owes on its monthly invoice', async () => {
@@ -127,5 +219,7 @@ describe('documents', () => {
       '2026-11-01'
     );
     assert.equal(await pagesOf(pdf), 1);
+    assert.equal(await titleOf(pdf), 'Facility Invoice - Services through 2026-10');
+    assert.equal(invoiceTotal([]), 0);
   });
 });

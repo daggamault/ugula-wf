@@ -199,7 +199,7 @@ export {
   type Responsibility,
   type ScheduleStore
 } from './nodes/index.ts';
-export { dailyNumberOf, money } from './numbers.ts';
+export { dailyNumberOf, dollarsToCents, money } from './numbers.ts';
 export {
   type Address,
   type Demographics,

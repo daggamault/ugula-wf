@@ -54,7 +54,7 @@ const REJECTS: Readonly<Record<string, string>> = {
   '79': 'Invalid participant identification'
 };
 
-type Draft = EligibilityResult & { traced: boolean; otherPlan: boolean; staying: boolean };
+type Draft = EligibilityResult & { otherPlan: boolean; staying: boolean };
 
 const rejectOf = (aaa: string[]) => {
   const code = aaa[3]?.trim() ?? '';
@@ -71,8 +71,8 @@ const resultsOf = (segments: string[][], file: X12File) => {
   const shared: string[] = [];
   let draft: Draft | null = null;
   const close = () => {
-    if (draft?.traced) {
-      const { traced: _, otherPlan: __, staying: ___, ...result } = draft;
+    if (draft?.trace) {
+      const { otherPlan: _, staying: __, ...result } = draft;
       results.push({
         ...result,
         stay: result.stay?.admittedOn ? result.stay : null,
@@ -88,7 +88,6 @@ const resultsOf = (segments: string[][], file: X12File) => {
         draft = MEMBER_LEVELS.includes(seg[3] ?? '')
           ? {
               trace: '',
-              traced: false,
               active: null,
               planName: null,
               coverageStart: null,
@@ -102,10 +101,7 @@ const resultsOf = (segments: string[][], file: X12File) => {
           : null;
         break;
       case 'TRN':
-        if (draft && seg[1] === '2' && !draft.traced) {
-          draft.trace = seg[2]?.trim() ?? '';
-          draft.traced = true;
-        }
+        if (draft && seg[1] === '2' && !draft.trace) draft.trace = textOf(seg[2]) ?? '';
         break;
       case 'EB': {
         if (!draft) break;

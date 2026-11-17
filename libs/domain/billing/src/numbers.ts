@@ -10,3 +10,9 @@ export const money = (cents: number) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   })}`;
+
+export const dollarsToCents = (dollars: number | string) => {
+  const [digits = '', exponent = '0'] = String(dollars).trim().toLowerCase().split('e');
+  const cents = Number(`${digits.replace('-', '')}e${Number(exponent) + 2}`);
+  return Math.sign(Number(dollars)) * Math.round(cents);
+};

@@ -69,13 +69,24 @@ describe('statements', () => {
     assert.equal((await PDFDocument.load(bytes)).getTitle(), 'Statement 2 of 5 - Jose  Nono ');
   });
 
-  it('renders a one-page PDF statement deterministically', async () => {
+  it('renders a one-page letter-size PDF titled for the patient', async () => {
     const bytes = await renderStatement(statement);
     assert.equal(new TextDecoder().decode(bytes.slice(0, 5)), '%PDF-');
     const doc = await PDFDocument.load(bytes);
     assert.equal(doc.getPageCount(), 1);
+    assert.deepEqual(doc.getPage(0).getSize(), { width: 612, height: 792 });
     assert.equal(doc.getTitle(), 'Statement 2 of 5 - Jose Doe');
-    assert.deepEqual(await renderStatement(statement), bytes);
+  });
+
+  it('dates the PDF the day the statement was issued and names ugula as its producer', async () => {
+    const doc = await PDFDocument.load(await renderStatement(statement), { updateMetadata: false });
+    assert.deepEqual(doc.getCreationDate(), new Date('2026-11-01T00:00:00Z'));
+    assert.deepEqual(doc.getModificationDate(), new Date('2026-11-01T00:00:00Z'));
+    assert.equal(doc.getProducer(), 'ugula');
+  });
+
+  it('renders the same bytes every time', async () => {
+    assert.deepEqual(await renderStatement(statement), await renderStatement(statement));
   });
 
   it('prints addresses, ZIP+4, a 10-digit phone, every line, payment and the balance due', async () => {
@@ -113,7 +124,7 @@ describe('statements', () => {
     ]);
   });
 
-  it('leaves out missing address parts, other phone formats, zero amounts and an unknown date', async () => {
+  it('leaves out missing address parts and prints other phone and ZIP formats as given', async () => {
     const sparse = await renderStatement({
       ...statement,
       agency: {
@@ -124,7 +135,25 @@ describe('statements', () => {
         postalCode: '627041',
         phone: '217-555-0100'
       },
-      patient: { name: 'Jo Doe', addressLine: null, city: null, state: null, postalCode: null },
+      patient: { name: 'Jo Doe', addressLine: null, city: null, state: null, postalCode: null }
+    });
+    assert.deepEqual((await drawnText(sparse)).slice(0, 10), [
+      'Development EMS',
+      'Springfield 627041',
+      'Billing questions: 217-555-0100',
+      'PATIENT STATEMENT',
+      'Statement: 2 of 5',
+      'Date: 2026-11-01',
+      'Reference: PCR-1001',
+      'Date of service: 2026-10-01',
+      'Jo Doe',
+      'Service'
+    ]);
+  });
+
+  it('prints an unknown service date, no lines, and leaves out zero payments and adjustments', async () => {
+    const empty = await renderStatement({
+      ...statement,
       serviceDate: null,
       lines: [],
       totalCents: 0,
@@ -134,16 +163,11 @@ describe('statements', () => {
       ],
       balanceCents: 0
     });
-    assert.deepEqual(await drawnText(sparse), [
-      'Development EMS',
-      'Springfield 627041',
-      'Billing questions: 217-555-0100',
-      'PATIENT STATEMENT',
-      'Statement: 2 of 5',
-      'Date: 2026-11-01',
-      'Reference: PCR-1001',
+    assert.deepEqual((await drawnText(empty)).slice(8), [
       'Date of service: Unknown',
-      'Jo Doe',
+      'Jose Doe',
+      '1 Main St',
+      'Springfield, IL 62704',
       'Service',
       'Units',
       'Amount',
@@ -155,7 +179,7 @@ describe('statements', () => {
       '-$5.00',
       'Amount due from patient',
       '$0.00',
-      'Please call 217-555-0100 with insurance information or to arrange payment.'
+      'Please call (217) 555-0100 with insurance information or to arrange payment.'
     ]);
   });
 });

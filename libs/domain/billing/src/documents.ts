@@ -106,9 +106,9 @@ export const renderDocument = async (spec: DocumentSpec): Promise<Uint8Array> =>
 };
 
 export const appendPdfs = async (first: Uint8Array, attachments: readonly Uint8Array[]) => {
-  const merged = await PDFDocument.load(first);
+  const merged = await PDFDocument.load(first, { updateMetadata: false });
   for (const bytes of attachments) {
-    const attached = await PDFDocument.load(bytes).catch(() => null);
+    const attached = await PDFDocument.load(bytes, { updateMetadata: false }).catch(() => null);
     if (!attached) continue;
     const pages = await merged.copyPages(attached, attached.getPageIndices());
     for (const p of pages) merged.addPage(p);

@@ -4,6 +4,7 @@ import {
   isAdjustmentGroup,
   mergedAdjustments
 } from './claims.ts';
+import { dollarsToCents } from './numbers.ts';
 import type { RemittanceLine, RemittancePosting, RemittanceRoute } from './remittances.ts';
 import { textOrNull } from './values.ts';
 
@@ -45,13 +46,13 @@ const POSTABLE: readonly RemittanceRoute[] = ['reconcile', 'denial', 'appeal', '
 
 const centsOf = (x: unknown) => {
   if (x === null || x === undefined) return 0;
-  const cents = typeof x === 'number' ? Math.round(x * 100) : Number.NaN;
+  const cents = typeof x === 'number' ? dollarsToCents(x) : Number.NaN;
   return Number.isSafeInteger(cents) && cents >= 0 && cents <= MAX_CENTS ? cents : null;
 };
 
 export const readReasonCode = (line: string): Adjustment | null => {
   const [, group, reason, amount] = REASON_LINE.exec(line.trim().toUpperCase()) ?? [];
-  const cents = Math.round(Number(amount) * 100);
+  const cents = dollarsToCents(amount ?? '');
   return isAdjustmentGroup(group) && reason && REASON.test(reason) && cents
     ? { group, reason, cents }
     : null;

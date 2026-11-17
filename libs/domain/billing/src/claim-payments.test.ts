@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { paymentLine, readPayment, readReasonCode } from './claim-payments.ts';
+import { type ManualPayment, paymentLine, readPayment, readReasonCode } from './claim-payments.ts';
 import type { RemittancePosting, RemittanceRoute } from './remittances.ts';
 
 const posting = (route: RemittanceRoute, adjustedCents = 2025): RemittancePosting => ({
@@ -11,14 +11,33 @@ const posting = (route: RemittanceRoute, adjustedCents = 2025): RemittancePostin
   crossover: false
 });
 
+const blank: ManualPayment = {
+  kind: 'response',
+  coverageId: null,
+  paidCents: 0,
+  adjustedCents: 0,
+  route: null,
+  paidOn: null,
+  checkNumber: null,
+  payerClaimNumber: null,
+  adjustments: [],
+  note: ''
+};
+
 describe('readReasonCode', () => {
   it('reads a group, a reason code and a signed dollar amount', () => {
     assert.deepEqual(readReasonCode('CO-45 12.50'), { group: 'CO', reason: '45', cents: 1250 });
     assert.deepEqual(readReasonCode(' pr 2  -3 '), { group: 'PR', reason: '2', cents: -300 });
+    assert.deepEqual(readReasonCode('OA45 1.5'), { group: 'OA', reason: '45', cents: 150 });
+  });
+
+  it('reads nothing from an unknown group, a zero amount, a long code or a missing amount', () => {
     assert.equal(readReasonCode('XX-45 1'), null);
     assert.equal(readReasonCode('CO-45 0'), null);
     assert.equal(readReasonCode('CO-123456 1'), null);
     assert.equal(readReasonCode('CO-45'), null);
+    assert.equal(readReasonCode('CO-45 1.234'), null);
+    assert.equal(readReasonCode(''), null);
   });
 });
 
@@ -32,36 +51,64 @@ describe('readPayment', () => {
     reasonCodes: ['CO-45 20.25', ' '],
     note: 'by hand'
   };
+  const read = {
+    ...blank,
+    coverageId: 'cov-1',
+    paidCents: 8000,
+    paidOn: '2026-10-05',
+    checkNumber: 'CHK-1',
+    payerClaimNumber: 'PCN-9',
+    adjustments: [{ group: 'CO' as const, reason: '45', cents: 2025 }],
+    note: 'by hand'
+  };
 
   it('turns dollars into cents and takes off what Route Remittance says the codes adjust', () => {
     assert.deepEqual(readPayment(entry, posting('reconcile')), {
-      kind: 'response',
-      coverageId: 'cov-1',
-      paidCents: 8000,
+      ...read,
       adjustedCents: 2025,
-      route: 'reconcile',
-      paidOn: '2026-10-05',
-      checkNumber: 'CHK-1',
-      payerClaimNumber: 'PCN-9',
-      adjustments: [{ group: 'CO', reason: '45', cents: 2025 }],
-      note: 'by hand'
+      route: 'reconcile'
     });
-    const unrouted = readPayment(entry);
-    assert.ok(typeof unrouted === 'object');
-    assert.equal(unrouted.adjustedCents, 0);
-    assert.equal(unrouted.route, null);
   });
 
-  it('keeps a patient payment and a refund to what each can carry', () => {
-    const patient = readPayment({ paid: 25, payerClaimNumber: 'PCN-9' });
-    assert.ok(typeof patient === 'object');
-    assert.equal(patient.coverageId, null);
-    assert.equal(patient.payerClaimNumber, null);
-    const refund = readPayment({ kind: 'refunded', coverageId: 'cov-1', paid: 5 }, posting('fix'));
-    assert.ok(typeof refund === 'object');
-    assert.equal(refund.adjustedCents, 0);
-    assert.equal(refund.route, null);
-    assert.equal(refund.kind, 'refunded');
+  it('adjusts nothing and routes nowhere without a posting', () => {
+    assert.deepEqual(readPayment(entry), read);
+  });
+
+  it('posts on every postable route', () => {
+    for (const route of ['denial', 'appeal', 'fix'] as const) {
+      assert.deepEqual(readPayment(entry, posting(route, 0)), { ...read, route });
+    }
+  });
+
+  it('ignores reason codes that are not a list', () => {
+    assert.deepEqual(readPayment({ ...entry, reasonCodes: 'CO-45 1' }), {
+      ...read,
+      adjustments: []
+    });
+  });
+
+  it('keeps no payer claim number on a patient payment', () => {
+    assert.deepEqual(readPayment({ paid: 25, payerClaimNumber: 'PCN-9' }), {
+      ...blank,
+      paidCents: 2500
+    });
+  });
+
+  it('keeps a refund off the routing and without a payer claim number', () => {
+    assert.deepEqual(
+      readPayment(
+        { kind: 'refunded', coverageId: 'cov-1', paid: 5, payerClaimNumber: 'PCN-9' },
+        posting('fix')
+      ),
+      { ...blank, kind: 'refunded', coverageId: 'cov-1', paidCents: 500 }
+    );
+  });
+
+  it('accepts a zero payer payment', () => {
+    assert.deepEqual(readPayment({ coverageId: 'cov-1', paid: 0 }), {
+      ...blank,
+      coverageId: 'cov-1'
+    });
   });
 
   it('refuses what the routing leaves to be posted another way', () => {
@@ -81,6 +128,7 @@ describe('readPayment', () => {
     assert.equal(cents(12.345), 1235);
     assert.equal(cents(0), 0);
     assert.equal(cents(null), 0);
+    assert.equal(cents(undefined), 0);
     assert.equal(cents(1_000_000), 100_000_000);
     assert.equal(cents(1_000_000.01), 'Enter amounts of zero or more');
     for (const paid of ['12.50', Number.NaN, Number.POSITIVE_INFINITY, -0.01]) {
@@ -107,40 +155,58 @@ describe('readPayment', () => {
       readPayment({ kind: 'refunded', coverageId: 'c', paid: 1, reasonCodes: ['CO-45 1'] }),
       'A refund carries no reason codes'
     );
-    assert.match(
-      String(readPayment({ paid: 1, reasonCodes: ['45'] })),
-      /like CO-45 12\.50 \(not "45"\)/
+    assert.equal(
+      readPayment({ paid: 1, reasonCodes: ['CO-45 1', ' 45 '] }),
+      'Write each reason code as a group, code and amount, like CO-45 12.50 (not "45")'
     );
   });
 });
 
 describe('paymentLine', () => {
-  it('reads a hand-posted payment as one remittance line for Route Remittance', () => {
-    const payment = readPayment({
+  const line = {
+    position: 0,
+    claimId: 'claim-1',
+    payerName: null,
+    status: '',
+    remarks: [],
+    crossoverPayer: null,
+    denied: false,
+    reversal: false,
+    reversesPosted: false,
+    takeback: false
+  };
+
+  it('reads a hand-posted payment as one remittance line with its codes merged', () => {
+    const payment: ManualPayment = {
+      ...blank,
       coverageId: 'cov-1',
-      paid: 10,
+      paidCents: 1000,
       payerClaimNumber: 'PCN-9',
-      reasonCodes: ['CO-45 5', 'co-45 2.5', 'PR-2 1']
-    });
-    assert.ok(typeof payment === 'object');
+      adjustments: [
+        { group: 'CO', reason: '45', cents: 500 },
+        { group: 'CO', reason: '45', cents: 250 },
+        { group: 'PR', reason: '2', cents: 100 }
+      ]
+    };
     assert.deepEqual(paymentLine('claim-1', payment), {
-      position: 0,
+      ...line,
       reference: 'PCN-9',
-      claimId: 'claim-1',
       coverageId: 'cov-1',
-      payerName: null,
-      status: '',
-      remarks: [],
-      crossoverPayer: null,
-      denied: false,
-      reversal: false,
-      reversesPosted: false,
-      takeback: false,
       paidCents: 1000,
       adjustments: [
         { group: 'CO', reason: '45', cents: 750 },
         { group: 'PR', reason: '2', cents: 100 }
       ]
+    });
+  });
+
+  it('leaves the reference blank without a payer claim number', () => {
+    assert.deepEqual(paymentLine('claim-1', { ...blank, paidCents: 2500 }), {
+      ...line,
+      reference: '',
+      coverageId: null,
+      paidCents: 2500,
+      adjustments: []
     });
   });
 });

@@ -1,4 +1,4 @@
-import { SEX_LABELS, sexOf } from '@ugula/billing';
+import { dollarsToCents, SEX_LABELS, sexOf } from '@ugula/billing';
 
 const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -34,9 +34,7 @@ export const formatDollars = (cents: number) => (cents / 100).toFixed(2);
 
 export const parseDollars = (text: string) => {
   const amount = Number(text);
-  return text.trim() !== '' && Number.isFinite(amount) && amount >= 0
-    ? Math.round(amount * 100)
-    : null;
+  return text.trim() !== '' && Number.isFinite(amount) && amount >= 0 ? dollarsToCents(text) : null;
 };
 
 const miles = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });

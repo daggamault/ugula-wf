@@ -319,13 +319,13 @@ export const readX837Claim = (x: unknown): X837Claim => {
     const lineAdjustments = o.lines.flatMap((l) => l.adjustments);
     if (!o.adjustments.length && !lineAdjustments.length) {
       throw new Error(
-        `the reason codes (CAS) of other payer ${i + 1} (${o.name}); post its remittance with them`
+        `The 837P claim needs the reason codes (CAS) of other payer ${i + 1} (${o.name}); post its remittance with them`
       );
     }
     const balanced = o.paidCents + sum(o.adjustments) + sum(lineAdjustments);
     if (balanced !== totalCents) {
       throw new Error(
-        `other payer ${i + 1} (${o.name}) to balance: its payment and reason codes add up to ${money(balanced)}, not the ${money(totalCents)} charged (CLM02 = AMT*D + 2320 CAS + 2430 CAS), so the charges changed after it adjudicated the claim or its remittance was posted in part`
+        `The 837P claim needs other payer ${i + 1} (${o.name}) to balance: its payment and reason codes add up to ${money(balanced)}, not the ${money(totalCents)} charged (CLM02 = AMT*D + 2320 CAS + 2430 CAS), so the charges changed after it adjudicated the claim or its remittance was posted in part`
       );
     }
   });

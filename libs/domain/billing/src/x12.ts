@@ -1,3 +1,5 @@
+import { dollarsToCents } from './numbers.ts';
+
 export type InboundKind = '835' | '999' | '277' | '271' | 'TA1' | '277S';
 
 export type X12File = {
@@ -78,7 +80,7 @@ export const transactionsOf = (file: X12File, kind: string) => {
 
 export const centsOf = (x: string | undefined) => {
   const n = Number(x);
-  return x && Number.isFinite(n) ? Math.sign(n) * Math.round(Math.abs(n) * 100) : 0;
+  return x && Number.isFinite(n) ? dollarsToCents(x) : 0;
 };
 
 export const dateOf = (x: string | undefined) =>

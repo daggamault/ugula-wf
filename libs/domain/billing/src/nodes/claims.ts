@@ -9,6 +9,7 @@ import { type ClaimCheck, claimRecordOf, readIssues, readNewClaim } from '../cla
 import { claimProgress } from '../claims.ts';
 import { FACILITY_KINDS, isResponsibleParty } from '../facilities.ts';
 import { BLOB } from '../model-kit.ts';
+import { dollarsToCents } from '../numbers.ts';
 import { PATIENT } from '../party-models.ts';
 import { isCents, recordOf, requiredText, textOrNull } from '../values.ts';
 import type { NodesOf } from './stores.ts';
@@ -66,8 +67,6 @@ const fixPins: PinSpec[] = CLAIM_FIX_FIELDS.map((f) =>
       : 'A claim field the biller entered.'
   })
 );
-
-const dollarsToCents = (x: number) => Math.round(x * 100);
 
 const centsOf = (x: unknown) =>
   Object.fromEntries(

@@ -68,6 +68,7 @@ describe('readX12', () => {
     );
     assert.throws(() => readX12('hello'), /Not an X12 file/);
     assert.throws(() => readX12('ISA*00'), /Not an X12 file/);
+    assert.throws(() => readX12(`ISA${'*'.repeat(102)}S`), /Not an X12 file/);
   });
 
   it('reads an ST without an id as no kind and a blank ISA13 as no control number', () => {
@@ -116,8 +117,8 @@ describe('readX12', () => {
 describe('values', () => {
   it('reads dollars as cents and dates as ISO', () => {
     assert.deepEqual(
-      ['942.5', '-12.345', '0.1', '', undefined, 'x'].map(centsOf),
-      [94_250, -1235, 10, 0, 0, 0]
+      ['942.5', '-12.345', '0.1', '1.005', '', undefined, 'x'].map(centsOf),
+      [94_250, -1235, 10, 101, 0, 0, 0]
     );
     assert.equal(dateOf('20261031'), '2026-10-31');
     assert.equal(dateOf('261031'), null);
