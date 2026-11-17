@@ -55,14 +55,23 @@ A node definition (`NodeDef`) also carries what the editor shows:
 
 Pure primitives tolerate missing data: math nodes give nothing when a number is missing, and list nodes treat a missing list as empty, so a rule that reads an optional field only fails where a value is truly required.
 
+Primitives that keep decisions readable on the canvas:
+
+- **Condition** tests its inputs and reads as a sentence ("Loaded Miles is more than 500"); a test can compare an input with a value or with another input (`input`), so a limit wired from a table needs no arithmetic first. **Choose Value** picks by case or the first that is set, and And, Or and Not combine tests.
+- **Where** keeps the items whose field passes a test, including `listed` and `notListed` against the keys of a shared table (`table: { key }`), so a code set stays a table.
+- **Round** rounds to the nearest, up or down (`direction`); **Start of Period** and **Time Between** do the date math.
+- Text: **Join** takes a **Last Separator** ("a, b and c"), **Count with Noun** writes "1 warning" or "3 warnings", **Capitalize** capitalizes the first letter, **Text Template** fills a fixed pattern with optional parts, and **Fill Template** fills a pattern that arrives on a wire, such as a message from a table.
+
+Node titles are Title Case with minor words in lowercase (Greater or Equal, Wait for Signal, Sort by Field, Start of Period).
+
 `std.flow.reroute` is a knot on a wire: it passes `value` through unchanged, typed by its `type` setting (`any` by default).
 
-| Kind       | Examples                                                                                                                                                                                                                                                 |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Standard   | flow (branch, switch, reroute, for-each, while, try, wait, wait for signal, run/start/map/spawn workflows), variables, math, logic, text, lists, objects, time, tables (Decision Table, Lookup Table, inline or a shared table by key), human task, HTTP |
-| Models     | A **Break** and a **Make** node per model field set (NEMSIS sections, claim, 837P parts)                                                                                                                                                                 |
-| Capability | Billing and NEMSIS nodes that do I/O or heavy logic: read NEMSIS, match patients and payers, read narratives, price, save claims, file 837P, apply payer files                                                                                           |
-| Composite  | Any published `node` graph, called like a node                                                                                                                                                                                                           |
+| Kind       | Examples                                                                                                                                                                                                                                                                                                |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Standard   | flow (branch, switch, reroute, for-each, while, try, wait, wait for signal, run/start/map/spawn workflows), variables, math, logic, text, lists, objects, time, tables (Decision Table, Lookup Table, inline or a shared table by key; Where can keep items listed in a shared table), human task, HTTP |
+| Models     | A **Break** and a **Make** node per model field set (NEMSIS sections, claim, 837P parts)                                                                                                                                                                                                                |
+| Capability | Billing and NEMSIS nodes that do I/O or heavy logic: read NEMSIS, match patients and payers, read narratives, price, save claims, file 837P, apply payer files                                                                                                                                          |
+| Composite  | Any published `node` graph, called like a node                                                                                                                                                                                                                                                          |
 
 ## Durable runs
 

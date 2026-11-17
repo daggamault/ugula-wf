@@ -10,6 +10,8 @@ Every built-in graph and shared table can be customized without code for one age
 | **Agency rule**    | An empty **slot** subworkflow that runs after the base rules             | None: the base keeps updating around it  |
 | **Graph override** | A copy of one rule, stage or workflow                                    | Tracked: compare, Keep Mine, Start Fresh |
 
+Tables hold only reference data: code sets, code labels, limits and settings, and pure code mappings. Every billing decision is a rule drawn on the canvas (conditions, first-that-applies choices, logic gates, rules run per item), so an agency changes a number or a code set by overriding its table, and changes how something is decided by overriding the rule (a graph override, `workflows:update`) or by filling the slot after it.
+
 ## Two levels
 
 | Level  | Owner                                                       | Applies to                  |
@@ -50,14 +52,19 @@ A slot is a subworkflow whose system version hands its inputs straight back (`sl
 
 ## Shared tables
 
-Decision and lookup table nodes either carry their rules inline or reference a shared table: `config: { inputs, outputs, table: { key } }` (decision) or `{ type, table: { key } }` (lookup). The node keeps the fields, so its pins never depend on the table; the table holds the rules. A decision table can also name the reason for when no rule holds (`otherwiseLabel`), and its **Why** output (`reasons`) gives the matching rule's label or that reason, so a rule wires its reasons straight from the table.
+Decision and lookup table nodes either carry their rules inline or reference a shared table: `config: { inputs, outputs, table: { key } }` (decision) or `{ type, table: { key } }` (lookup). The node keeps the fields, so its pins never depend on the table; the table holds the rules. A decision table can also name the reason for when no rule holds (`otherwiseLabel`), and its **Why** output (`reasons`) gives the matching rule's label or that reason.
 
 - Tables live in `data_tables` / `data_table_versions` with the same scopes, `base_version_id`, one draft and immutable published versions as graphs. Their **contract** is their fields: input and output names and types (decision) or the value type (lookup) (`tableContract`).
 - When a run starts, `pinRunGraphs` also pins every table its graphs reference into `workflow_run_tables`, agency first, then system; an agency copy applies only while its contract matches the newest system version. Child runs reuse their parent's pins.
 - The worker inlines the pinned tables into the graphs before running them (`inlineTables`). A table that is missing or no longer has the node's fields faults the node with a clear message.
-- The seeds declare shared tables with `createTables().decision(...)` and `.lookup(...)` in `.seeds/billing/`: Classification, Level of Service, Emergency Response, Base Rate, Mileage, Origin Modifier, Destination Modifier, Transport Reason by Destination Reason, Payer by Payment Method, Coverage Priority, Ambulance Conditions, Coverage Modifier, Reprice Triggers, Check Severity, Claim Policy, Claim Steps, Adjustment Reasons, Adjustment Classes, Crossover Signals, Remittance Routing, Denial Categories, Correction Methods, Appeal Levels, Appeal Decisions, Records Deadlines, Refund Deadlines, Balance-Billing Protection, Deadline Actions, MSP From the Report, Medicare Secondary Payer, Pronounced Dead, Non-Covered Miles, Non-Covered Mileage, Trip Modifiers, Line Code Modifier, Benefits Assignment, Claim Frequencies, Narrative Note, Facility Responsibility, Document Kinds and Document Chase Days (keys in [Billing Workflows](billing-workflows.md)). The seed checks every reference resolves to a table with the same fields.
-- A Lookup Table also looks up a list of keys at once (`keys` → `values`), which is how one Check Severity table rates every issue and Adjustment Classes classes every adjustment.
-- The API runs an agency's effective rule outside any run (`findRuleBundle`, `findGraphTables`, `runRule`) for the claim page's issues and next step, so table and rule overrides show there as they apply in runs.
+- The seeds declare shared tables with `createTables().decision(...)` and `.lookup(...)` in `.seeds/billing/`, all reference data (keys `billing.<kebab-case name>` unless noted; where they are used is in [Billing Workflows](billing-workflows.md)):
+  - **Code sets:** Medicare Claim Filings, Medicaid Claim Filings, IV Solutions, ALS2 Procedures, Signature Exceptions, Not Signature Exceptions (`billing.signature-non-exceptions`), Claim Data Denials, Duplicate Claim Denials, Medical Necessity Denials, Other Payer Denials, Patient Denials, Late Filing Denials, Cost Share Codes, Sequestration Codes.
+  - **Code labels:** Sex Labels, Response Mode Labels, Level of Care Labels, Reported Stay Kinds.
+  - **Limits and settings:** Claim Policy, Check Limits, Check Severity, Federal Filing Limits, Deadline Limits, Unit Rounding, Underpayment Limits, MSP Employer Sizes, Document Chase Days, Appeal Levels, Refund Deadlines, Records Deadlines.
+  - **Code mappings:** Base Rate (the CMS base rate code by level of service and emergency), Destination Modifier (destination type → letter), Line Code Modifier (`billing.code-modifier`), Transport Reason by Destination Reason (`billing.transport-reason-by-destination`), Payer by Payment Method (`billing.payment-method-payer`), Coverage Priority, Benefits Assignment, Adjustment Reasons, Adjustment Classes, Classes That Lower the Balance (`billing.balance-lowering-classes`), Task Deadline Kinds.
+- The seed checks every reference resolves to a table with the same fields.
+- A Where node can keep the items whose field is listed (or not listed) as a key of a shared table (`op: listed` or `notListed` with `table: { key }`), which is how a rule tests a code set; a Lookup Table also looks up a list of keys at once (`keys` → `values`).
+- The API runs an agency's effective rule outside any run (`findRuleBundle`, `findGraphTables`, `runRule`) for the claim page's issues (Claim Issues: Claim Check Facts, then Claim Checks) and next step, so table and rule overrides show there as they apply in runs.
 
 ## Contracts
 
