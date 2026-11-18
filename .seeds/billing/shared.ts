@@ -446,6 +446,7 @@ export const choiceRule = (
   );
   g.add('parts', 'std.object.break', {
     label: 'Candidate',
+    note: 'The fields of one candidate.',
     config: {
       fields: Object.entries(candidate.fields).map(([name, type]) => ({ name, type }))
     } as Json
@@ -454,12 +455,13 @@ export const choiceRule = (
   const text = template(
     g,
     'label',
-    'Choice Label',
+    n('Choice Label', 'How the candidate reads in the list.'),
     label.template,
     Object.fromEntries(shown.map((n) => [n, `parts.${n}` as const]))
   );
   g.add('choice', 'std.object.make', {
     label: 'Choice',
+    note: 'What the person picks, and how it reads.',
     config: {
       fields: [
         { name: 'value', type: 'string' },

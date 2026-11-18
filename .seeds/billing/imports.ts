@@ -14,8 +14,14 @@ const savePcr = (): GraphDef => {
       unchanged: exit('Unchanged', 'The report matched the encounter already saved.')
     }
   );
-  g.add('read', 'report.read', { label: 'Read PCR' });
-  g.add('save', 'encounter.save', { label: 'Save Encounter' });
+  g.add('read', 'report.read', {
+    label: 'Read PCR',
+    note: 'Reads the stored report as an encounter.'
+  });
+  g.add('save', 'encounter.save', {
+    label: 'Save Encounter',
+    note: 'Stores it by PCR number: new, revised or unchanged.'
+  });
   g.wire('entry.exec', 'read.exec');
   g.wire('entry.report', 'read.report');
   g.wire('read.then', 'save.exec');
@@ -58,16 +64,33 @@ const importPcrFile = (): GraphDef => {
     counted.map((name) => ({ name, type: 'integer', default: 0 }))
   );
   g.trigger({ kind: 'event', event: 'pcr_file.received', where: {} });
-  g.add('read', 'pcr-file.read', { label: 'Read PCR File' });
-  g.add('each', 'std.flow.for-each', { label: 'Each PCR' });
-  g.add('try', 'std.flow.try', { label: 'Save It, or Count It as Failed' });
-  g.add('save', 'billing.save-pcr', { label: 'Save PCR' });
+  g.add('read', 'pcr-file.read', {
+    label: 'Read PCR File',
+    note: 'Stores each report in the file and lists them.'
+  });
+  g.add('each', 'std.flow.for-each', {
+    label: 'Each PCR',
+    note: 'One report at a time, so one bad report never stops the rest.'
+  });
+  g.add('try', 'std.flow.try', {
+    label: 'Save It, or Count It as Failed',
+    note: 'A report that cannot be saved is counted as failed.'
+  });
+  g.add('save', 'billing.save-pcr', {
+    label: 'Save PCR',
+    note: 'Saves one report as an encounter.'
+  });
   for (const c of counted) {
     g.add(`count${capital(c)}`, 'std.var.increment', {
       label: `Count ${COUNTS[c][0]}`,
+      note: `Adds one: ${COUNTS[c][1].toLowerCase()}`,
       config: { name: c }
     });
-    g.add(c, 'std.var.get', { label: COUNTS[c][0], config: { name: c } });
+    g.add(c, 'std.var.get', {
+      label: COUNTS[c][0],
+      note: 'How many, for the import summary.',
+      config: { name: c }
+    });
   }
   g.ret('done');
   g.wire('entry.exec', 'read.exec');

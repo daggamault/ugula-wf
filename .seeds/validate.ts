@@ -3,9 +3,11 @@ import {
   combineSources,
   createRegistry,
   documentationIssues,
+  ENTRY_TYPE,
   isRecord,
   type NodeDef,
   type NodeInstance,
+  RETURN_TYPE,
   refKey,
   SUBWORKFLOW_TRIGGER,
   stdGraphSource,
@@ -77,8 +79,18 @@ const formulaProblems = (graphs: SeedGraph[]) =>
       .map((n) => `${g.key}#${n.id}: draw this with primitives instead of a formula`)
   );
 
+const UNNOTED = new Set([ENTRY_TYPE, RETURN_TYPE]);
+
+const noteProblems = (graphs: SeedGraph[]) =>
+  graphs.flatMap((g) =>
+    g.definition.nodes
+      .filter((n) => !UNNOTED.has(n.type) && !n.note?.trim())
+      .map((n) => `${g.key}#${n.id}: say in a note what this node is for`)
+  );
+
 export const seedProblems = (graphs: SeedGraph[], tables: SeedTable[], nodes: NodeDef[]) => [
   ...graphProblems(graphs, nodes),
   ...formulaProblems(graphs),
+  ...noteProblems(graphs),
   ...tableProblems(tables, graphs)
 ];

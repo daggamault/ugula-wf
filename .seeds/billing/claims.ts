@@ -75,6 +75,7 @@ const reviewClaim = (): GraphDef => {
   );
   g.add('review', 'std.human.task', {
     label: 'Review the Claim',
+    note: 'A biller must approve every claim before it goes out.',
     config: {
       title: 'Review the Claim',
       queue: QUEUE,
@@ -97,7 +98,11 @@ const reviewClaim = (): GraphDef => {
     }
   });
   const record = (id: string, label: string, decision: string) => {
-    g.add(id, 'claim.review', { label, values: { decision } });
+    g.add(id, 'claim.review', {
+      label,
+      note: 'Records the decision for the revision the biller saw.',
+      values: { decision }
+    });
     g.wire('entry.claimId', `${id}.claimId`);
     g.wire('entry.revision', `${id}.revision`);
     g.wire('review.completedBy', `${id}.reviewedBy`);
@@ -481,14 +486,32 @@ const buildClaim = (): GraphDef => {
       notBillable: exit('Not Billable', 'The trip is not billed, so no claim was made.')
     }
   );
-  breakRecord(g, 'trip', 'Encounter', ENCOUNTER, 'entry.encounter');
-  breakRecord(g, 'payment', 'Payment', PAYMENT, 'trip.payment');
-  g.add('classify', 'billing.trip-classification', { label: 'Trip Classification' });
+  breakRecord(
+    g,
+    'trip',
+    n('Encounter', 'The parts of the encounter the claim needs.'),
+    ENCOUNTER,
+    'entry.encounter'
+  );
+  breakRecord(
+    g,
+    'payment',
+    n('Payment', 'Billing details the report gives.'),
+    PAYMENT,
+    'trip.payment'
+  );
+  g.add('classify', 'billing.trip-classification', {
+    label: 'Trip Classification',
+    note: 'Decides what kind of trip it was.'
+  });
   g.add('settle', 'billing.settle-classification', {
     label: 'Settle the Trip',
     note: 'A biller classifies the trip when the rules could not.'
   });
-  g.add('billable', 'std.flow.branch', { label: 'Is Billable' });
+  g.add('billable', 'std.flow.branch', {
+    label: 'Is Billable',
+    note: 'Only billable trips get a claim.'
+  });
   g.add('miles', 'billing.settle-miles', {
     label: 'Settle the Miles',
     note: 'A biller enters the miles when a transport has none.'
@@ -497,8 +520,14 @@ const buildClaim = (): GraphDef => {
     label: 'Settle the Origin and Destination',
     note: 'A biller sets the letters when a transport is missing one.'
   });
-  g.add('patient', 'billing.resolve-patient', { label: 'Resolve Patient' });
-  g.add('service', 'billing.service-details', { label: 'Service Details' });
+  g.add('patient', 'billing.resolve-patient', {
+    label: 'Resolve Patient',
+    note: 'Finds or adds the patient, asking a biller when unsure.'
+  });
+  g.add('service', 'billing.service-details', {
+    label: 'Service Details',
+    note: 'Level, emergency, miles and date.'
+  });
   g.add('diagnoses', 'billing.diagnoses', {
     label: 'Reported Diagnoses',
     note: 'The impressions and symptoms as the report gives them.'
@@ -507,8 +536,14 @@ const buildClaim = (): GraphDef => {
     label: 'Code the Diagnoses',
     note: 'Keeps billable codes; a coder chooses when none can be billed first.'
   });
-  g.add('ambulance', 'billing.ambulance-details', { label: 'Ambulance Details' });
-  g.add('checks', 'billing.claim-checks', { label: 'Claim Checks' });
+  g.add('ambulance', 'billing.ambulance-details', {
+    label: 'Ambulance Details',
+    note: 'Transport reason, conditions and weight for CR1 and CRC.'
+  });
+  g.add('checks', 'billing.claim-checks', {
+    label: 'Claim Checks',
+    note: 'What to fix or confirm before the claim goes out.'
+  });
   g.wire('entry.encounter', 'checks.encounter');
   g.wire('service.serviceDate', 'checks.serviceDate');
   g.wire('service.emergency', 'checks.emergency');
@@ -517,13 +552,28 @@ const buildClaim = (): GraphDef => {
   g.wire('dx.diagnoses', 'checks.diagnoses');
   g.wire('entry.encounter', 'dx.encounter');
   g.wire('diagnoses.diagnoses', 'dx.reported');
-  g.add('places', 'billing.origin-and-destination', { label: 'Origin and Destination' });
-  g.add('payers', 'billing.determine-payers', { label: 'Determine Payers' });
-  g.add('primary', 'std.list.first', { label: 'Primary Coverage' });
-  g.add('primaryPayer', 'coverage.break', { label: 'Primary Payer' });
-  g.add('charges', 'billing.assign-charges', { label: 'Assign Charges' });
-  g.add('claim', 'claim.make', { label: 'Claim' });
-  g.add('save', 'claim.save', { label: 'Save Claim' });
+  g.add('places', 'billing.origin-and-destination', {
+    label: 'Origin and Destination',
+    note: 'The origin and destination letters the report shows.'
+  });
+  g.add('payers', 'billing.determine-payers', {
+    label: 'Determine Payers',
+    note: 'Who is billed, in what order.'
+  });
+  g.add('primary', 'std.list.first', {
+    label: 'Primary Coverage',
+    note: 'The payer billed first.'
+  });
+  g.add('primaryPayer', 'coverage.break', {
+    label: 'Primary Payer',
+    note: 'Its fees price the lines.'
+  });
+  g.add('charges', 'billing.assign-charges', {
+    label: 'Assign Charges',
+    note: 'The lines, priced, and the total.'
+  });
+  g.add('claim', 'claim.make', { label: 'Claim', note: 'Puts the claim together.' });
+  g.add('save', 'claim.save', { label: 'Save Claim', note: 'Saves it as Needs Review.' });
   g.ret('notBilled', 'notBillable');
   g.ret('created', 'saved');
   g.ret('replaced', 'saved');
@@ -588,16 +638,22 @@ const buildClaim = (): GraphDef => {
   g.wire('dx.diagnoses', 'claim.diagnoses');
   g.wire('charges.lines', 'claim.lines');
   g.wire('charges.totalCents', 'claim.totalCents');
-  const reasons = joinLists(g, 'reasons', 'Every Reason', 'string', [
-    'classify.reasons',
-    'service.reasons',
-    'ambulance.reasons',
-    'dx.reasons',
-    'places.reasons',
-    'payers.reasons',
-    'charges.reasons',
-    'checks.reasons'
-  ]);
+  const reasons = joinLists(
+    g,
+    'reasons',
+    n('Every Reason', 'Every reason, for the biller who reviews it.'),
+    'string',
+    [
+      'classify.reasons',
+      'service.reasons',
+      'ambulance.reasons',
+      'dx.reasons',
+      'places.reasons',
+      'payers.reasons',
+      'charges.reasons',
+      'checks.reasons'
+    ]
+  );
   g.wire(reasons, 'claim.reasons');
   g.wire('charges.charged', 'save.exec');
   g.wire(`claim.${CLAIM.name}`, 'save.claim');
@@ -623,9 +679,18 @@ const fromEncounter = (event: string) => {
     ]
   );
   g.trigger({ kind: 'event', event, where: {} });
-  g.add('read', 'encounter.read', { label: 'Read Encounter' });
-  g.add('build', 'billing.build-claim', { label: 'Build Claim' });
-  g.add('review', 'billing.review-claim', { label: 'Review Claim' });
+  g.add('read', 'encounter.read', {
+    label: 'Read Encounter',
+    note: 'Reads the encounter the event names.'
+  });
+  g.add('build', 'billing.build-claim', {
+    label: 'Build Claim',
+    note: 'Builds and saves its claim, a new revision when revised, or says why not.'
+  });
+  g.add('review', 'billing.review-claim', {
+    label: 'Review Claim',
+    note: 'A biller reviews the claim before it goes out.'
+  });
   const billed = Object.keys(REVIEW_OUTCOMES);
   for (const outcome of billed) g.ret(outcome);
   g.ret('notBilled');
@@ -637,7 +702,10 @@ const fromEncounter = (event: string) => {
   g.wire('build.claimId', 'review.claimId');
   g.wire('build.revision', 'review.revision');
   g.wire('read.encounter', 'pcr.encounter');
-  g.add('pcr', 'encounter.break', { label: 'Encounter' });
+  g.add('pcr', 'encounter.break', {
+    label: 'Encounter',
+    note: 'Names the review by its PCR number.'
+  });
   g.wire('pcr.pcrNumber', 'review.subject');
   g.wire('build.reasons', 'review.reasons');
   g.wire('build.notBillable', 'notBilled.exec');

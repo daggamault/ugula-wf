@@ -10,7 +10,9 @@ How billing is built on the engine: a few events start workflows, workflows are 
 4. **Small graphs, named by what they give.** A rule is a pure graph named for the decision it returns (Trip Classification, Level of Service), and returns its reasons. A stage is a graph with a way in, named by its verb (Resolve Patient, Assign Charges). A workflow is named by its job and starts from one event.
 5. **Events join workflows.** A workflow ends by saving a record, and the database emits the event for the change in the same transaction, so the next workflow starts from it. No workflow calls a later one by name.
 6. **Reference data in tables.** Code mappings are tables an agency edits as forms, and prices are its fee schedules; a code list is a Constant inside the rule that tests it, changed by overriding that rule; decisions on top of them are drawn.
-7. **Typed all the way.** NEMSIS coded fields and billing values (classification, level of service, origin and destination letters, X12 relationship) are code kinds, and generic primitives take the type of their first wire, so the editor refuses a wire between different code sets.
+7. **Explained on the canvas.** Every node carries a short note saying what it is for, shown under its title, so a biller reading a graph never has to guess; a code list names what its codes are.
+8. **Ask, never guess.** Rules try every field and the narrative first; when the report contradicts itself or still says too little (the kind of trip, the miles, the origin or destination, the diagnosis), a stage asks a biller in a task instead of billing a guess, and every claim still ends on a biller's review.
+9. **Typed all the way.** NEMSIS coded fields and billing values (classification, level of service, origin and destination letters, X12 relationship) are code kinds, and generic primitives take the type of their first wire, so the editor refuses a wire between different code sets.
 
 ## Palette
 

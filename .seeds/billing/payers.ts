@@ -718,24 +718,45 @@ const resolveCoverage = (): GraphDef => {
     },
     [{ name: 'payerId', type: ID.payer, default: null }]
   );
-  breakRecord(g, 'insurance', 'Insurance', INSURANCE, 'entry.insurance');
-  const name = firstSet(g, 'name', 'Insurance Name', 'string', [
-    'insurance.companyName',
-    'insurance.companyId',
-    fixed('Unnamed insurance')
-  ]);
-  lookup(g, 'relationship', 'Relationship as an X12 Code', RELATIONSHIPS, 'insurance.relationship');
-  g.add('find', 'payer.find', { label: 'Find Payer' });
+  breakRecord(
+    g,
+    'insurance',
+    n('Insurance', 'The insurance as the report gives it.'),
+    INSURANCE,
+    'entry.insurance'
+  );
+  const name = firstSet(
+    g,
+    'name',
+    n('Insurance Name', 'The company name, else its ID, to look up.'),
+    'string',
+    ['insurance.companyName', 'insurance.companyId', fixed('Unnamed insurance')]
+  );
+  lookup(
+    g,
+    'relationship',
+    n(
+      'Relationship as an X12 Code',
+      'How the patient relates to the insured, as an X12 code; self when unknown.'
+    ),
+    RELATIONSHIPS,
+    'insurance.relationship'
+  );
+  g.add('find', 'payer.find', {
+    label: 'Find Payer',
+    note: 'Looks the payer up in the agency’s directory.'
+  });
   const options = choicesFor(
     g,
     'options',
-    'Similar Payers',
+    n('Similar Payers', 'The similar payers a biller chooses from.'),
     'billing.payer-choice',
     'payerId',
     'find.candidates'
   );
   g.add('match', 'std.human.task', {
     label: 'Match the Payer',
+    note: 'A biller decides which directory payer this insurance is.',
     config: {
       title: 'Match the Payer',
       queue: QUEUE,
@@ -748,14 +769,23 @@ const resolveCoverage = (): GraphDef => {
   });
   g.add('rememberFound', 'std.var.set', {
     label: 'Remember the Payer Found',
+    note: 'Keeps the payer the directory matched.',
     config: { name: 'payerId' }
   });
   g.add('rememberChosen', 'std.var.set', {
     label: 'Remember the Payer Chosen',
+    note: 'Keeps the payer the biller chose.',
     config: { name: 'payerId' }
   });
-  g.add('payer', 'std.var.get', { label: 'Payer', config: { name: 'payerId' } });
-  g.add('coverage', 'coverage.make', { label: 'Coverage' });
+  g.add('payer', 'std.var.get', {
+    label: 'Payer',
+    note: 'The payer matched or chosen, if any.',
+    config: { name: 'payerId' }
+  });
+  g.add('coverage', 'coverage.make', {
+    label: 'Coverage',
+    note: 'The coverage billed, with the policy details.'
+  });
   g.wire('payer.value', 'coverage.payerId');
   g.wire(name, 'coverage.payerName', 'find.name', 'match.subject');
   g.wire('relationship.value', 'coverage.relationship');
@@ -803,17 +833,40 @@ const determinePayers = (): GraphDef => {
     { determined: exit('Determined', 'Every reported insurance is a coverage.') },
     [{ name: 'coverages', type: listOf(T.coverage), default: [] }]
   );
-  breakRecord(g, 'trip', 'Encounter', ENCOUNTER, 'entry.encounter');
-  g.add('order', 'billing.billing-order', { label: 'Billing Order' });
-  g.add('checks', 'billing.payer-checks', { label: 'Payer Checks' });
+  breakRecord(
+    g,
+    'trip',
+    n('Encounter', 'The insurances the report gives.'),
+    ENCOUNTER,
+    'entry.encounter'
+  );
+  g.add('order', 'billing.billing-order', {
+    label: 'Billing Order',
+    note: 'Puts the insurances in the order they are billed.'
+  });
+  g.add('checks', 'billing.payer-checks', {
+    label: 'Payer Checks',
+    note: 'What a biller should confirm about who pays.'
+  });
   g.wire('entry.encounter', 'checks.encounter');
   g.wire('order.insurances', 'checks.insurances');
   g.wire('entry.classification', 'checks.classification');
   g.wire('checks.reasons', 'return.reasons');
-  g.add('each', 'std.flow.for-each', { label: 'Each Insurance' });
-  g.add('coverage', 'billing.resolve-coverage', { label: 'Resolve Coverage' });
-  g.add('keep', 'std.var.append', { label: 'Keep the Coverage', config: { name: 'coverages' } });
-  g.add('kept', 'std.var.get', { label: 'Coverages', config: { name: 'coverages' } });
+  g.add('each', 'std.flow.for-each', { label: 'Each Insurance', note: 'One insurance at a time.' });
+  g.add('coverage', 'billing.resolve-coverage', {
+    label: 'Resolve Coverage',
+    note: 'Matches the insurance to a directory payer.'
+  });
+  g.add('keep', 'std.var.append', {
+    label: 'Keep the Coverage',
+    note: 'Adds the coverage to the list.',
+    config: { name: 'coverages' }
+  });
+  g.add('kept', 'std.var.get', {
+    label: 'Coverages',
+    note: 'Every coverage, in billing order.',
+    config: { name: 'coverages' }
+  });
   g.ret('return', 'determined');
   g.wire('trip.insurances', 'order.insurances');
   g.wire('entry.exec', 'each.exec');

@@ -10,6 +10,7 @@ import {
   d,
   exit,
   ID,
+  n,
   PERSON,
   QUEUE,
   stage,
@@ -24,29 +25,48 @@ const PATIENT_OUT = d('patientId', ID.patient, 'Patient', 'The patient the encou
 const IDENTITY = ['firstName', 'lastName', 'birthDate'];
 
 const subjectOf = (g: Builder) =>
-  template(g, 'subject', 'Patient Name', '{lastName}, {firstName}', {
-    lastName: 'person.lastName',
-    firstName: 'person.firstName'
-  });
+  template(
+    g,
+    'subject',
+    n('Patient Name', 'Names the task by the patient.'),
+    '{lastName}, {firstName}',
+    {
+      lastName: 'person.lastName',
+      firstName: 'person.firstName'
+    }
+  );
 
 const matchPatient = (): GraphDef => {
   const g = stage([PERSON_IN], [{ ...PATIENT_OUT, optional: true }], {
     matched: exit('Matched', 'The patient is known, found or added.'),
     incomplete: exit('Incomplete', 'The person has no last name or birth date to look by.')
   });
-  breakRecord(g, 'person', 'Person', PERSON, 'entry.person');
-  g.add('find', 'patient.find', { label: 'Find Patient' });
-  g.add('add', 'patient.save', { label: 'Add a New Patient' });
+  breakRecord(
+    g,
+    'person',
+    n('Person', 'The name, birth date and address to match by.'),
+    PERSON,
+    'entry.person'
+  );
+  g.add('find', 'patient.find', {
+    label: 'Find Patient',
+    note: 'Looks for this patient among the agency’s patients.'
+  });
+  g.add('add', 'patient.save', {
+    label: 'Add a New Patient',
+    note: 'Adds the patient when nobody matches.'
+  });
   const options = choicesFor(
     g,
     'options',
-    'Similar Patients',
+    n('Similar Patients', 'The similar patients a biller chooses from.'),
     'billing.patient-choice',
     'patientId',
     'find.candidates'
   );
   g.add('choose', 'std.human.task', {
     label: 'Choose the Patient',
+    note: 'A biller decides whether a similar patient is this one.',
     config: {
       title: 'Choose the Patient',
       queue: QUEUE,
@@ -82,14 +102,25 @@ const resolvePatient = (): GraphDef => {
   const g = stage([PERSON_IN], [PATIENT_OUT], {
     resolved: exit('Resolved', 'The patient is known, found or added.')
   });
-  breakRecord(g, 'person', 'Person', PERSON, 'entry.person');
-  g.add('match', 'billing.match-patient', { label: 'Match Patient' });
+  breakRecord(
+    g,
+    'person',
+    n('Person', 'The name and birth date as reported.'),
+    PERSON,
+    'entry.person'
+  );
+  g.add('match', 'billing.match-patient', {
+    label: 'Match Patient',
+    note: 'Matches the patient, or says the report is too thin to.'
+  });
   g.add('defaults', 'std.object.make', {
     label: 'Details Reported',
+    note: 'Prefills the task with what the report gave.',
     config: { fields: IDENTITY.map((name) => ({ name, type: 'string' })) } as Json
   });
   g.add('complete', 'std.human.task', {
     label: 'Complete the Patient',
+    note: 'A biller fills in the name and birth date the report left out.',
     config: {
       title: 'Complete the Patient',
       queue: QUEUE,
@@ -110,10 +141,17 @@ const resolvePatient = (): GraphDef => {
       hints: { save: 'Find or add the patient with these details.' }
     }
   });
-  g.add('completed', 'person.make', { label: 'Person Completed' });
-  g.add('matchCompleted', 'billing.match-patient', { label: 'Match the Completed Patient' });
+  g.add('completed', 'person.make', {
+    label: 'Person Completed',
+    note: 'The patient with the biller’s details.'
+  });
+  g.add('matchCompleted', 'billing.match-patient', {
+    label: 'Match the Completed Patient',
+    note: 'Matches again with the completed details.'
+  });
   g.add('stillIncomplete', 'std.flow.fail', {
     label: 'Still Not Enough to Match',
+    note: 'Stops for inspection rather than guess a patient.',
     values: { message: 'The completed patient still has no last name or birth date' }
   });
   g.ret('matched', 'resolved');

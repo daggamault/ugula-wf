@@ -26,6 +26,7 @@ import {
   isMissing,
   isText,
   joinLists,
+  type Label,
   listOf,
   lookup,
   makeList,
@@ -526,7 +527,7 @@ const reasonsPin = (what: string) => d('reasons', listOf('string'), 'Reasons', w
 
 const NON_COVERED_REASONS = ['B', 'C'];
 
-const isClassification = (g: Builder, id: string, label: string, value: string) =>
+const isClassification = (g: Builder, id: string, label: Label, value: string) =>
   isCode(g, id, label, 'tripClassification', 'entry.classification', value);
 
 const baseRateCode = (): GraphDef => {
@@ -537,11 +538,16 @@ const baseRateCode = (): GraphDef => {
       reasonsPin('Which code was chosen and why.')
     ]
   );
-  const dead = isClassification(g, 'dead', 'Pronounced Dead Before Loading', 'pronouncedDead');
+  const dead = isClassification(
+    g,
+    'dead',
+    n('Pronounced Dead Before Loading', 'Pronounced dead bills the BLS base rate.'),
+    'pronouncedDead'
+  );
   const level = select(
     g,
     'level',
-    'BLS When Pronounced Dead, Else the Level',
+    n('BLS When Pronounced Dead, Else the Level', 'The level the base rate is for.'),
     CODE.level,
     dead,
     fixed('BLS'),
@@ -550,23 +556,35 @@ const baseRateCode = (): GraphDef => {
   const kind = select(
     g,
     'kind',
-    'Emergency or Not',
+    n('Emergency or Not', 'Emergency and non-emergency have their own codes.'),
     'string',
     'entry.emergency',
     fixed('Emergency'),
     fixed('Non-Emergency')
   );
-  const groundKey = template(g, 'groundKey', 'Level and Kind', '{level} {kind}', { level, kind });
+  const groundKey = template(
+    g,
+    'groundKey',
+    n('Level and Kind', 'The Base Rate Codes row for ground, such as "ALS1 Emergency".'),
+    '{level} {kind}',
+    { level, kind }
+  );
   const key = select(
     g,
     'key',
-    'Level and Kind by Ground, Else the Aircraft',
+    n('Level and Kind by Ground, Else the Aircraft', 'The Base Rate Codes row to look up.'),
     'string',
-    isText(g, 'ground', 'By Ground', 'entry.vehicle', GROUND),
+    isText(
+      g,
+      'ground',
+      n('By Ground', 'Ground transports look up by level; aircraft by kind.'),
+      'entry.vehicle',
+      GROUND
+    ),
     groundKey,
     'entry.vehicle'
   );
-  lookup(g, 'rate', 'Base Rate Codes', BASE_RATES, key);
+  lookup(g, 'rate', n('Base Rate Codes', 'The HCPCS code for the row.'), BASE_RATES, key);
   const noTransport = isIn(
     g,
     'noTransport',
@@ -584,7 +602,7 @@ const baseRateCode = (): GraphDef => {
   const rateCode = select(
     g,
     'code',
-    'A0998 Without Transport, Else the Base Rate',
+    n('A0998 Without Transport, Else the Base Rate', 'A0998 when nobody was transported.'),
     CODE.hcpcs,
     noTransport,
     fixed('A0998'),
@@ -593,18 +611,29 @@ const baseRateCode = (): GraphDef => {
   const reason = select(
     g,
     'reason',
-    'Reason for the Code',
+    n('Reason for the Code', 'Says why this code.'),
     'string',
     noTransport,
     fixed('A0998: response and care without transport'),
-    template(g, 'rateReason', 'Base Rate Reason', 'Base rate {code}: {key}', {
-      code: rateCode,
-      key
-    })
+    template(
+      g,
+      'rateReason',
+      n('Base Rate Reason', 'Names the code and the row.'),
+      'Base rate {code}: {key}',
+      {
+        code: rateCode,
+        key
+      }
+    )
   );
   g.ret('return');
   g.wire(rateCode, 'return.code');
-  g.wire(makeList(g, 'reasons', 'Base Rate Reason Given', 'string', [reason]), 'return.reasons');
+  g.wire(
+    makeList(g, 'reasons', n('Base Rate Reason Given', 'The reason, as a list.'), 'string', [
+      reason
+    ]),
+    'return.reasons'
+  );
   return g.def;
 };
 
@@ -621,15 +650,21 @@ const lineModifiers = (): GraphDef => {
       reasonsPin('Why QL or GM is added.')
     ]
   );
-  const letters = template(g, 'letters', 'Origin Then Destination', '{origin}{destination}', {
-    origin: 'entry.originCode',
-    destination: 'entry.destinationCode'
-  });
+  const letters = template(
+    g,
+    'letters',
+    n('Origin Then Destination', 'The origin letter then the destination letter, such as RH.'),
+    '{origin}{destination}',
+    {
+      origin: 'entry.originCode',
+      destination: 'entry.destinationCode'
+    }
+  );
   node(
     g,
     'places',
     'std.convert.to-code',
-    'As a Modifier',
+    n('As a Modifier', 'The letters as a modifier.'),
     { text: letters },
     { kind: 'modifier' }
   );
@@ -638,7 +673,12 @@ const lineModifiers = (): GraphDef => {
       id: 'dead',
       label: 'Pronounced Dead Before Loading',
       reason: 'QL: pronounced dead before loading',
-      holds: isClassification(g, 'dead', 'Pronounced Dead Before Loading', 'pronouncedDead')
+      holds: isClassification(
+        g,
+        'dead',
+        n('Pronounced Dead Before Loading', 'QL marks a patient pronounced dead before loading.'),
+        'pronouncedDead'
+      )
     },
     {
       id: 'several',
@@ -647,25 +687,46 @@ const lineModifiers = (): GraphDef => {
       holds: greaterThan(
         g,
         'several',
-        'More Than One Patient Transported',
+        n('More Than One Patient Transported', 'GM marks a trip with more than one patient.'),
         'number',
-        orZero(g, 'patients', 'Patients or Zero', 'entry.patientsTransported'),
+        orZero(
+          g,
+          'patients',
+          n('Patients or Zero', 'A missing count counts as none.'),
+          'entry.patientsTransported'
+        ),
         1
       )
     }
   ];
   const modifier = (id: string, label: string, holds: Port, value: string) =>
-    select(g, id, label, CODE.modifier, holds, fixed(value));
+    select(
+      g,
+      id,
+      n(label, `Adds ${value} when its test holds.`),
+      CODE.modifier,
+      holds,
+      fixed(value)
+    );
   g.ret('return');
   g.wire(
-    makeList(g, 'modifiers', 'Modifiers', CODE.modifier, [
-      'places.code',
-      modifier('ql', 'QL When Pronounced Dead', 'dead.result', 'QL'),
-      modifier('gm', 'GM When More Than One Patient', 'several.result', 'GM')
-    ]),
+    makeList(
+      g,
+      'modifiers',
+      n('Modifiers', 'The modifiers every line gets, empty ones left out.'),
+      CODE.modifier,
+      [
+        'places.code',
+        modifier('ql', 'QL When Pronounced Dead', 'dead.result', 'QL'),
+        modifier('gm', 'GM When More Than One Patient', 'several.result', 'GM')
+      ]
+    ),
     'return.modifiers'
   );
-  g.wire(reasonsOf(g, 'reasons', 'Modifier Reasons', criteria), 'return.reasons');
+  g.wire(
+    reasonsOf(g, 'reasons', n('Modifier Reasons', 'Why QL or GM.'), criteria),
+    'return.reasons'
+  );
   return g.def;
 };
 
@@ -693,13 +754,19 @@ const coveredMiles = (): GraphDef => {
   const farther = isIn(
     g,
     'farther',
-    'Transported Farther by Choice',
+    n(
+      'Transported Farther by Choice',
+      'Medicare covers only the miles to the closest facility then.'
+    ),
     'transportReason',
     'entry.transportReason',
     codes(
       g,
       'choiceReasons',
-      'Preferred Physician or Near Family',
+      n(
+        'Preferred Physician or Near Family',
+        'Transport reasons B and C: the patient chose a farther facility.'
+      ),
       'transportReason',
       NON_COVERED_REASONS
     )
@@ -708,33 +775,49 @@ const coveredMiles = (): GraphDef => {
     g,
     'closest',
     'std.math.round',
-    'Closest Facility Up to the Tenth',
+    n('Closest Facility Up to the Tenth', 'The miles to the closest facility, rounded up.'),
     { value: 'entry.closestFacilityMiles', digits: fixed(1) },
     { direction: 'up' }
   );
-  node(g, 'extra', 'std.math.subtract', 'Loaded Minus Closest', {
-    a: 'entry.loadedMiles',
-    b: 'closest.result'
-  });
-  node(g, 'extraTenths', 'std.math.round', 'To the Tenth', {
+  node(
+    g,
+    'extra',
+    'std.math.subtract',
+    n('Loaded Minus Closest', 'The miles beyond the closest facility.'),
+    {
+      a: 'entry.loadedMiles',
+      b: 'closest.result'
+    }
+  );
+  node(g, 'extraTenths', 'std.math.round', n('To the Tenth', 'Rounded to the tenth.'), {
     value: 'extra.result',
     digits: fixed(1)
   });
-  const hasExtra = allOf(g, 'hasExtra', 'Miles Beyond the Closest Facility', [
-    farther,
-    greaterThan(
-      g,
-      'positiveExtra',
-      'Some Miles Beyond',
-      'number',
-      orZero(g, 'extraOrZero', 'Extra Miles or Zero', 'extraTenths.result'),
-      0
-    )
-  ]);
+  const hasExtra = allOf(
+    g,
+    'hasExtra',
+    n('Miles Beyond the Closest Facility', 'Farther by choice, with miles beyond.'),
+    [
+      farther,
+      greaterThan(
+        g,
+        'positiveExtra',
+        n('Some Miles Beyond', 'Only miles beyond the closest facility are split off.'),
+        'number',
+        orZero(
+          g,
+          'extraOrZero',
+          n('Extra Miles or Zero', 'Missing miles count as none.'),
+          'extraTenths.result'
+        ),
+        0
+      )
+    ]
+  );
   const nonCovered = select(
     g,
     'nonCovered',
-    'Extra Miles When Farther by Choice',
+    n('Extra Miles When Farther by Choice', 'Billed as A0888, which Medicare does not pay.'),
     'number',
     hasExtra,
     'extraTenths.result'
@@ -744,7 +827,10 @@ const coveredMiles = (): GraphDef => {
     select(
       g,
       'covered',
-      'Closest Facility Miles When Farther by Choice, Else Loaded Miles',
+      n(
+        'Closest Facility Miles When Farther by Choice, Else Loaded Miles',
+        'The miles billed on the mileage code.'
+      ),
       'number',
       hasExtra,
       'closest.result',
@@ -756,18 +842,23 @@ const coveredMiles = (): GraphDef => {
   const reason = select(
     g,
     'reason',
-    'Reason When Farther by Choice',
+    n('Reason When Farther by Choice', 'Says why some miles are not covered.'),
     'string',
     hasExtra,
     template(
       g,
       'reasonText',
-      'Non-Covered Miles Reason',
+      n('Non-Covered Miles Reason', 'Names the miles beyond.'),
       'A0888: {miles} miles beyond the closest facility, which the patient chose to pass',
       { miles: nonCovered }
     )
   );
-  g.wire(makeList(g, 'reasons', 'Non-Covered Miles Reason', 'string', [reason]), 'return.reasons');
+  g.wire(
+    makeList(g, 'reasons', n('Non-Covered Miles Reason', 'The reason, as a list.'), 'string', [
+      reason
+    ]),
+    'return.reasons'
+  );
   return g.def;
 };
 
@@ -783,23 +874,35 @@ const chargeLines = (): GraphDef => {
   ]);
   const entry = (pins: readonly PinSpec[]) =>
     Object.fromEntries(pins.map((p) => [p.name, `entry.${p.name}` as const]));
-  lookup(g, 'vehicle', 'Vehicle', VEHICLES, 'entry.transportMethod');
-  node(g, 'base', 'billing.base-rate-code', 'Base Rate Code', {
-    ...entry(SERVICE_IN),
-    vehicle: 'vehicle.value'
-  });
+  lookup(
+    g,
+    'vehicle',
+    n('Vehicle', 'Ground, fixed wing or rotor wing, from the transport method.'),
+    VEHICLES,
+    'entry.transportMethod'
+  );
+  node(
+    g,
+    'base',
+    'billing.base-rate-code',
+    n('Base Rate Code', 'The HCPCS code for the trip itself.'),
+    {
+      ...entry(SERVICE_IN),
+      vehicle: 'vehicle.value'
+    }
+  );
   node(
     g,
     'modifiers',
     'billing.line-modifiers',
-    'Line Modifiers',
+    n('Line Modifiers', 'The modifiers every line carries.'),
     entry([CLASSIFICATION_IN, ORIGIN_IN, DESTINATION_IN, PATIENTS_IN])
   );
   node(
     g,
     'miles',
     'billing.covered-miles',
-    'Covered Miles',
+    n('Covered Miles', 'Splits off miles beyond the closest facility.'),
     entry([LOADED_MILES_IN, TRANSPORT_REASON_IN, CLOSEST_MILES_IN])
   );
   const line = (id: string, label: string, lineCode: Port, units: Port | number) => {
@@ -807,7 +910,7 @@ const chargeLines = (): GraphDef => {
       g,
       id,
       'std.object.make',
-      label,
+      n(label, 'A line to price: its code, the modifiers and units.'),
       {
         code: lineCode,
         modifiers: 'modifiers.modifiers',
@@ -820,30 +923,42 @@ const chargeLines = (): GraphDef => {
   const transported = isIn(
     g,
     'transported',
-    'Transported',
+    n('Transported', 'Whether this trip bills mileage.'),
     'tripClassification',
     'entry.classification',
-    codes(g, 'transports', 'Kinds of Transport', 'tripClassification', TRANSPORT_KINDS)
+    codes(
+      g,
+      'transports',
+      n('Kinds of Transport', 'Only transports bill mileage.'),
+      'tripClassification',
+      TRANSPORT_KINDS
+    )
   );
   const billsMiles = (id: string, label: string, miles: Port) =>
-    allOf(g, id, label, [
+    allOf(g, id, n(label, 'A transport with some of these miles.'), [
       transported,
       greaterThan(
         g,
         `${id}Some`,
-        `Some ${label}`,
+        n(`Some ${label}`, 'A line needs more than zero miles.'),
         'number',
-        orZero(g, `${id}OrZero`, `${label} or Zero`, miles),
+        orZero(g, `${id}OrZero`, n(`${label} or Zero`, 'Missing miles count as none.'), miles),
         0
       )
     ]);
-  lookup(g, 'mileageCode', 'Mileage Code', MILEAGE_CODES, 'vehicle.value');
+  lookup(
+    g,
+    'mileageCode',
+    n('Mileage Code', 'The mileage HCPCS code of the vehicle.'),
+    MILEAGE_CODES,
+    'vehicle.value'
+  );
   const coveredBilled = billsMiles('coveredBilled', 'Covered Miles', 'miles.coveredMiles');
   node(
     g,
     'nonCoveredCode',
     'std.value',
-    'Non-Covered Mileage Code',
+    n('Non-Covered Mileage Code', 'A0888, mileage beyond the closest facility.'),
     {},
     {
       type: CODE.hcpcs,
@@ -858,47 +973,65 @@ const chargeLines = (): GraphDef => {
   const mileageReason = select(
     g,
     'mileageReason',
-    'Mileage Reason When Transported',
+    n('Mileage Reason When Transported', 'Says what mileage is billed.'),
     'string',
     coveredBilled,
-    template(g, 'mileageText', 'Mileage Reason', 'Mileage {code}: {miles} miles', {
-      code: 'mileageCode.value',
-      miles: 'miles.coveredMiles'
-    })
+    template(
+      g,
+      'mileageText',
+      n('Mileage Reason', 'Names the mileage code and miles.'),
+      'Mileage {code}: {miles} miles',
+      {
+        code: 'mileageCode.value',
+        miles: 'miles.coveredMiles'
+      }
+    )
   );
   g.ret('return');
   g.wire(
-    makeList(g, 'lines', 'Lines to Charge', UNPRICED, [
-      line('baseLine', 'Base Rate Line', 'base.code', 1),
-      select(
-        g,
-        'mileage',
-        'Mileage When Transported',
-        UNPRICED,
-        coveredBilled,
-        line('mileageLine', 'Mileage Line', 'mileageCode.value', 'miles.coveredMiles')
-      ),
-      select(
-        g,
-        'nonCovered',
-        'Non-Covered Mileage When Farther by Choice',
-        UNPRICED,
-        nonCoveredBilled,
-        line(
-          'nonCoveredLine',
-          'Non-Covered Mileage Line',
-          'nonCoveredCode.value',
-          'miles.nonCoveredMiles'
+    makeList(
+      g,
+      'lines',
+      n('Lines to Charge', 'The lines to price, empty ones left out.'),
+      UNPRICED,
+      [
+        line('baseLine', 'Base Rate Line', 'base.code', 1),
+        select(
+          g,
+          'mileage',
+          n('Mileage When Transported', 'The mileage line, when billed.'),
+          UNPRICED,
+          coveredBilled,
+          line('mileageLine', 'Mileage Line', 'mileageCode.value', 'miles.coveredMiles')
+        ),
+        select(
+          g,
+          'nonCovered',
+          n('Non-Covered Mileage When Farther by Choice', 'The A0888 line, when billed.'),
+          UNPRICED,
+          nonCoveredBilled,
+          line(
+            'nonCoveredLine',
+            'Non-Covered Mileage Line',
+            'nonCoveredCode.value',
+            'miles.nonCoveredMiles'
+          )
         )
-      )
-    ]),
+      ]
+    ),
     'return.lines'
   );
   g.wire(
-    joinLists(g, 'reasons', 'Reasons for the Lines', 'string', [
+    joinLists(g, 'reasons', n('Reasons for the Lines', 'Why each line is what it is.'), 'string', [
       'base.reasons',
       'modifiers.reasons',
-      makeList(g, 'mileageReasons', 'Mileage Reason Given', 'string', [mileageReason]),
+      makeList(
+        g,
+        'mileageReasons',
+        n('Mileage Reason Given', 'The mileage reason, as a list.'),
+        'string',
+        [mileageReason]
+      ),
       'miles.reasons'
     ]),
     'return.reasons'
@@ -915,21 +1048,39 @@ const priceLine = (): GraphDef => {
     ],
     { priced: exit('Priced', 'The line has its price, or none when the code has no fee.') }
   );
-  node(g, 'parts', 'std.object.break', 'Line', { object: 'entry.line' }, { fields: LINE_FIELDS });
-  node(g, 'fee', 'fee.find', 'Find Fee', { code: 'parts.code', payerId: 'entry.payerId' });
-  node(g, 'total', 'std.math.multiply', 'Fee Times Units', {
+  node(
+    g,
+    'parts',
+    'std.object.break',
+    n('Line', 'The code and units to price.'),
+    { object: 'entry.line' },
+    { fields: LINE_FIELDS }
+  );
+  node(g, 'fee', 'fee.find', n('Find Fee', 'The payer’s fee, else the agency’s standard fee.'), {
+    code: 'parts.code',
+    payerId: 'entry.payerId'
+  });
+  node(g, 'total', 'std.math.multiply', n('Fee Times Units', 'The price of all the units.'), {
     a: 'fee.unitCents',
     b: 'parts.units'
   });
-  node(g, 'cents', 'std.math.round', 'To the Cent', { value: 'total.result' });
+  node(g, 'cents', 'std.math.round', n('To the Cent', 'Rounded to the cent.'), {
+    value: 'total.result'
+  });
   const lineOf = (id: string, label: string, priced: boolean) =>
-    node(g, id, 'charge-line.make', label, {
-      code: 'parts.code',
-      modifiers: 'parts.modifiers',
-      units: 'parts.units',
-      unitCents: priced ? 'fee.unitCents' : fixed(0),
-      totalCents: priced ? 'cents.result' : fixed(0)
-    });
+    node(
+      g,
+      id,
+      'charge-line.make',
+      n(label, priced ? 'The line at its fee.' : 'The line at no price, for a biller to fix.'),
+      {
+        code: 'parts.code',
+        modifiers: 'parts.modifiers',
+        units: 'parts.units',
+        unitCents: priced ? 'fee.unitCents' : fixed(0),
+        totalCents: priced ? 'cents.result' : fixed(0)
+      }
+    );
   lineOf('priced', 'Priced Line', true);
   lineOf('unpriced', 'Line Without a Fee', false);
   g.ret('withFee', 'priced');
@@ -940,7 +1091,9 @@ const priceLine = (): GraphDef => {
   g.wire('fee.notFound', 'withoutFee.exec');
   g.wire('unpriced.line', 'withoutFee.line');
   g.wire(
-    template(g, 'noFee', 'No Fee Reason', 'No fee for {code}', { code: 'parts.code' }),
+    template(g, 'noFee', n('No Fee Reason', 'Says which code has no fee.'), 'No fee for {code}', {
+      code: 'parts.code'
+    }),
     'withoutFee.reason'
   );
   return g.def;
@@ -964,42 +1117,62 @@ const assignCharges = (): GraphDef => {
     g,
     'toCharge',
     'billing.charge-lines',
-    'Charge Lines',
+    n('Charge Lines', 'Decides the lines to charge.'),
     Object.fromEntries(CHARGE_IN.map((p) => [p.name, `entry.${p.name}` as const]))
   );
-  node(g, 'each', 'std.flow.for-each', 'Each Line', { list: 'toCharge.lines' }, { type: UNPRICED });
-  node(g, 'price', 'billing.price-line', 'Price Line', {
-    line: 'each.item',
-    payerId: 'entry.payerId'
-  });
-  node(g, 'keep', 'std.var.append', 'Keep the Line', { item: 'price.line' }, { name: 'lines' });
+  node(
+    g,
+    'each',
+    'std.flow.for-each',
+    n('Each Line', 'One line at a time.'),
+    { list: 'toCharge.lines' },
+    { type: UNPRICED }
+  );
+  node(
+    g,
+    'price',
+    'billing.price-line',
+    n('Price Line', 'Prices the line from the fee schedule.'),
+    {
+      line: 'each.item',
+      payerId: 'entry.payerId'
+    }
+  );
+  node(
+    g,
+    'keep',
+    'std.var.append',
+    n('Keep the Line', 'Adds the priced line.'),
+    { item: 'price.line' },
+    { name: 'lines' }
+  );
   node(
     g,
     'note',
     'std.var.append',
-    'Keep the Reason',
+    n('Keep the Reason', 'Adds the reason a line has no fee.'),
     { item: 'price.reason' },
     {
       name: 'reasons'
     }
   );
-  node(g, 'kept', 'std.var.get', 'Lines', {}, { name: 'lines' });
-  node(g, 'noted', 'std.var.get', 'Reasons', {}, { name: 'reasons' });
+  node(g, 'kept', 'std.var.get', n('Lines', 'Every priced line.'), {}, { name: 'lines' });
+  node(g, 'noted', 'std.var.get', n('Reasons', 'Every fee reason.'), {}, { name: 'reasons' });
   node(
     g,
     'given',
     'std.list.compact',
-    'Fee Reasons Given',
+    n('Fee Reasons Given', 'Leaves out lines that were priced.'),
     { list: 'noted.value' },
     {
       type: 'string'
     }
   );
-  node(g, 'totals', 'std.list.pluck', 'Line Totals', {
+  node(g, 'totals', 'std.list.pluck', n('Line Totals', 'The total of each line.'), {
     list: 'kept.value',
     field: fixed('totalCents')
   });
-  node(g, 'sum', 'std.math.sum', 'Total Charge', { values: 'totals.list' });
+  node(g, 'sum', 'std.math.sum', n('Total Charge', 'The claim total.'), { values: 'totals.list' });
   g.ret('return', 'charged');
   g.wire('entry.exec', 'each.exec');
   g.wire('each.body', 'price.exec');
@@ -1009,7 +1182,13 @@ const assignCharges = (): GraphDef => {
   g.wire('kept.value', 'return.lines');
   g.wire('sum.result', 'return.totalCents');
   g.wire(
-    joinLists(g, 'reasons', 'Line and Fee Reasons', 'string', ['toCharge.reasons', 'given.list']),
+    joinLists(
+      g,
+      'reasons',
+      n('Line and Fee Reasons', 'Line reasons, then fee reasons.'),
+      'string',
+      ['toCharge.reasons', 'given.list']
+    ),
     'return.reasons'
   );
   return g.def;
