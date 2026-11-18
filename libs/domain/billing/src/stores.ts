@@ -31,9 +31,19 @@ export type ClaimStore = {
   reviewClaim: (runId: string, review: ClaimReview) => Promise<'recorded' | 'superseded'>;
 };
 
+export type Diagnosis = { code: string; description: string };
+
+export type DiagnosisMatch = Diagnosis & { score: number };
+
+export type DiagnosisStore = {
+  findBillable: (codes: readonly string[]) => Promise<Diagnosis[]>;
+  search: (text: string, limit: number, emsOnly: boolean) => Promise<DiagnosisMatch[]>;
+};
+
 export type BillingStores = {
   patients: PatientStore;
   payers: PayerStore;
   fees: FeeStore;
   claims: ClaimStore;
+  diagnoses: DiagnosisStore;
 };

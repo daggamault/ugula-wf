@@ -55,9 +55,27 @@ describe('createEmbedder', () => {
     }
     const down = fakeFetch(() => new Response('overloaded', { status: 503 }));
     await assert.rejects(
-      createEmbedder({ url: 'u', fetch: down.fetch }).embed(['a']),
+      createEmbedder({ url: 'u', fetch: down.fetch, wait: async () => {} }).embed(['a']),
       /u\/embed answered 503: overloaded/
     );
+    assert.equal(down.calls.length, 4);
+  });
+
+  it('waits longer each time the service is busy, then goes on', async () => {
+    let busy = 2;
+    const waits: number[] = [];
+    const flaky = fakeFetch(() =>
+      busy-- > 0 ? new Response('busy', { status: 429 }) : json([[0.5]])
+    );
+    const embedder = createEmbedder({
+      url: 'u',
+      fetch: flaky.fetch,
+      wait: async (ms) => {
+        waits.push(ms);
+      }
+    });
+    assert.deepEqual(await embedder.embed(['a']), [[0.5]]);
+    assert.deepEqual(waits, [250, 1000]);
   });
 });
 

@@ -97,4 +97,13 @@ export {
   payerDocument,
   payerKey
 } from './payers.ts';
-export type { BillingStores, ClaimStore, FeeStore, PatientStore, PayerStore } from './stores.ts';
+export type {
+  BillingStores,
+  ClaimStore,
+  Diagnosis,
+  DiagnosisMatch,
+  DiagnosisStore,
+  FeeStore,
+  PatientStore,
+  PayerStore
+} from './stores.ts';

@@ -19,7 +19,7 @@ How billing is built on the engine: a few events start workflows, workflows are 
 | Events     | The workflow's start, shown as the event it waits for (On PCR File Received, On Encounter Created) with the event's fields as pins, or On Schedule                                                              |
 | Records    | Break and Make for Encounter, Times, Odometer, Person, Address, Scene, Destination, Payment, Insurance, Medication, Procedure, Vital Signs, Signature, Crew Member, Attachment, Claim, Coverage, Charge Line    |
 | Primitives | Constant, Contains, Equal, compare, Is Null, And/Or/Not, Select, Choose Value, math, text, time, lists (Keep Items Where, Run Rule for Each, Find Item Where), Lookup Table, Branch, Switch, For Each, Sequence |
-| Services   | Read PCR File, Read PCR, Save Encounter, Read Encounter, Find Patient, Save Patient, Find Payer, Find Fee, Save Claim                                                                                           |
+| Services   | Read PCR File, Read PCR, Save Encounter, Read Encounter, Find Patient, Save Patient, Find Payer, Find Fee, Check Diagnoses, Search Diagnoses, Save Claim                                                        |
 | Endings    | Return, Fail                                                                                                                                                                                                    |
 | Graphs     | Every rule, stage and workflow, called like a node                                                                                                                                                              |
 

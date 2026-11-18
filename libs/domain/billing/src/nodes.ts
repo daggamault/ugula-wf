@@ -1,5 +1,6 @@
 import { actionNode, branchNode, type NodeDef, pin } from '@ugula/graph';
 import { type ClaimValue, readClaim, readClaimReview } from './claims.ts';
+import { normalizeCode } from './code-sets.ts';
 import { CLAIM_TYPE } from './models.ts';
 import { nameKey } from './names.ts';
 import { type Demographics, matchPatient, readDemographics, toNewPatient } from './patients.ts';
@@ -24,6 +25,18 @@ const PATIENT_DETAILS = {
 const PATIENT_ID = { id: 'patient' } as const;
 
 const PAYER_ID = { id: 'payer' } as const;
+
+const ICD10 = { code: 'icd10' } as const;
+
+const DIAGNOSIS_MATCH = {
+  object: { code: ICD10, description: 'string', score: 'number' }
+} as const;
+
+const icd10Of = (code: string) => normalizeCode('icd10cm', code);
+
+const uniqueCodes = (codes: readonly (string | null)[]) => [
+  ...new Set(codes.filter((c): c is string => typeof c === 'string' && c.trim() !== ''))
+];
 
 const PERSON_PIN = pin('person', PATIENT_DETAILS, {
   description: 'Who the patient is: name, birth date, sex and address. A Person connects here.'
@@ -304,6 +317,93 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
         ),
         outputs: {}
       })
+    }),
+    actionNode({
+      type: 'diagnosis.check',
+      title: 'Check Diagnoses',
+      category: 'Claim',
+      description:
+        'Checks reported diagnosis codes against ICD-10-CM, written the way a claim needs them (no dot), and splits the billable ones from codes that are unknown or not specific enough to bill.',
+      level: 'basic',
+      keywords: ['icd', 'icd-10', 'diagnosis', 'valid', 'billable', 'specific'],
+      inputs: [
+        pin('codes', { list: ICD10 }, { optional: true, description: 'The codes to check.' })
+      ],
+      outputs: [
+        pin(
+          'billable',
+          { list: ICD10 },
+          { description: 'The billable codes, each once, in the order given.' }
+        ),
+        pin(
+          'rejected',
+          { list: ICD10 },
+          {
+            description:
+              'The codes as given that are not billable ICD-10-CM codes, such as a category without its last characters.'
+          }
+        )
+      ],
+      compute: async ({ codes }) => {
+        const given = uniqueCodes(codes ?? []);
+        const known = new Set(
+          given.length
+            ? (await storesOf().diagnoses.findBillable(given.map(icd10Of))).map((d) => d.code)
+            : []
+        );
+        return {
+          billable: [...new Set(given.map(icd10Of).filter((c) => known.has(c)))],
+          rejected: given.filter((c) => !known.has(icd10Of(c)))
+        };
+      }
+    }),
+    actionNode({
+      type: 'diagnosis.search',
+      title: 'Search Diagnoses',
+      category: 'Claim',
+      description:
+        'Finds the billable ICD-10-CM codes whose descriptions mean the closest to a free text, such as a complaint, an impression or a narrative, best first. It searches the codes NEMSIS lists for EMS impressions and symptoms unless asked to search them all, as an injury needs. The score runs from 0 to 1 and only ranks; a person should confirm a code found this way.',
+      level: 'basic',
+      keywords: ['icd', 'icd-10', 'diagnosis', 'search', 'narrative', 'meaning', 'embedding'],
+      inputs: [
+        pin('text', 'string', { optional: true, description: 'What to find a diagnosis for.' }),
+        pin('limit', 'integer', { default: 5, description: 'How many matches to give at most.' }),
+        pin('emsOnly', 'boolean', {
+          default: true,
+          label: 'EMS Codes Only',
+          description:
+            'Whether to search only the impressions and symptoms NEMSIS lists, rather than every billable code.'
+        })
+      ],
+      outputs: [
+        pin(
+          'matches',
+          { list: DIAGNOSIS_MATCH },
+          { description: 'The closest codes with their descriptions and scores, best first.' }
+        ),
+        pin('best', ICD10, {
+          optional: true,
+          label: 'Best Code',
+          description: 'The closest code, or nothing when the text is empty.'
+        }),
+        pin('bestScore', 'number', {
+          optional: true,
+          label: 'Best Score',
+          description: 'How close the best code is, from 0 to 1.'
+        })
+      ],
+      compute: async ({ text, limit, emsOnly }) => {
+        const query = text?.trim() ?? '';
+        const matches = query
+          ? await storesOf().diagnoses.search(
+              query,
+              Math.min(Math.max(limit as number, 1), 50),
+              emsOnly === true
+            )
+          : [];
+        const [first] = matches;
+        return { matches, best: first?.code ?? null, bestScore: first?.score ?? null };
+      }
     })
   ];
 };

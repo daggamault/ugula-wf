@@ -1,4 +1,4 @@
-import { dbEnvEntries, emailString, nonEmpty } from '@ugula/config';
+import { dbEnvEntries, emailString, nonEmpty, urlString } from '@ugula/config';
 import * as v from 'valibot';
 
 const dbConfigSchema = v.object(dbEnvEntries);
@@ -22,6 +22,8 @@ const devSeedSchema = v.object({
   DEV_SFTP_PASSWORD: nonEmpty
 });
 
+const embeddingsSchema = v.object({ EMBEDDINGS_URL: urlString });
+
 type DbConfig = v.InferOutput<typeof dbConfigSchema>;
 export type ResetConfig = v.InferOutput<typeof resetConfigSchema>;
 export type DevSeedConfig = v.InferOutput<typeof devSeedSchema>;
@@ -34,3 +36,6 @@ export const parseResetConfig = (raw: Record<string, string | undefined>): Reset
 
 export const parseDevSeedConfig = (raw: Record<string, string | undefined>): DevSeedConfig =>
   v.parse(devSeedSchema, raw);
+
+export const parseEmbeddingsConfig = (raw: Record<string, string | undefined>) =>
+  v.parse(embeddingsSchema, raw);

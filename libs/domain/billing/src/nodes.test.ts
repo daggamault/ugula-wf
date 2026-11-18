@@ -34,6 +34,7 @@ const fakeStores = () => {
   const saved: ClaimInput[] = [];
   const addresses: [string, string | null][] = [];
   const reviews: ClaimReview[] = [];
+  const searches: [string, number, boolean][] = [];
   const stores: BillingStores = {
     patients: {
       findCandidates: async (_, q) => patients.filter((p) => p.birthDate === q.birthDate),
@@ -77,9 +78,22 @@ const fakeStores = () => {
         reviews.push(review);
         return review.revision === saved.length ? 'recorded' : 'superseded';
       }
+    },
+    diagnoses: {
+      findBillable: async (codes) =>
+        codes
+          .filter((c) => ['R079', 'I214', 'N186'].includes(c))
+          .map((code) => ({ code, description: `Code ${code}` })),
+      search: async (text, limit, emsOnly) => {
+        searches.push([text, limit, emsOnly]);
+        return [
+          { code: 'R079', description: 'Chest pain, unspecified', score: 0.81 },
+          { code: 'R0789', description: 'Other chest pain', score: 0.74 }
+        ].slice(0, limit);
+      }
     }
   };
-  return { stores, patients, saved, addresses, reviews };
+  return { stores, patients, saved, addresses, reviews, searches };
 };
 
 const run = (stores: BillingStores, type: string, inputs: Values) => {
@@ -222,5 +236,51 @@ describe('Save Claim', () => {
       run(stores, 'claim.save', { claim: { ...claim, level: 'ALS9' } }),
       /ALS9 is not a level of service/
     );
+  });
+});
+
+describe('Check Diagnoses', () => {
+  it('writes codes without the dot and splits billable ones from the rest', async () => {
+    const { stores } = fakeStores();
+    assert.deepEqual(
+      (await run(stores, 'diagnosis.check', { codes: ['R07.9', 'I21', 'r079', null, 'N18.6'] }))
+        .outputs,
+      { billable: ['R079', 'N186'], rejected: ['I21'] }
+    );
+  });
+
+  it('checks nothing when no code is given', async () => {
+    const { stores } = fakeStores();
+    assert.deepEqual((await run(stores, 'diagnosis.check', { codes: null })).outputs, {
+      billable: [],
+      rejected: []
+    });
+  });
+});
+
+describe('Search Diagnoses', () => {
+  it('gives the closest codes, best first, within the limit', async () => {
+    const { stores, searches } = fakeStores();
+    assert.deepEqual(
+      (await run(stores, 'diagnosis.search', { text: ' chest pain ', limit: 1 })).outputs,
+      {
+        matches: [{ code: 'R079', description: 'Chest pain, unspecified', score: 0.81 }],
+        best: 'R079',
+        bestScore: 0.81
+      }
+    );
+    assert.deepEqual(searches, [['chest pain', 1, true]]);
+    await run(stores, 'diagnosis.search', { text: 'hip fracture', emsOnly: false });
+    assert.deepEqual(searches.at(-1), ['hip fracture', 5, false]);
+  });
+
+  it('searches nothing for an empty text', async () => {
+    const { stores, searches } = fakeStores();
+    assert.deepEqual((await run(stores, 'diagnosis.search', { text: '  ' })).outputs, {
+      matches: [],
+      best: null,
+      bestScore: null
+    });
+    assert.deepEqual(searches, []);
   });
 });

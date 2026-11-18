@@ -12,6 +12,7 @@ const rawEnv = {
   REDIS_PORT: '6379',
   REDIS_PASSWORD: 'secret',
   S3_ENDPOINT: 'http://localhost:9000',
+  EMBEDDINGS_URL: 'http://localhost:8080',
   S3_REGION: 'us-east-1',
   S3_BUCKET: 'ugula',
   S3_ACCESS_KEY: 'key',

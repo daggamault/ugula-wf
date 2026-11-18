@@ -269,6 +269,7 @@ type CodesTable = {
   code: string;
   description: string;
   is_billable: boolean;
+  embedding: ColumnType<string | null, string | null | undefined, string | null>;
 };
 
 type NemsisPickListsTable = {

@@ -38,6 +38,7 @@
     "@ugula/config": "workspace:*",
     "@ugula/db": "workspace:*",
     "@ugula/graph": "workspace:*",
+    "@ugula/inference": "workspace:*",
     "@ugula/nemsis": "workspace:*",
     "@xyflow/react": "13.0.0",
     "fast-xml-parser": "5.12.1",

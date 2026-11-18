@@ -6,6 +6,7 @@ import {
   findDefinitions,
   findTableDefinitions
 } from '@ugula/db';
+import { createEmbedder } from '@ugula/inference';
 import { publishLiveEvent } from '@ugula/live';
 import { createBlobStore, createS3Storage } from '@ugula/storage';
 import { Redis } from 'ioredis';
@@ -15,6 +16,7 @@ import { type Config, parseConfig } from './config.ts';
 import { createFeeStore } from './features/charges/queries.ts';
 import { announceClaims } from './features/claims/announce.ts';
 import { createClaimStore } from './features/claims/queries.ts';
+import { createDiagnosisStore } from './features/diagnoses/queries.ts';
 import { announceEncounters } from './features/encounters/announce.ts';
 import { createEncounterStore } from './features/encounters/queries.ts';
 import { startEventDispatcher } from './features/events/job.ts';
@@ -124,7 +126,8 @@ if (import.meta.main) {
           patients: createPatientStore(db),
           payers: createPayerStore(db),
           fees: createFeeStore(db),
-          claims: announceClaims(createClaimStore(db, boss), announce)
+          claims: announceClaims(createClaimStore(db, boss), announce),
+          diagnoses: createDiagnosisStore(db, createEmbedder({ url: config.EMBEDDINGS_URL, fetch }))
         }
       }),
       loadDefinitions: (ids) => findDefinitions(db, ids),

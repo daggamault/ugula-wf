@@ -196,6 +196,9 @@ importers:
       '@ugula/graph':
         specifier: workspace:*
         version: link:libs/kernel/graph
+      '@ugula/inference':
+        specifier: workspace:*
+        version: link:libs/platform/inference
       '@ugula/nemsis':
         specifier: workspace:*
         version: link:libs/domain/nemsis
@@ -407,6 +410,9 @@ importers:
       '@ugula/graph':
         specifier: workspace:*
         version: link:../../libs/kernel/graph
+      '@ugula/inference':
+        specifier: workspace:*
+        version: link:../../libs/platform/inference
       '@ugula/live':
         specifier: workspace:*
         version: link:../../libs/kernel/live

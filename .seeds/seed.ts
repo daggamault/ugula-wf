@@ -2,18 +2,20 @@ import { readFile } from 'node:fs/promises';
 import { hashPassword } from '@ugula/auth';
 import { createDb, type Db, saveBuiltInRoles } from '@ugula/db';
 import { refKey } from '@ugula/graph';
+import { createEmbedder, type Embedder } from '@ugula/inference';
 import { sql } from 'kysely';
 import { upsertAgency, upsertOrganization } from './agencies.ts';
 import { billingGraphs, billingTables } from './billing/index.ts';
 import { CMS_FILES, readCmsData, replaceCmsData } from './cms.ts';
-import { CODE_SETS_FILE, readCodeSets, replaceCodeSets } from './codes.ts';
-import { type DevSeedConfig, parseDbConfig } from './config.ts';
+import { CODE_SETS_FILE, embedDiagnoses, readCodeSets, replaceCodeSets } from './codes.ts';
+import { type DevSeedConfig, parseDbConfig, parseEmbeddingsConfig } from './config.ts';
 import {
   buildUpsertDevFacilities,
   buildUpsertDevPayers,
   buildUpsertDevProfile,
   upsertDevPayerAliases
 } from './dev-billing.ts';
+import { cachedEmbed, cacheFileOf, embeddingModelOf } from './embeddings.ts';
 import { buildUpsertDefaultFees, devFees } from './fees.ts';
 import {
   GEONAMES_POSTAL_CODES_FILE,
@@ -61,14 +63,21 @@ export const REFERENCE_SOURCES = [
   PICK_LISTS_FILE,
   GEONAMES_POSTAL_CODES_FILE,
   ...Object.values(CMS_FILES),
-  ...['gnis', 'codes', 'nemsis-dictionary', 'geonames-postal-codes', 'cms', 'tsv'].map(
-    (name) => new URL(`./${name}.ts`, import.meta.url)
-  )
+  ...[
+    'gnis',
+    'codes',
+    'embeddings',
+    'nemsis-dictionary',
+    'geonames-postal-codes',
+    'cms',
+    'tsv'
+  ].map((name) => new URL(`./${name}.ts`, import.meta.url))
 ];
 
-export const seedReference = async (db: Db) => {
+export const seedReference = async (db: Db, embed: Embedder['embed']) => {
   const places = readPlaces(await readFile(PLACES_FILE));
   const codeSets = readCodeSets(await readFile(CODE_SETS_FILE));
+  const embeddings = await embedDiagnoses(codeSets, embed);
   const dictionary = {
     elements: readElements(await readFile(ELEMENTS_FILE)),
     codes: readCodes(await readFile(CODES_FILE)),
@@ -83,12 +92,23 @@ export const seedReference = async (db: Db) => {
   });
   await db.transaction().execute(async (tx) => {
     await replacePlaces(tx, places);
-    await replaceCodeSets(tx, codeSets);
+    await replaceCodeSets(tx, codeSets, embeddings);
     await replaceDictionary(tx, dictionary);
     await replaceGeonamesPostalCodes(tx, postalCodes);
     await replaceCmsData(tx, cms);
   });
   await sql`analyze ${sql.join(REFERENCE_TABLES.map((name) => sql.table(name)))}`.execute(db);
+};
+
+export const EMBEDDINGS_CACHE = new URL('../.cache/', import.meta.url);
+
+export const createSeedEmbed = async (url: string) => {
+  const model = await embeddingModelOf(url, fetch);
+  const embed = await cachedEmbed(
+    createEmbedder({ url, fetch }).embed,
+    cacheFileOf(EMBEDDINGS_CACHE, model)
+  );
+  return { model, embed };
 };
 
 export const seedBilling = async (db: Db) => {
@@ -154,7 +174,8 @@ if (import.meta.main) {
   });
 
   try {
-    await seedReference(db);
+    const { embed } = await createSeedEmbed(parseEmbeddingsConfig(process.env).EMBEDDINGS_URL);
+    await seedReference(db, embed);
     await seedBilling(db);
   } finally {
     await db.destroy();

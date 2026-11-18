@@ -4,17 +4,19 @@ import { createDb, type Db } from '@ugula/db';
 import { createRecordingDb } from '@ugula/db/testing';
 import { sql } from 'kysely';
 import { migrate } from '../.migrations/migrate.ts';
-import { parseDevSeedConfig, parseResetConfig } from './config.ts';
-import { REFERENCE_SOURCES, seedBilling, seedDev, seedReference } from './seed.ts';
+import { parseDevSeedConfig, parseEmbeddingsConfig, parseResetConfig } from './config.ts';
+import { createSeedEmbed, REFERENCE_SOURCES, seedBilling, seedDev, seedReference } from './seed.ts';
 
 const MAINTENANCE_DB = 'postgres';
 
 type Connect = (database: string) => Db;
 
-const referenceFingerprint = async () => {
+type Embed = Parameters<typeof seedReference>[1];
+
+const referenceFingerprint = async (model: string) => {
   const { db, queries } = createRecordingDb();
   await migrate(db);
-  const hash = createHash('sha256');
+  const hash = createHash('sha256').update(model);
   for (const q of queries) hash.update(q.sql).update(JSON.stringify(q.parameters));
   for (const url of REFERENCE_SOURCES) hash.update(await readFile(url));
   return hash.digest('hex');
@@ -30,13 +32,19 @@ const storedFingerprint = async (admin: Db, name: string) => {
 const dropDatabase = (admin: Db, name: string) =>
   sql`drop database if exists ${sql.id(name)} with (force)`.execute(admin);
 
-const buildReference = async (admin: Db, connect: Connect, name: string, fingerprint: string) => {
+const buildReference = async (
+  admin: Db,
+  connect: Connect,
+  name: string,
+  fingerprint: string,
+  embed: Embed
+) => {
   await dropDatabase(admin, name);
   await sql`create database ${sql.id(name)}`.execute(admin);
   const db = connect(name);
   try {
     await migrate(db);
-    await seedReference(db);
+    await seedReference(db, embed);
   } finally {
     await db.destroy();
   }
@@ -64,12 +72,15 @@ if (import.meta.main) {
   const reference = config.DB_REFERENCE_NAME;
   const admin = connect(MAINTENANCE_DB);
   try {
-    const fingerprint = await referenceFingerprint();
+    const { model, embed } = await createSeedEmbed(
+      parseEmbeddingsConfig(process.env).EMBEDDINGS_URL
+    );
+    const fingerprint = await referenceFingerprint(model);
     if ((await storedFingerprint(admin, reference)) === fingerprint) {
       process.stdout.write(`${reference} is current\n`);
     } else {
       process.stdout.write(`Building ${reference}\n`);
-      await buildReference(admin, connect, reference, fingerprint);
+      await buildReference(admin, connect, reference, fingerprint, embed);
     }
     await cloneDatabase(admin, reference, config.DB_NAME);
   } finally {
