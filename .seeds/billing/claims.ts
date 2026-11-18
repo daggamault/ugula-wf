@@ -499,13 +499,22 @@ const buildClaim = (): GraphDef => {
   });
   g.add('patient', 'billing.resolve-patient', { label: 'Resolve Patient' });
   g.add('service', 'billing.service-details', { label: 'Service Details' });
-  g.add('diagnoses', 'billing.diagnoses', { label: 'Diagnoses' });
+  g.add('diagnoses', 'billing.diagnoses', {
+    label: 'Reported Diagnoses',
+    note: 'The impressions and symptoms as the report gives them.'
+  });
+  g.add('dx', 'billing.code-diagnoses', {
+    label: 'Code the Diagnoses',
+    note: 'Keeps billable codes; a coder chooses when none can be billed first.'
+  });
   g.add('ambulance', 'billing.ambulance-details', { label: 'Ambulance Details' });
   g.add('checks', 'billing.claim-checks', { label: 'Claim Checks' });
   g.wire('entry.encounter', 'checks.encounter');
   g.wire('service.serviceDate', 'checks.serviceDate');
   g.wire('service.emergency', 'checks.emergency');
-  g.wire('diagnoses.diagnoses', 'checks.diagnoses');
+  g.wire('dx.diagnoses', 'checks.diagnoses');
+  g.wire('entry.encounter', 'dx.encounter');
+  g.wire('diagnoses.diagnoses', 'dx.reported');
   g.add('places', 'billing.origin-and-destination', { label: 'Origin and Destination' });
   g.add('payers', 'billing.determine-payers', { label: 'Determine Payers' });
   g.add('primary', 'std.list.first', { label: 'Primary Coverage' });
@@ -546,7 +555,8 @@ const buildClaim = (): GraphDef => {
     g.wire(`places.${pin}`, `setPlaces.${pin}`);
   }
   g.wire('trip.pcrNumber', 'setPlaces.subject');
-  g.wire('setPlaces.settled', 'patient.exec');
+  g.wire('setPlaces.settled', 'dx.exec');
+  g.wire('dx.coded', 'patient.exec');
   g.wire('patient.resolved', 'payers.exec');
   g.wire('payers.determined', 'charges.exec');
   g.wire('payers.coverages', 'primary.list', 'claim.coverages');
@@ -573,13 +583,14 @@ const buildClaim = (): GraphDef => {
   g.wire('trip.id', 'claim.encounterId');
   g.wire('patient.patientId', 'claim.patientId');
   g.wire('service.serviceDate', 'claim.serviceDate');
-  g.wire('diagnoses.diagnoses', 'claim.diagnoses');
+  g.wire('dx.diagnoses', 'claim.diagnoses');
   g.wire('charges.lines', 'claim.lines');
   g.wire('charges.totalCents', 'claim.totalCents');
   const reasons = joinLists(g, 'reasons', 'Every Reason', 'string', [
     'classify.reasons',
     'service.reasons',
     'ambulance.reasons',
+    'dx.reasons',
     'places.reasons',
     'payers.reasons',
     'charges.reasons',
