@@ -12,7 +12,8 @@ import type {
   PlanType,
   Rurality,
   ServiceLevel,
-  Sex
+  Sex,
+  TransportReason
 } from '@ugula/billing';
 import type { StepEvent } from '@ugula/graph';
 import type { EncounterOutcome, PickList } from '@ugula/nemsis';
@@ -470,6 +471,9 @@ export type ClaimsTable = {
   loaded_miles: ColumnType<string | null, number | null, number | null>;
   origin_code: string | null;
   destination_code: string | null;
+  transport_reason: TransportReason | null;
+  condition_codes: ColumnType<string[], string[] | undefined, string[]>;
+  weight_pounds: number | null;
   total_cents: Generated<number>;
   reasons: ColumnType<string[], string[] | undefined, string[]>;
   created_at: Timestamp;

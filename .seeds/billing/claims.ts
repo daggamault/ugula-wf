@@ -58,6 +58,7 @@ const buildClaim = (): GraphDef => {
   g.add('patient', 'billing.resolve-patient', { label: 'Resolve Patient' });
   g.add('service', 'billing.service-details', { label: 'Service Details' });
   g.add('diagnoses', 'billing.diagnoses', { label: 'Diagnoses' });
+  g.add('ambulance', 'billing.ambulance-details', { label: 'Ambulance Details' });
   g.add('places', 'billing.origin-and-destination', { label: 'Origin and Destination' });
   g.add('payers', 'billing.determine-payers', { label: 'Determine Payers' });
   g.add('primary', 'std.list.first', { label: 'Primary Coverage' });
@@ -68,7 +69,16 @@ const buildClaim = (): GraphDef => {
   g.ret('notBilled', 'notBillable');
   g.ret('created', 'saved');
   g.ret('replaced', 'saved');
-  g.wire('entry.encounter', 'classify.encounter', 'service.encounter', 'diagnoses.encounter');
+  g.wire(
+    'entry.encounter',
+    'classify.encounter',
+    'service.encounter',
+    'diagnoses.encounter',
+    'ambulance.encounter'
+  );
+  for (const pin of ['transportReason', 'conditionCodes', 'weightPounds']) {
+    g.wire(`ambulance.${pin}`, `claim.${pin}`);
+  }
   g.wire('entry.encounter', 'places.encounter', 'payers.encounter');
   g.wire('trip.patient', 'patient.person');
   g.wire('entry.exec', 'billable.exec');

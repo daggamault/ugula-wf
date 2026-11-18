@@ -22,6 +22,9 @@ const CLAIM: ClaimValue = {
   originCode: 'r',
   destinationCode: 'H',
   diagnoses: ['R07.9', 'I10', 'R079'],
+  transportReason: 'a',
+  conditionCodes: ['06', '09', '06', ' '],
+  weightPounds: 180,
   coverages: [
     {
       payerName: 'Medicare',
@@ -57,6 +60,10 @@ describe('readClaim', () => {
       [c.serviceDate, c.originCode, c.destinationCode, c.diagnoses, c.totalCents, c.reasons],
       ['2026-09-14', 'R', 'H', ['R079', 'I10'], 97400, ['Emergency response']]
     );
+    assert.deepEqual(
+      [c.transportReason, c.conditionCodes, c.weightPounds],
+      ['A', ['06', '09'], 180]
+    );
     assert.deepEqual(c.lines[0], {
       code: 'A0427',
       modifiers: ['RH'],
@@ -85,9 +92,15 @@ describe('readClaim', () => {
       loadedMiles: null,
       originCode: null,
       destinationCode: null,
-      serviceDate: null
+      serviceDate: null,
+      transportReason: null,
+      conditionCodes: null,
+      weightPounds: null
     });
-    assert.deepEqual([c.lines, c.coverages, c.totalCents, c.originCode], [[], [], 0, null]);
+    assert.deepEqual(
+      [c.lines, c.coverages, c.totalCents, c.originCode, c.transportReason, c.conditionCodes],
+      [[], [], 0, null, null, []]
+    );
   });
 
   it('says what is wrong with a claim it cannot save', () => {
@@ -106,6 +119,11 @@ describe('readClaim', () => {
     wrong({ originCode: 'X', destinationCode: 'H' }, /XH is not an origin/);
     wrong({ originCode: 'R', destinationCode: null }, /R\? is not an origin/);
     wrong({ diagnoses: ['chest pain'] }, /CHEST PAIN is not an ICD-10/);
+    wrong({ transportReason: 'F' }, /F is not a transport reason/);
+    wrong({ conditionCodes: ['02'] }, /02 is not an ambulance condition/);
+    wrong({ conditionCodes: ['01', '04', '05', '06', '07', '08'] }, /at most 5 condition/);
+    wrong({ weightPounds: 180.5 }, /whole number of pounds/);
+    wrong({ weightPounds: 0 }, /whole number of pounds/);
     wrong({ totalCents: 1 }, /not the sum of the lines, 97400/);
     wrong({ lines: [line({ code: 'X1' })] }, /Line 1 has no valid/);
     wrong({ lines: [line({ modifiers: ['RHX'] })] }, /invalid modifier RHX/);

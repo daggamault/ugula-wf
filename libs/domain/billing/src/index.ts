@@ -9,13 +9,17 @@ export {
   UNIT_SCALE
 } from './charges.ts';
 export {
+  AMBULANCE_CONDITIONS,
+  CONDITION_LIMIT,
   DIAGNOSIS_LIMIT,
   ICD10_PATTERN,
   INSURED_RELATIONSHIPS,
   type InsuredRelationship,
   ORIGIN_DESTINATION_CODES,
   RELATIONSHIP_LABELS,
-  SELF
+  SELF,
+  TRANSPORT_REASONS,
+  type TransportReason
 } from './claim-details.ts';
 export {
   CLAIM_STATUS_LABELS,

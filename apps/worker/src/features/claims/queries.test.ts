@@ -20,6 +20,9 @@ const CLAIM: ClaimInput = {
   originCode: 'R',
   destinationCode: 'H',
   diagnoses: ['R079'],
+  transportReason: 'A',
+  conditionCodes: ['06'],
+  weightPounds: 180,
   coverages: [
     {
       payerId: PAYER,

@@ -43,6 +43,9 @@ export const claimDetail: ClaimDetail = {
   is_emergency: true,
   loaded_miles: '12.4',
   origin_code: null,
+  transport_reason: 'A',
+  condition_codes: ['06', '09'],
+  weight_pounds: 180,
   destination_code: null,
   reasons: ['Emergency response', 'ALS assessment performed'],
   lines: [

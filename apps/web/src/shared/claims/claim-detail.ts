@@ -1,4 +1,9 @@
-import type { ClaimStatus, Classification, InsuredRelationship } from '@ugula/billing';
+import type {
+  ClaimStatus,
+  Classification,
+  InsuredRelationship,
+  TransportReason
+} from '@ugula/billing';
 
 export type ClaimSummary = {
   id: string;
@@ -80,6 +85,9 @@ export type ClaimDetail = ClaimSummary & {
   loaded_miles: string | null;
   origin_code: string | null;
   destination_code: string | null;
+  transport_reason: TransportReason | null;
+  condition_codes: string[];
+  weight_pounds: number | null;
   reasons: string[];
   patient_id: string;
   birth_date: string | null;

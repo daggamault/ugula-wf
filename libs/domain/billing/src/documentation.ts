@@ -1,16 +1,8 @@
+import type { TransportReason } from './claim-details.ts';
+
 const SIGNATURE_STATUSES = ['signed', 'exception', 'refused', 'missing'] as const;
 
 type SignatureStatus = (typeof SIGNATURE_STATUSES)[number];
-
-const TRANSPORT_REASONS = {
-  A: 'Nearest facility for care of symptoms or complaints',
-  B: 'For the benefit of a preferred physician',
-  C: 'For the nearness of family members',
-  D: 'For a specialist or equipment',
-  E: 'Transfer to a rehabilitation facility'
-} as const;
-
-type TransportReason = keyof typeof TRANSPORT_REASONS;
 
 const MSP_ACCIDENTS = {
   none: 'No accident, injury or illness someone else pays for',

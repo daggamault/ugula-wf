@@ -81,25 +81,36 @@ const details = () =>
     .map((t) => [t.textContent, t.nextElementSibling?.textContent]);
 
 describe('ClaimDataView', () => {
-  it('shows the service date, diagnoses, modifiers and the patient', () => {
+  it('shows the service date, diagnoses, modifiers, ambulance details and the patient', () => {
     show({ origin_code: 'R', destination_code: 'H' });
     assert.deepEqual(details(), [
       ['Date of Service', 'Oct 1, 2026'],
       ['Diagnosis Codes', 'Chest pain R07.9I10'],
       ['Origin Modifier', 'Residence R'],
       ['Destination Modifier', 'Hospital H'],
+      ['Transport Reason', 'Nearest facility for care of symptoms or complaints A'],
+      [
+        'Condition Codes',
+        'Patient was transported in an emergency situation 06Ambulance service was medically necessary 09'
+      ],
+      ['Patient Weight', '180 lb'],
       ['Patient Born', 'Apr 12, 1958'],
       ['Patient Mailing Address', '1 Main St, Springfield, IL 62704']
     ]);
   });
 
-  it('lists the diagnoses in order', () => {
-    show();
+  it('lists the diagnoses and condition codes in order', () => {
+    show({ condition_codes: ['09', '02'] });
     assert.deepEqual(
-      within(screen.getByRole('list'))
-        .getAllByRole('listitem')
-        .map((li) => li.textContent),
-      ['Chest pain R07.9', 'I10']
+      screen.getAllByRole('list').map((l) =>
+        within(l)
+          .getAllByRole('listitem')
+          .map((li) => li.textContent)
+      ),
+      [
+        ['Chest pain R07.9', 'I10'],
+        ['Ambulance service was medically necessary 09', '02']
+      ]
     );
   });
 
@@ -110,12 +121,18 @@ describe('ClaimDataView', () => {
       address_line: null,
       city: null,
       state: null,
-      postal_code: null
+      postal_code: null,
+      transport_reason: null,
+      condition_codes: [],
+      weight_pounds: null
     });
     assert.deepEqual(details().slice(1), [
       ['Diagnosis Codes', '—'],
       ['Origin Modifier', '—'],
       ['Destination Modifier', '—'],
+      ['Transport Reason', '—'],
+      ['Condition Codes', '—'],
+      ['Patient Weight', '—'],
       ['Patient Born', '—'],
       ['Patient Mailing Address', '—']
     ]);

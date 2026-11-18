@@ -31,6 +31,7 @@ import {
   ODOMETER,
   orZero,
   PAYMENT,
+  PERSON,
   type Port,
   PROCEDURE,
   reasonsOf,
@@ -1250,6 +1251,69 @@ const serviceDetails = (): GraphDef => {
   return g.def;
 };
 
+const POUNDS_PER_KILOGRAM = 2.20462;
+
+const CONDITION_LIMIT = 5;
+
+const ambulanceDetails = (): GraphDef => {
+  const condition = code('ambulanceCondition');
+  const g = rule(
+    [ENCOUNTER_IN],
+    [
+      d(
+        'transportReason',
+        code('transportReason'),
+        'Transport Reason',
+        'Why the patient went to this destination, A to E, for the ambulance transport information (CR1).',
+        true
+      ),
+      d(
+        'conditionCodes',
+        listOf(condition),
+        'Condition Codes',
+        'The ambulance conditions the crew reported, each once and at most five, for the ambulance certification (CRC).'
+      ),
+      d(
+        'weightPounds',
+        'integer',
+        'Weight in Pounds',
+        'The patient weight rounded up to the whole pound, for the ambulance transport information (CR1).',
+        true
+      )
+    ]
+  );
+  breakRecord(g, 'trip', 'Encounter', ENCOUNTER, 'entry.encounter');
+  breakRecord(g, 'payment', 'Payment', PAYMENT, 'trip.payment');
+  breakRecord(g, 'patient', 'Patient', PERSON, 'trip.patient');
+  const config = { type: condition };
+  node(g, 'once', 'std.list.unique', 'Each Once', { list: 'payment.ambulanceConditions' }, config);
+  node(
+    g,
+    'five',
+    'std.list.slice',
+    'At Most Five',
+    { list: 'once.list', start: fixed(0), end: fixed(CONDITION_LIMIT) },
+    config
+  );
+  node(g, 'pounds', 'std.math.multiply', 'Kilograms to Pounds', {
+    a: 'patient.weightKg',
+    b: fixed(POUNDS_PER_KILOGRAM)
+  });
+  node(
+    g,
+    'wholePounds',
+    'std.math.round',
+    'Up to the Whole Pound',
+    { value: 'pounds.result', digits: fixed(0) },
+    { direction: 'up' }
+  );
+  g.ret('return');
+  g.wire('payment.transportReason', 'return.transportReason');
+  g.wire('five.list', 'return.conditionCodes');
+  g.wire('wholePounds.result', 'return.weightPounds');
+  return g.def;
+};
+
 const diagnoses = (): GraphDef => {
   const icd10 = code('icd10');
   const g = rule(
@@ -1393,6 +1457,12 @@ export const serviceGraphs: SeedGraph[] = [
     'Service Details',
     'The date of service, level of service, emergency status and loaded miles of an encounter, with the reasons.',
     serviceDetails()
+  ),
+  asRule(
+    'billing.ambulance-details',
+    'Ambulance Details',
+    'What the ambulance claim reports about the transport: the transport reason, the ambulance condition codes (at most five) and the patient weight in whole pounds.',
+    ambulanceDetails()
   ),
   asRule(
     'billing.diagnoses',

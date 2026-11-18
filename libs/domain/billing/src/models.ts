@@ -84,6 +84,24 @@ export const CLAIM = model(
     ),
     f('diagnoses', { list: { code: 'icd10' } }, 'Diagnoses', 'The diagnoses, primary first.'),
     f(
+      'transportReason',
+      { code: 'transportReason' },
+      'Transport Reason',
+      'Why the patient went to this destination, A to E, for the ambulance transport information (CR1).'
+    ),
+    f(
+      'conditionCodes',
+      { list: { code: 'ambulanceCondition' } },
+      'Condition Codes',
+      'Up to five ambulance conditions that certify the transport (CRC).'
+    ),
+    f(
+      'weightPounds',
+      'integer',
+      'Weight in Pounds',
+      'The patient weight, in whole pounds, for the ambulance transport information (CR1).'
+    ),
+    f(
       'coverages',
       { list: modelType(COVERAGE) },
       'Coverages',

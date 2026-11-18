@@ -1,6 +1,8 @@
 import {
+  AMBULANCE_CONDITIONS,
   CLAIM_STATUSES,
   CLASSIFICATIONS,
+  CONDITION_LIMIT,
   DIAGNOSIS_LIMIT,
   HCPCS_PATTERN,
   ICD10_PATTERN,
@@ -9,6 +11,7 @@ import {
   MODIFIER_PATTERN,
   ORIGIN_DESTINATION_CODES,
   SERVICE_LEVELS,
+  TRANSPORT_REASONS,
   UNIT_SCALE
 } from '@ugula/billing';
 import type { Database } from '@ugula/db';
@@ -42,6 +45,9 @@ const buildClaimsTable = (db: Kysely<Database>) =>
     .addColumn('loaded_miles', 'numeric')
     .addColumn('origin_code', 'text')
     .addColumn('destination_code', 'text')
+    .addColumn('transport_reason', 'text')
+    .addColumn('condition_codes', sql`text[]`, (col) => col.notNull().defaultTo(sql`'{}'`))
+    .addColumn('weight_pounds', 'integer')
     .addColumn('total_cents', 'integer', (col) => col.notNull().defaultTo(0))
     .addColumn('reasons', sql`text[]`, (col) => col.notNull().defaultTo(sql`'{}'`))
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
@@ -75,6 +81,15 @@ const buildClaimsTable = (db: Kysely<Database>) =>
       'claims_origin_destination_check',
       sql`(origin_code is null) = (destination_code is null) and origin_code in (${list(ORIGIN_CODES)}) and destination_code in (${list(DESTINATION_CODES)})`
     )
+    .addCheckConstraint(
+      'claims_transport_reason_check',
+      sql`transport_reason in (${list(Object.keys(TRANSPORT_REASONS))})`
+    )
+    .addCheckConstraint(
+      'claims_condition_codes_check',
+      sql`cardinality(condition_codes) <= ${sql.lit(CONDITION_LIMIT)} and condition_codes <@ array[${list(Object.keys(AMBULANCE_CONDITIONS))}]`
+    )
+    .addCheckConstraint('claims_weight_check', sql`weight_pounds > 0`)
     .addCheckConstraint('claims_total_check', sql`total_cents >= 0`)
     .addCheckConstraint('claims_reasons_check', sql`array_position(reasons, '') is null`);
 

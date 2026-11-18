@@ -44,7 +44,7 @@ Billers work tasks. `/tasks` is the work queue (by queue and assignee, Next Task
 
 An import page (`/imports/:id`) shows how many PCRs the file held and how many became new, revised and unchanged encounters, the claims made and their charges, and a row per PCR with its encounter, patient, outcome and claim. Uploading a file links to its import.
 
-The claim page (`/claims/:id`) is a read-only record of a claim that needs review. **Overview** shows the summary (total, classification, level of service, loaded miles), every reason the workflows gave, the encounter it bills (PCR number and revision, times, pickup and destination, narrative, a link to its import), the charge lines with their modifiers, and the payers. **Claim Data** shows the date of service, diagnoses, the origin and destination modifier and the patient's birth date and address. Every code shows as Description (code) from the `codes` table.
+The claim page (`/claims/:id`) is a read-only record of a claim that needs review. **Overview** shows the summary (total, classification, level of service, loaded miles), every reason the workflows gave, the encounter it bills (PCR number and revision, times, pickup and destination, narrative, a link to its import), the charge lines with their modifiers, and the payers. **Claim Data** shows the date of service, diagnoses, the origin and destination modifier, the transport reason, condition codes and patient weight, and the patient's birth date and address. Every code shows as Description (code) from the `codes` table.
 
 ## Workflow editor
 

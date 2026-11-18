@@ -1,4 +1,9 @@
-import { type CodeDescriptions, ORIGIN_DESTINATION_CODES } from '@ugula/billing';
+import {
+  AMBULANCE_CONDITIONS,
+  type CodeDescriptions,
+  ORIGIN_DESTINATION_CODES,
+  TRANSPORT_REASONS
+} from '@ugula/billing';
 import { formatDate } from '../format.ts';
 import { Detail, DetailList } from '../ui/detail-list.tsx';
 import { emptyValue } from '../ui/empty-state.tsx';
@@ -32,6 +37,14 @@ const pairOf = (code: string) => {
 
 export const modifierCode = (code: string) => coded(placeOf(code) ?? pairOf(code), code);
 
+const conditionCode = (code: string) =>
+  coded(
+    Object.hasOwn(AMBULANCE_CONDITIONS, code)
+      ? AMBULANCE_CONDITIONS[code as keyof typeof AMBULANCE_CONDITIONS]
+      : null,
+    code
+  );
+
 export const ClaimDataView = ({
   claim: c,
   codes
@@ -60,6 +73,29 @@ export const ClaimDataView = ({
       </Detail>
       <Detail label="Destination Modifier">
         {c.destination_code ? <CodeLabel value={modifierCode(c.destination_code)} /> : emptyValue}
+      </Detail>
+      <Detail label="Transport Reason">
+        {c.transport_reason ? (
+          <CodeLabel value={coded(TRANSPORT_REASONS[c.transport_reason], c.transport_reason)} />
+        ) : (
+          emptyValue
+        )}
+      </Detail>
+      <Detail label="Condition Codes">
+        {c.condition_codes.length ? (
+          <ul className="flex flex-col gap-1">
+            {c.condition_codes.map((code) => (
+              <li key={code}>
+                <CodeLabel value={conditionCode(code)} />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          emptyValue
+        )}
+      </Detail>
+      <Detail label="Patient Weight">
+        {c.weight_pounds === null ? emptyValue : `${c.weight_pounds} lb`}
       </Detail>
       <Detail label="Patient Born">{formatDate(c.birth_date)}</Detail>
       <Detail label="Patient Mailing Address">

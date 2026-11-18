@@ -76,3 +76,26 @@ export const isOriginDestination = (x: unknown): x is string =>
   [...x].every((c) => Object.hasOwn(ORIGIN_DESTINATION_CODES, c));
 
 export const ICD10_PATTERN = '^[A-Z][0-9][0-9A-Z]{1,5}$';
+
+export const TRANSPORT_REASONS = {
+  A: 'Nearest facility for care of symptoms or complaints',
+  B: 'For the benefit of a preferred physician',
+  C: 'For the nearness of family members',
+  D: 'For a specialist or equipment',
+  E: 'Transfer to a rehabilitation facility'
+} as const;
+
+export type TransportReason = keyof typeof TRANSPORT_REASONS;
+
+export const AMBULANCE_CONDITIONS = {
+  '01': 'Patient was admitted to a hospital',
+  '04': 'Patient was moved by stretcher',
+  '05': 'Patient was unconscious or in shock',
+  '06': 'Patient was transported in an emergency situation',
+  '07': 'Patient had to be physically restrained',
+  '08': 'Patient had visible hemorrhaging',
+  '09': 'Ambulance service was medically necessary',
+  '12': 'Patient is confined to a bed or chair'
+} as const;
+
+export const CONDITION_LIMIT = 5;

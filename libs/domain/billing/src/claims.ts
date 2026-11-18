@@ -7,12 +7,16 @@ import {
   type ServiceLevel
 } from './charges.ts';
 import {
+  AMBULANCE_CONDITIONS,
+  CONDITION_LIMIT,
   DIAGNOSIS_LIMIT,
   ICD10_PATTERN,
   INSURED_RELATIONSHIPS,
   type InsuredRelationship,
   isOriginDestination,
-  SELF
+  SELF,
+  TRANSPORT_REASONS,
+  type TransportReason
 } from './claim-details.ts';
 import { isCents, textOrNull } from './values.ts';
 
@@ -53,6 +57,9 @@ export type ClaimInput = {
   originCode: string | null;
   destinationCode: string | null;
   diagnoses: string[];
+  transportReason: TransportReason | null;
+  conditionCodes: string[];
+  weightPounds: number | null;
   coverages: ClaimCoverage[];
   lines: ClaimChargeLine[];
   totalCents: number;
@@ -74,11 +81,23 @@ type LineValue = Maybe<Omit<ClaimChargeLine, 'modifiers'>> & {
 type CoverageValue = Maybe<Omit<ClaimCoverage, 'relationship'>> & { relationship: string | null };
 
 export type ClaimValue = Maybe<
-  Omit<ClaimInput, 'classification' | 'level' | 'lines' | 'coverages' | 'diagnoses' | 'reasons'>
+  Omit<
+    ClaimInput,
+    | 'classification'
+    | 'level'
+    | 'lines'
+    | 'coverages'
+    | 'diagnoses'
+    | 'transportReason'
+    | 'conditionCodes'
+    | 'reasons'
+  >
 > & {
   classification: string | null;
   level: string | null;
   diagnoses: (string | null)[] | null;
+  transportReason: string | null;
+  conditionCodes: (string | null)[] | null;
   coverages: (CoverageValue | null)[] | null;
   lines: (LineValue | null)[] | null;
   reasons: (string | null)[] | null;
@@ -160,6 +179,32 @@ const readDiagnoses = (xs: (string | null)[] | null) => {
   return codes;
 };
 
+const TRANSPORT_REASON_CODES = Object.keys(TRANSPORT_REASONS) as TransportReason[];
+
+const readTransportReason = (x: string | null): TransportReason | null => {
+  const reason = textOrNull(x)?.toUpperCase() ?? null;
+  return reason === null
+    ? null
+    : oneOf(TRANSPORT_REASON_CODES, reason, `${reason} is not a transport reason`);
+};
+
+const readConditionCodes = (xs: (string | null)[] | null) => {
+  const codes = [...new Set(texts(xs))];
+  const bad = codes.find((c) => !Object.hasOwn(AMBULANCE_CONDITIONS, c));
+  if (bad) throw new Error(`${bad} is not an ambulance condition code`);
+  if (codes.length > CONDITION_LIMIT) {
+    throw new Error(`A claim takes at most ${CONDITION_LIMIT} condition codes`);
+  }
+  return codes;
+};
+
+const readWeight = (x: number | null) => {
+  if (x !== null && !(Number.isInteger(x) && x > 0)) {
+    throw new Error('The weight must be a whole number of pounds');
+  }
+  return x;
+};
+
 const readOriginDestination = (origin: string | null, destination: string | null) => {
   const o = textOrNull(origin)?.toUpperCase() ?? null;
   const d = textOrNull(destination)?.toUpperCase() ?? null;
@@ -193,6 +238,9 @@ export const readClaim = (c: ClaimValue): ClaimInput => {
     loadedMiles: milesOf(c.loadedMiles ?? null),
     ...readOriginDestination(c.originCode, c.destinationCode),
     diagnoses: readDiagnoses(c.diagnoses),
+    transportReason: readTransportReason(c.transportReason),
+    conditionCodes: readConditionCodes(c.conditionCodes),
+    weightPounds: readWeight(c.weightPounds ?? null),
     coverages: present(c.coverages).map(readCoverage),
     lines,
     totalCents,
