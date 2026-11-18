@@ -54,9 +54,13 @@ export const convertNodes: NodeDef[] = [
     description: 'Reads text such as "12.50" as a number.',
     level: 'basic',
     keywords: ['convert', 'parse', 'number'],
-    inputs: [pin('value', 'any', { description: 'The text or number to read.' })],
-    outputs: [pin('number', 'number', { description: 'The number.' })],
-    compute: ({ value }) => ({ number: parseNumber(value ?? null) })
+    inputs: [pin('value', 'any', { optional: true, description: 'The text or number to read.' })],
+    outputs: [
+      pin('number', 'number', {
+        description: 'The number, or nothing when the value is empty.'
+      })
+    ],
+    compute: ({ value }) => ({ number: value === null ? null : parseNumber(value) })
   }),
   pureNode({
     type: 'std.convert.to-text',

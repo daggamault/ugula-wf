@@ -2,6 +2,7 @@ import { CLAIM, CLASSIFICATION_LABELS, CLASSIFICATIONS } from '@ugula/billing';
 import type { GraphDef } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import {
+  allOf,
   asStage,
   asWorkflow,
   breakRecord,
@@ -14,6 +15,7 @@ import {
   ID,
   isCode,
   isIn,
+  isMissing,
   joinLists,
   listOf,
   n,
@@ -219,6 +221,107 @@ const settleClassification = (): GraphDef => {
   return g.def;
 };
 
+const TRANSPORTS = ['emergency', 'scheduled'];
+
+const settleMiles = (): GraphDef => {
+  const g = stage(
+    [
+      d('classification', CODE.classification, 'Classification', 'What kind of trip it was.'),
+      d('loadedMiles', 'number', 'Loaded Miles', 'The miles the rules found, if any.', true),
+      d('subject', 'string', 'Subject', 'What the trip is, such as the PCR number.', true),
+      d('reasons', listOf('string'), 'Reasons', 'Why the trip was billed this way.')
+    ],
+    [
+      d(
+        'loadedMiles',
+        'number',
+        'Loaded Miles',
+        'Miles with the patient on board, when billed.',
+        true
+      )
+    ],
+    { settled: exit('Settled', 'A transport has its miles, from the report or a biller.') },
+    [{ name: 'miles', type: 'number', default: null }]
+  );
+  g.add('found', 'std.var.set', {
+    label: 'Remember the Miles Found',
+    note: 'Starts from the odometer or narrative miles.',
+    config: { name: 'miles' }
+  });
+  g.add('missing', 'std.flow.branch', {
+    label: 'Transport Without Miles',
+    note: 'A transport needs loaded miles on the claim; a biller enters them when the report has none.'
+  });
+  allOf(g, 'needsMiles', n('Transport Without Miles', 'Transported, and no miles found.'), [
+    isIn(
+      g,
+      'transported',
+      n('Transported', 'Only transports bill mileage.'),
+      'tripClassification',
+      'entry.classification',
+      codes(
+        g,
+        'transportKinds',
+        n('Kinds of Transport', 'Emergency and scheduled.'),
+        'tripClassification',
+        TRANSPORTS
+      )
+    ),
+    isMissing(
+      g,
+      'noMiles',
+      n('No Miles Found', 'Neither the odometer nor the narrative gave miles.'),
+      'entry.loadedMiles'
+    )
+  ]);
+  g.add('ask', 'std.human.task', {
+    label: 'Enter the Loaded Miles',
+    note: 'A biller finds the miles in the run sheet, CAD or a map.',
+    config: {
+      title: 'Enter the Loaded Miles',
+      queue: QUEUE,
+      instructions:
+        'The report has no odometer readings and the narrative gives no miles. Find the miles the patient was on board, from the CAD record, the run sheet or a map from the pickup to the destination, and enter them. CMS wants tenths under 100 miles and whole miles from 100, rounded up.',
+      fields: [
+        {
+          name: 'miles',
+          type: 'number',
+          label: 'Loaded Miles',
+          min: 0.1,
+          max: 1000,
+          required: ['enter']
+        }
+      ],
+      outcomes: ['enter'],
+      hints: { enter: 'Bill these miles.' }
+    }
+  });
+  g.add('entered', 'std.var.set', {
+    label: 'Remember the Miles Entered',
+    note: 'The biller’s miles replace the missing ones.',
+    config: { name: 'miles' }
+  });
+  g.add('miles', 'std.var.get', {
+    label: 'Loaded Miles',
+    note: 'Found or entered.',
+    config: { name: 'miles' }
+  });
+  g.ret('return', 'settled');
+  g.wire('miles.value', 'return.loadedMiles');
+  g.wire('entry.exec', 'found.exec');
+  g.wire('entry.loadedMiles', 'found.value');
+  g.wire('found.then', 'missing.exec');
+  g.wire('needsMiles.result', 'missing.condition');
+  g.wire('missing.false', 'return.exec');
+  g.wire('missing.true', 'ask.exec');
+  g.wire('entry.subject', 'ask.subject');
+  g.wire('entry.reasons', 'ask.context');
+  g.wire('ask.enter', 'entered.exec');
+  g.wire('ask.miles', 'entered.value');
+  g.wire('entered.then', 'return.exec');
+  return g.def;
+};
+
 const buildClaim = (): GraphDef => {
   const g = stage(
     [d('encounter', T.encounter, 'Encounter', 'The encounter to bill.')],
@@ -247,6 +350,10 @@ const buildClaim = (): GraphDef => {
     note: 'A biller classifies the trip when the rules could not.'
   });
   g.add('billable', 'std.flow.branch', { label: 'Is Billable' });
+  g.add('miles', 'billing.settle-miles', {
+    label: 'Settle the Miles',
+    note: 'A biller enters the miles when a transport has none.'
+  });
   g.add('patient', 'billing.resolve-patient', { label: 'Resolve Patient' });
   g.add('service', 'billing.service-details', { label: 'Service Details' });
   g.add('diagnoses', 'billing.diagnoses', { label: 'Diagnoses' });
@@ -285,7 +392,12 @@ const buildClaim = (): GraphDef => {
   g.wire('settle.settled', 'billable.exec');
   g.wire('settle.billable', 'billable.condition');
   g.wire('billable.false', 'notBilled.exec');
-  g.wire('billable.true', 'patient.exec');
+  g.wire('billable.true', 'miles.exec');
+  g.wire('settle.classification', 'miles.classification');
+  g.wire('service.loadedMiles', 'miles.loadedMiles');
+  g.wire('trip.pcrNumber', 'miles.subject');
+  g.wire('service.reasons', 'miles.reasons');
+  g.wire('miles.settled', 'patient.exec');
   g.wire('patient.resolved', 'payers.exec');
   g.wire('payers.determined', 'charges.exec');
   g.wire('payers.coverages', 'primary.list', 'claim.coverages');
@@ -300,11 +412,12 @@ const buildClaim = (): GraphDef => {
   );
   g.wire('trip.transportMethod', 'charges.transportMethod');
   g.wire('trip.patientsTransported', 'charges.patientsTransported');
-  g.wire('payment.transportReason', 'charges.transportReason');
+  g.wire('ambulance.transportReason', 'charges.transportReason');
   g.wire('payment.closestFacilityMiles', 'charges.closestFacilityMiles');
-  for (const pin of ['level', 'emergency', 'loadedMiles']) {
+  for (const pin of ['level', 'emergency']) {
     g.wire(`service.${pin}`, `charges.${pin}`, `claim.${pin}`);
   }
+  g.wire('miles.loadedMiles', 'charges.loadedMiles', 'claim.loadedMiles');
   for (const pin of ['originCode', 'destinationCode']) {
     g.wire(`places.${pin}`, `charges.${pin}`, `claim.${pin}`);
   }
@@ -317,6 +430,7 @@ const buildClaim = (): GraphDef => {
   const reasons = joinLists(g, 'reasons', 'Every Reason', 'string', [
     'classify.reasons',
     'service.reasons',
+    'ambulance.reasons',
     'places.reasons',
     'payers.reasons',
     'charges.reasons',
@@ -388,6 +502,12 @@ export const claimGraphs: SeedGraph[] = [
     'Settle the Trip',
     'Keeps the kind of trip the rules decided, or asks a biller to classify the trip when the rules could not decide, so a trip is never billed or dropped on a guess.',
     settleClassification()
+  ),
+  asStage(
+    'billing.settle-miles',
+    'Settle the Miles',
+    'Keeps the loaded miles the rules found, or asks a biller to enter them when a transport has none, since a transport claim needs its mileage.',
+    settleMiles()
   ),
   asStage(
     'billing.build-claim',

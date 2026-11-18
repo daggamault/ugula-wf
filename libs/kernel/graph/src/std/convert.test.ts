@@ -29,6 +29,7 @@ describe('conversion nodes', () => {
   it('converts between representations', async () => {
     assert.deepEqual(await out('std.convert.to-number', { value: '12.50' }), { number: 12.5 });
     assert.deepEqual(await out('std.convert.to-number', { value: -3 }), { number: -3 });
+    assert.deepEqual(await out('std.convert.to-number', { value: null }), { number: null });
     await assert.rejects(() => out('std.convert.to-number', { value: 'x' }), /Cannot convert/);
     await assert.rejects(() => out('std.convert.to-number', { value: ' ' }), /Cannot convert/);
     assert.deepEqual(await out('std.convert.to-text', { value: 3 }), { text: '3' });

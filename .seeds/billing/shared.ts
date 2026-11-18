@@ -43,6 +43,8 @@ export const SIGNATURE = encounterModel('signature');
 
 export const ADDRESS = encounterModel('address');
 
+export const VITAL = encounterModel('vital');
+
 export const TRANSPORT_KINDS = ['emergency', 'scheduled'];
 
 export const listOf = (type: ValueType): ValueType => ({ list: type });
@@ -64,6 +66,7 @@ export const T = {
   insurance: modelType(INSURANCE),
   medication: modelType(MEDICATION),
   procedure: modelType(PROCEDURE),
+  vital: modelType(VITAL),
   signature: modelType(SIGNATURE),
   claim: modelType(CLAIM),
   coverage: modelType(COVERAGE),

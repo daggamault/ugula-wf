@@ -241,6 +241,7 @@ export const sampleProblems = async (
     const service = await run('billing.service-details', { encounter });
     const places = await run('billing.origin-and-destination', { encounter });
     const payment = field(encounter, 'payment');
+    const ambulance = await run('billing.ambulance-details', { encounter });
     const charges = await run('billing.charge-lines', {
       classification: trip.classification ?? null,
       level: service.level ?? null,
@@ -250,7 +251,7 @@ export const sampleProblems = async (
       destinationCode: places.destinationCode ?? null,
       transportMethod: field(encounter, 'transportMethod') ?? null,
       patientsTransported: field(encounter, 'patientsTransported') ?? null,
-      transportReason: field(payment, 'transportReason') ?? null,
+      transportReason: ambulance.transportReason ?? null,
       closestFacilityMiles: field(payment, 'closestFacilityMiles') ?? null
     });
     const order = await run('billing.billing-order', {
