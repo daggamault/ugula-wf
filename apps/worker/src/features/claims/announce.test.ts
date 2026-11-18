@@ -15,6 +15,7 @@ const REVIEW: ClaimReview = {
 const announcing = (reviewOutcome: 'recorded' | 'superseded') => {
   const announced: LiveEvent[] = [];
   const inner: ClaimStore = {
+    findClaim: async () => null,
     saveClaim: async () => ({ id: 'c1', revision: 1, outcome: 'created' }),
     reviewClaim: async () => reviewOutcome
   };

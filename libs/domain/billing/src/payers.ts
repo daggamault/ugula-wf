@@ -55,6 +55,14 @@ export const payerKey = (name: string) =>
 
 export type DirectoryPayer = { id: string; name: string; claimFiling: string };
 
+export type Payer = DirectoryPayer & {
+  payerCode: string;
+  filingLimitDays: number | null;
+  correctionMethod: CorrectionMethod | null;
+  appealDays: number | null;
+  planType: PlanType | null;
+};
+
 export type PayerCandidate = DirectoryPayer & { similarity: number };
 
 export const payerDocument = ({ name, claimFiling }: Omit<DirectoryPayer, 'id'>) =>

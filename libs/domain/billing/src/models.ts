@@ -1,7 +1,5 @@
 import { type Model, type ModelField, modelType, type ValueType } from '@ugula/graph';
 
-const CATEGORY = 'Claim';
-
 const f = (name: string, type: ValueType, label: string, description: string): ModelField => ({
   name,
   type,
@@ -13,14 +11,16 @@ const model = (
   key: string,
   name: string,
   title: string,
+  category: string,
   description: string,
   fields: ModelField[]
-): Model => ({ key, name, title, category: CATEGORY, description, fields });
+): Model => ({ key, name, title, category, description, fields });
 
 export const CHARGE_LINE = model(
   'charge-line',
   'line',
   'Charge Line',
+  'Claim',
   'one charge on a claim: the HCPCS code, its modifiers, units and price',
   [
     f('code', { code: 'hcpcs' }, 'HCPCS Code', 'The HCPCS code charged.'),
@@ -35,6 +35,7 @@ export const COVERAGE = model(
   'coverage',
   'coverage',
   'Coverage',
+  'Claim',
   'one payer billed for a claim, and who holds the policy',
   [
     f('payerId', { id: 'payer' }, 'Payer', 'The payer in the directory, when one matched.'),
@@ -61,8 +62,16 @@ export const CLAIM = model(
   'claim',
   'claim',
   'Claim',
+  'Claim',
   'a claim for one encounter: what was done, who pays and what it costs',
   [
+    f('id', { id: 'claim' }, 'Claim', 'The claim, once saved.'),
+    f(
+      'revision',
+      'integer',
+      'Revision',
+      'Which version of the claim this is, 1 for the first; a review is for one revision.'
+    ),
     f('encounterId', { id: 'encounter' }, 'Encounter', 'The encounter billed.'),
     f('patientId', { id: 'patient' }, 'Patient', 'The patient billed for.'),
     f(
@@ -115,4 +124,93 @@ export const CLAIM = model(
 
 export const CLAIM_TYPE = modelType(CLAIM);
 
-export const billingModels: Model[] = [CLAIM, COVERAGE, CHARGE_LINE];
+const PATIENT_ADDRESS = model(
+  'patient-address',
+  'address',
+  'Patient Address',
+  'Patient',
+  "where a patient lives, as the agency's patient record holds it",
+  [
+    f('line', 'string', 'Street Address', 'The street address.'),
+    f('city', 'string', 'City', 'The city.'),
+    f('state', 'string', 'State', 'The two-letter state code.'),
+    f('postalCode', 'string', 'ZIP Code', 'The ZIP code, five or nine digits.')
+  ]
+);
+
+export const PATIENT = model(
+  'patient',
+  'patient',
+  'Patient',
+  'Patient',
+  "one of the agency's patients: name, birth date, sex and home address",
+  [
+    f('id', { id: 'patient' }, 'Patient', 'The patient.'),
+    f('firstName', 'string', 'First Name', 'The first name.'),
+    f('lastName', 'string', 'Last Name', 'The last name.'),
+    f('birthDate', 'string', 'Birth Date', 'The date of birth, as YYYY-MM-DD.'),
+    f('sex', 'string', 'Sex', 'F for female, M for male or U for unknown, when known.'),
+    f('address', modelType(PATIENT_ADDRESS), 'Home Address', 'Where the patient lives.')
+  ]
+);
+
+export const PATIENT_TYPE = modelType(PATIENT);
+
+export const PAYER = model(
+  'payer',
+  'payer',
+  'Payer',
+  'Payer',
+  "a payer in the agency's directory: how it is billed and its time limits",
+  [
+    f('id', { id: 'payer' }, 'Payer', 'The payer.'),
+    f('name', 'string', 'Name', 'The payer name in the directory.'),
+    f(
+      'payerCode',
+      'string',
+      'Payer Code',
+      'The X12 payer ID the clearinghouse routes claims to the payer by.'
+    ),
+    f(
+      'claimFiling',
+      'string',
+      'Claim Filing',
+      'How the payer is billed, such as MB for Medicare Part B or CI for commercial.'
+    ),
+    f(
+      'filingLimitDays',
+      'integer',
+      'Filing Limit in Days',
+      'How many days after the service date the payer takes a claim, when it has a limit.'
+    ),
+    f(
+      'correctionMethod',
+      'string',
+      'Correction Method',
+      'How a claim already decided is corrected, when known: replacement for a replacement claim, reopening for a Medicare reopening request.'
+    ),
+    f(
+      'appealDays',
+      'integer',
+      'Appeal Limit in Days',
+      'How many days after a decision the payer takes an appeal, when it has a limit.'
+    ),
+    f(
+      'planType',
+      'string',
+      'Plan Type',
+      'How the plan is funded, when known: fully_insured, self_funded (ERISA) or government.'
+    )
+  ]
+);
+
+export const PAYER_TYPE = modelType(PAYER);
+
+export const billingModels: Model[] = [
+  CLAIM,
+  COVERAGE,
+  CHARGE_LINE,
+  PATIENT,
+  PATIENT_ADDRESS,
+  PAYER
+];

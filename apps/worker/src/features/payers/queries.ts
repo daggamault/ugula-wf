@@ -1,6 +1,8 @@
-import { type DirectoryPayer, type PayerStore, payerKey } from '@ugula/billing';
+import { type DirectoryPayer, type Payer, type PayerStore, payerKey } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
+import { isUuid } from '../../shared/ids.ts';
+import { runAgency } from '../../shared/tenancy.ts';
 
 type PayerRow = { id: string; name: string; claim_filing: string };
 
@@ -17,7 +19,35 @@ const payerOf = (p: PayerRow): DirectoryPayer => ({
 });
 
 export const createPayerStore = (db: Kysely<Database>): PayerStore => ({
-  findPayer: async (runId, name) => {
+  findPayer: async (runId, payerId) => {
+    if (!isUuid(payerId)) return null;
+    const row = await db
+      .selectFrom('payers')
+      .select([
+        'id',
+        'name',
+        'payer_code',
+        'claim_filing',
+        'filing_limit_days',
+        'correction_method',
+        'appeal_days',
+        'plan_type'
+      ])
+      .where('id', '=', payerId)
+      .where('agency_id', '=', runAgency(db, runId))
+      .executeTakeFirst();
+    return row
+      ? ({
+          ...payerOf(row),
+          payerCode: row.payer_code,
+          filingLimitDays: row.filing_limit_days,
+          correctionMethod: row.correction_method,
+          appealDays: row.appeal_days,
+          planType: row.plan_type
+        } satisfies Payer)
+      : null;
+  },
+  matchPayer: async (runId, name) => {
     const key = payerKey(name);
     if (!key) return { known: null, similar: [] };
     const { rows: known } = await sql<PayerRow>`

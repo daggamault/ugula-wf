@@ -1,9 +1,15 @@
 import { actionNode, branchNode, type NodeDef, pin } from '@ugula/graph';
 import { type ClaimValue, readClaim, readClaimReview } from './claims.ts';
 import { normalizeCode } from './code-sets.ts';
-import { CLAIM_TYPE } from './models.ts';
+import { CLAIM_TYPE, PATIENT_TYPE, PAYER_TYPE } from './models.ts';
 import { nameKey } from './names.ts';
-import { type Demographics, matchPatient, readDemographics, toNewPatient } from './patients.ts';
+import {
+  type Demographics,
+  matchPatient,
+  type Patient,
+  readDemographics,
+  toNewPatient
+} from './patients.ts';
 import type { BillingStores } from './stores.ts';
 import { recordOf } from './values.ts';
 
@@ -25,6 +31,8 @@ const PATIENT_DETAILS = {
 const PATIENT_ID = { id: 'patient' } as const;
 
 const PAYER_ID = { id: 'payer' } as const;
+
+const CLAIM_ID = { id: 'claim' } as const;
 
 const ICD10 = { code: 'icd10' } as const;
 
@@ -56,6 +64,23 @@ const demographicsOf = (person: unknown): Demographics => {
     postalCode: a.postalCode
   });
 };
+
+const readExits = (noun: string) => ({
+  found: { label: 'Found', description: `The ${noun} exists; its fields are on the outputs.` },
+  notFound: {
+    label: 'Not Found',
+    description: `No ${noun} has this ID in the agency, so the outputs are empty.`
+  }
+});
+
+const patientRecord = (p: Patient) => ({
+  id: p.id,
+  firstName: p.firstName,
+  lastName: p.lastName,
+  birthDate: p.birthDate,
+  sex: p.gender,
+  address: { line: p.addressLine, city: p.city, state: p.state, postalCode: p.postalCode }
+});
 
 const CANDIDATE = {
   object: { patientId: PATIENT_ID, name: 'string', birthDate: 'string' }
@@ -192,7 +217,7 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
         notFound: { label: 'Not Found', description: 'No directory payer is like this name.' }
       },
       compute: async ({ name }, _, ctx) => {
-        const { known, similar } = await storesOf().payers.findPayer(ctx.runId, name);
+        const { known, similar } = await storesOf().payers.matchPayer(ctx.runId, name);
         if (known) {
           return {
             exit: 'found',
@@ -210,6 +235,43 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
                 }))
               }
             }
+          : { exit: 'notFound', outputs: {} };
+      }
+    }),
+    branchNode({
+      type: 'patient.read',
+      title: 'Read Patient',
+      category: 'Patient',
+      description: "Reads one of the agency's patients as it stands now.",
+      level: 'basic',
+      keywords: ['load', 'patient', 'find', 'demographics', 'address'],
+      inputs: [
+        pin('patientId', PATIENT_ID, { label: 'Patient', description: 'The patient to read.' })
+      ],
+      outputs: [pin('patient', PATIENT_TYPE, { description: 'The patient, field by field.' })],
+      exits: readExits('patient'),
+      compute: async ({ patientId }, _, ctx) => {
+        const found = await storesOf().patients.findPatient(ctx.runId, patientId);
+        return found
+          ? { exit: 'found', outputs: { patient: patientRecord(found) } }
+          : { exit: 'notFound', outputs: {} };
+      }
+    }),
+    branchNode({
+      type: 'payer.read',
+      title: 'Read Payer',
+      category: 'Payer',
+      description:
+        "Reads a payer in the agency's directory: how it is billed and how long it takes claims and appeals.",
+      level: 'basic',
+      keywords: ['load', 'payer', 'insurance', 'directory', 'filing limit'],
+      inputs: [pin('payerId', PAYER_ID, { label: 'Payer', description: 'The payer to read.' })],
+      outputs: [pin('payer', PAYER_TYPE, { description: 'The payer, field by field.' })],
+      exits: readExits('payer'),
+      compute: async ({ payerId }, _, ctx) => {
+        const found = await storesOf().payers.findPayer(ctx.runId, payerId);
+        return found
+          ? { exit: 'found', outputs: { payer: found } }
           : { exit: 'notFound', outputs: {} };
       }
     }),
@@ -252,7 +314,7 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
       effect: true,
       inputs: [pin('claim', CLAIM_TYPE, { description: 'The claim to save.' })],
       outputs: [
-        pin('claimId', { id: 'claim' }, { label: 'Claim', description: 'The claim saved.' }),
+        pin('claimId', CLAIM_ID, { label: 'Claim', description: 'The claim saved.' }),
         pin('revision', 'integer', {
           description:
             'Which version of the claim this is, 1 for the first; a review is for one revision.'
@@ -268,6 +330,24 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
       }
     }),
     branchNode({
+      type: 'claim.read',
+      title: 'Read Claim',
+      category: 'Claim',
+      description:
+        'Reads a saved claim as it stands now: its latest revision, with its payers, charge lines and diagnoses.',
+      level: 'basic',
+      keywords: ['load', 'claim', 'find', 'revision'],
+      inputs: [pin('claimId', CLAIM_ID, { label: 'Claim', description: 'The claim to read.' })],
+      outputs: [pin('claim', CLAIM_TYPE, { description: 'The claim, field by field.' })],
+      exits: readExits('claim'),
+      compute: async ({ claimId }, _, ctx) => {
+        const found = await storesOf().claims.findClaim(ctx.runId, claimId);
+        return found
+          ? { exit: 'found', outputs: { claim: found } }
+          : { exit: 'notFound', outputs: {} };
+      }
+    }),
+    branchNode({
       type: 'claim.review',
       title: 'Record Claim Review',
       category: 'Claim',
@@ -277,7 +357,7 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
       keywords: ['claim', 'review', 'approve', 'hold', 'biller', 'clearinghouse'],
       effect: true,
       inputs: [
-        pin('claimId', { id: 'claim' }, { label: 'Claim', description: 'The claim reviewed.' }),
+        pin('claimId', CLAIM_ID, { label: 'Claim', description: 'The claim reviewed.' }),
         pin('revision', 'integer', {
           description: 'The revision of the claim the biller reviewed.'
         }),

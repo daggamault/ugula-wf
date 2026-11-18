@@ -1,7 +1,8 @@
-import type { ClaimInput, ClaimStore } from '@ugula/billing';
+import type { ClaimInput, ClaimStore, InsuredRelationship } from '@ugula/billing';
 import { type Database, sqlExecutor } from '@ugula/db';
 import { cancel, enqueueRuns, type RunQueueClient } from '@ugula/run-queue';
 import { type Kysely, sql } from 'kysely';
+import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { isUuid } from '../../shared/ids.ts';
 import { runAgency } from '../../shared/tenancy.ts';
 
@@ -48,7 +49,99 @@ const supersededReviews = (
     )
     .execute();
 
+const numberOrNull = (x: string | number | null) => (x === null ? null : Number(x));
+
 export const createClaimStore = (db: Kysely<Database>, boss: RunQueueClient): ClaimStore => ({
+  findClaim: async (runId, claimId) => {
+    if (!isUuid(claimId)) return null;
+    const c = await db
+      .selectFrom('claims as c')
+      .select((eb) => [
+        'c.id',
+        'c.revision',
+        'c.encounter_id',
+        'c.patient_id',
+        'c.classification',
+        'c.service_date',
+        'c.level',
+        'c.is_emergency',
+        'c.loaded_miles',
+        'c.origin_code',
+        'c.destination_code',
+        'c.transport_reason',
+        'c.condition_codes',
+        'c.weight_pounds',
+        'c.total_cents',
+        'c.reasons',
+        sql<string[]>`array(${eb
+          .selectFrom('claim_diagnoses as d')
+          .select('d.code')
+          .whereRef('d.claim_id', '=', 'c.id')
+          .orderBy('d.position')})`.as('diagnoses'),
+        jsonArrayFrom(
+          eb
+            .selectFrom('claim_coverages as cc')
+            .select([
+              'cc.payer_id',
+              'cc.payer_name',
+              'cc.member_id',
+              'cc.group_id',
+              'cc.relationship',
+              'cc.insured_first_name',
+              'cc.insured_last_name'
+            ])
+            .whereRef('cc.claim_id', '=', 'c.id')
+            .orderBy('cc.position')
+        ).as('coverages'),
+        jsonArrayFrom(
+          eb
+            .selectFrom('claim_lines as l')
+            .select(['l.code', 'l.modifiers', 'l.units', 'l.unit_cents', 'l.total_cents'])
+            .whereRef('l.claim_id', '=', 'c.id')
+            .orderBy('l.position')
+        ).as('lines')
+      ])
+      .where('c.id', '=', claimId)
+      .where('c.agency_id', '=', runAgency(db, runId))
+      .executeTakeFirst();
+    return c
+      ? {
+          id: c.id,
+          revision: c.revision,
+          encounterId: c.encounter_id,
+          patientId: c.patient_id,
+          classification: c.classification,
+          serviceDate: c.service_date,
+          level: c.level,
+          emergency: c.is_emergency,
+          loadedMiles: numberOrNull(c.loaded_miles),
+          originCode: c.origin_code,
+          destinationCode: c.destination_code,
+          diagnoses: c.diagnoses,
+          transportReason: c.transport_reason,
+          conditionCodes: c.condition_codes,
+          weightPounds: c.weight_pounds,
+          coverages: c.coverages.map((cc) => ({
+            payerId: cc.payer_id,
+            payerName: cc.payer_name,
+            memberId: cc.member_id,
+            groupId: cc.group_id,
+            relationship: cc.relationship as InsuredRelationship,
+            insuredFirstName: cc.insured_first_name,
+            insuredLastName: cc.insured_last_name
+          })),
+          lines: c.lines.map((l) => ({
+            code: l.code,
+            modifiers: l.modifiers,
+            units: Number(l.units),
+            unitCents: l.unit_cents,
+            totalCents: l.total_cents
+          })),
+          totalCents: c.total_cents,
+          reasons: c.reasons
+        }
+      : null;
+  },
   saveClaim: (runId, claim) =>
     db.transaction().execute(async (tx) => {
       if (!isUuid(claim.encounterId))

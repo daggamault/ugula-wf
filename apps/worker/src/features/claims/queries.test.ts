@@ -57,6 +57,67 @@ const queue = () => {
 const STALE_RUN = '0195f2a4-0000-7000-8000-000000000009';
 
 describe('createClaimStore', () => {
+  it('reads a claim in the run agency with its payers, lines and diagnoses in order', async () => {
+    const { db, queries } = createRecordingDb(() => [
+      {
+        id: CLAIM_ID,
+        revision: 2,
+        encounter_id: ENCOUNTER,
+        patient_id: PATIENT,
+        classification: 'emergency',
+        service_date: '2026-09-14',
+        level: 'ALS1',
+        is_emergency: true,
+        loaded_miles: '11.6',
+        origin_code: 'R',
+        destination_code: 'H',
+        transport_reason: 'A',
+        condition_codes: ['06'],
+        weight_pounds: 180,
+        total_cents: 80000,
+        reasons: ['Emergency response'],
+        diagnoses: ['R079'],
+        coverages: [
+          {
+            payer_id: PAYER,
+            payer_name: 'Medicare',
+            member_id: 'M1',
+            group_id: null,
+            relationship: '18',
+            insured_first_name: null,
+            insured_last_name: null
+          }
+        ],
+        lines: [
+          { code: 'A0427', modifiers: ['RH'], units: 1, unit_cents: 80000, total_cents: 80000 }
+        ]
+      }
+    ]);
+    const store = createClaimStore(db, queue().boss);
+    assert.deepEqual(await store.findClaim('r1', CLAIM_ID), {
+      ...CLAIM,
+      id: CLAIM_ID,
+      revision: 2
+    });
+    assert.equal(await store.findClaim('r1', 'c-1'), null);
+    assert.equal(queries.length, 1);
+    const sql = queries[0]?.sql ?? '';
+    assert.ok(sql.includes('order by "d"."position"'));
+    assert.ok(sql.includes('order by "cc"."position"'));
+    assert.ok(sql.includes('order by "l"."position"'));
+    assert.ok(
+      sql.endsWith(
+        'where "c"."id" = $1 and "c"."agency_id" = (select "agency_id" from "workflow_runs" where "id" = $2)'
+      )
+    );
+    assert.deepEqual(queries[0]?.parameters, [CLAIM_ID, 'r1']);
+  });
+
+  it('finds no claim outside the run agency', async () => {
+    const { db } = createRecordingDb(() => []);
+    assert.equal(await createClaimStore(db, queue().boss).findClaim('r1', CLAIM_ID), null);
+  });
+
   it('saves the claim for its encounter and replaces its lines, payers and diagnoses', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('insert into "claims"')

@@ -28,7 +28,8 @@ export {
   type ClaimDecision,
   type ClaimInput,
   type ClaimReview,
-  type ClaimStatus
+  type ClaimStatus,
+  type StoredClaim
 } from './claims.ts';
 export {
   AFTER_DOWNLOAD,
@@ -92,6 +93,7 @@ export {
   isValidNpi,
   MAX_APPEAL_DAYS,
   MAX_FILING_LIMIT_DAYS,
+  type Payer,
   PLAN_TYPES,
   type PlanType,
   payerDocument,

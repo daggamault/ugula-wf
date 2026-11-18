@@ -156,19 +156,23 @@ describe('createNemsisNodes', () => {
       inputs: { encounter: { ...(encounter as object), narrative: 'Revised.' } }
     });
     assert.deepEqual([changed.pin, changed.outputs.revision], ['revised', 2]);
-    const stored = (await run(read, { encounterId: 'e-A' })).outputs.encounter as Record<
-      string,
-      Json
-    >;
+    const readBack = await run(read, { encounterId: 'e-A' });
+    assert.equal(readBack.pin, 'found');
+    const stored = readBack.outputs.encounter as Record<string, Json>;
     assert.deepEqual(
       [stored.id, stored.revision, stored.reportId, stored.narrative],
       ['e-A', 2, 'report-0', 'Revised.']
     );
   });
 
-  it('refuses to save an encounter without a PCR number or read one that is missing', async () => {
-    const { save, read } = nodesOf();
+  it('refuses to save an encounter without a PCR number', async () => {
+    const { save } = nodesOf();
     await assert.rejects(run(save, { encounter: { pcrNumber: ' ' } }), /needs a PCR number/);
-    await assert.rejects(run(read, { encounterId: 'e-Z' }), /e-Z was not found/);
+  });
+
+  it('reads a missing encounter through Not Found, with no encounter', async () => {
+    const { read } = nodesOf();
+    const missing = await run(read, { encounterId: 'e-Z' });
+    assert.deepEqual([missing.pin, missing.outputs], ['notFound', {}]);
   });
 });

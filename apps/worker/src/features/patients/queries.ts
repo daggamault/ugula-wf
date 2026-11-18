@@ -43,6 +43,16 @@ const toPatient = (r: PatientRow): Patient => ({
 });
 
 export const createPatientStore = (db: Kysely<Database>): PatientStore => ({
+  findPatient: async (runId, patientId) => {
+    if (!isUuid(patientId)) return null;
+    const row = await db
+      .selectFrom('patients')
+      .select(COLUMNS)
+      .where('id', '=', patientId)
+      .where('agency_id', '=', runAgency(db, runId))
+      .executeTakeFirst();
+    return row ? toPatient(row) : null;
+  },
   findCandidates: async (runId, { birthDate, lastNameKey, firstName }) => {
     if (!birthDate && !lastNameKey) return [];
     const rows = await db

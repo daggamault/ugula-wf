@@ -690,7 +690,13 @@ const fromEncounter = (event: string) => {
   g.ret('notBilled');
   g.wire('entry.exec', 'read.exec');
   g.wire('entry.encounterId', 'read.encounterId');
-  g.wire('read.then', 'build.exec');
+  g.add('missing', 'std.flow.fail', {
+    label: 'Encounter Missing',
+    note: 'Stops for inspection when the encounter the event names is gone.',
+    values: { message: 'The encounter the event names was not found' }
+  });
+  g.wire('read.found', 'build.exec');
+  g.wire('read.notFound', 'missing.exec');
   g.wire('read.encounter', 'build.encounter');
   g.wire('build.saved', 'review.exec');
   g.wire('build.claimId', 'review.claimId');

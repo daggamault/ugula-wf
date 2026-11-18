@@ -36,6 +36,27 @@ const candidates = (match: string, n: number) =>
   `select ${COLUMNS} from "patients" where ${AGENCY} and ${match} order by 2 * (birth_date is not distinct from $${n}::date)::int + similarity(last_name_key, $${n + 1}) + (lower(first_name) is not distinct from lower($${n + 2}))::int desc, "created_at" limit $${n + 3}`;
 
 describe('createPatientStore', () => {
+  it('finds a patient by id in the run agency, matching nothing for a malformed id', async () => {
+    const { db, queries } = createRecordingDb(() => [row]);
+    const store = createPatientStore(db);
+    assert.deepEqual(await store.findPatient('r1', row.id), patient);
+    assert.equal(await store.findPatient('r1', 'nope'), null);
+    assert.deepEqual(
+      queries.map((q) => [q.sql, q.parameters]),
+      [
+        [
+          `select ${COLUMNS} from "patients" where "id" = $1 and ${AGENCY.replace('$1', '$2')}`,
+          [row.id, 'r1']
+        ]
+      ]
+    );
+  });
+
+  it('finds no patient outside the run agency', async () => {
+    const { db } = createRecordingDb(() => []);
+    assert.equal(await createPatientStore(db).findPatient('r1', row.id), null);
+  });
+
   it('finds candidates in the run agency by birth date or a similar last name key, best first', async () => {
     const { db, queries } = createRecordingDb(() => [row]);
     const store = createPatientStore(db);

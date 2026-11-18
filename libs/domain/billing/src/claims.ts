@@ -101,6 +101,8 @@ export type ClaimInput = {
   reasons: string[];
 };
 
+export type StoredClaim = ClaimInput & { id: string; revision: number };
+
 const HCPCS = new RegExp(HCPCS_PATTERN);
 
 const MODIFIER = new RegExp(MODIFIER_PATTERN);

@@ -5,6 +5,7 @@ import { invokeNode } from '@ugula/graph/testing';
 import type { ClaimInput, ClaimReview } from './claims.ts';
 import { createBillingNodes } from './nodes.ts';
 import type { Patient } from './patients.ts';
+import type { Payer } from './payers.ts';
 import type { BillingStores } from './stores.ts';
 
 const JANE: Patient = {
@@ -17,6 +18,17 @@ const JANE: Patient = {
   city: null,
   state: null,
   postalCode: null
+};
+
+const MEDICARE: Payer = {
+  id: 'pay-1',
+  name: 'Medicare Part B',
+  claimFiling: 'MB',
+  payerCode: 'DEMOMCR',
+  filingLimitDays: 365,
+  correctionMethod: 'reopening',
+  appealDays: 120,
+  planType: 'government'
 };
 
 const person = (patch: object = {}) => ({
@@ -37,6 +49,7 @@ const fakeStores = () => {
   const searches: [string, number, boolean][] = [];
   const stores: BillingStores = {
     patients: {
+      findPatient: async (_, id) => patients.find((p) => p.id === id) ?? null,
       findCandidates: async (_, q) => patients.filter((p) => p.birthDate === q.birthDate),
       createPatient: async (_, key, p) => {
         const created = { ...p, id: `p-${key}` };
@@ -49,7 +62,8 @@ const fakeStores = () => {
       }
     },
     payers: {
-      findPayer: async (_, name) =>
+      findPayer: async (_, id) => (id === MEDICARE.id ? MEDICARE : null),
+      matchPayer: async (_, name) =>
         name === 'MEDICARE'
           ? { known: { id: 'pay-1', name: 'Medicare Part B', claimFiling: 'MB' }, similar: [] }
           : name === 'HIGHMARK'
@@ -66,6 +80,10 @@ const fakeStores = () => {
         payerId === 'pay-1' && code === 'A0427' ? 70000 : code === 'A0999' ? null : 80000
     },
     claims: {
+      findClaim: async (_, id) => {
+        const last = saved.at(-1);
+        return id === 'c-1' && last ? { ...last, id, revision: saved.length } : null;
+      },
       saveClaim: async (_, claim) => {
         saved.push(claim);
         return {
@@ -147,6 +165,45 @@ describe('Save Patient', () => {
       run(stores, 'patient.save', { person: person({ birthDate: null }) }),
       /needs a first name, last name and birth date/
     );
+  });
+});
+
+describe('Read Patient', () => {
+  it('reads a patient as a record, with the address as its own part', async () => {
+    const { stores } = fakeStores();
+    await run(stores, 'patient.save', { person: person({ firstName: 'Ann' }) });
+    const { outputs } = await run(stores, 'patient.read', { patientId: 'p-key' });
+    assert.deepEqual(outputs.patient, {
+      id: 'p-key',
+      firstName: 'Ann',
+      lastName: 'Doe',
+      birthDate: '1950-02-03',
+      sex: 'F',
+      address: { line: '12 Oak St', city: 'Erie', state: 'PA', postalCode: '16505' }
+    });
+    assert.equal((await run(stores, 'patient.read', { patientId: 'p-key' })).pin, 'found');
+    assert.deepEqual(await pinAndOutputs(run(stores, 'patient.read', { patientId: 'p-9' })), [
+      'notFound',
+      {}
+    ]);
+  });
+});
+
+const pinAndOutputs = async (ran: ReturnType<typeof run>) => {
+  const { pin, outputs } = await ran;
+  return [pin, outputs];
+};
+
+describe('Read Payer', () => {
+  it('reads a directory payer with its billing rules', async () => {
+    const { stores } = fakeStores();
+    assert.deepEqual((await run(stores, 'payer.read', { payerId: 'pay-1' })).outputs, {
+      payer: MEDICARE
+    });
+    assert.deepEqual(await pinAndOutputs(run(stores, 'payer.read', { payerId: 'pay-9' })), [
+      'notFound',
+      {}
+    ]);
   });
 });
 
@@ -236,6 +293,27 @@ describe('Save Claim', () => {
       run(stores, 'claim.save', { claim: { ...claim, level: 'ALS9' } }),
       /ALS9 is not a level of service/
     );
+  });
+});
+
+describe('Read Claim', () => {
+  it('reads the latest revision of a saved claim as a Claim', async () => {
+    const { stores } = fakeStores();
+    await run(stores, 'claim.save', { claim: CLAIM });
+    await run(stores, 'claim.save', { claim: { ...CLAIM, emergency: false } });
+    const { claim } = (await run(stores, 'claim.read', { claimId: 'c-1' })).outputs;
+    assert.deepEqual(
+      [
+        (claim as { id: string }).id,
+        (claim as { revision: number }).revision,
+        (claim as { emergency: boolean }).emergency
+      ],
+      ['c-1', 2, false]
+    );
+    assert.deepEqual(await pinAndOutputs(run(stores, 'claim.read', { claimId: 'c-9' })), [
+      'notFound',
+      {}
+    ]);
   });
 });
 

@@ -168,7 +168,7 @@ export const createNemsisNodes = (stores: NemsisStores | null): NodeDef[] => {
         };
       }
     }),
-    actionNode({
+    branchNode({
       type: 'encounter.read',
       title: 'Read Encounter',
       category: CATEGORY,
@@ -182,16 +182,29 @@ export const createNemsisNodes = (stores: NemsisStores | null): NodeDef[] => {
         })
       ],
       outputs: [ENCOUNTER_PIN],
+      exits: {
+        found: {
+          label: 'Found',
+          description: 'The encounter exists; its fields are on the outputs.'
+        },
+        notFound: {
+          label: 'Not Found',
+          description: 'No encounter has this ID in the agency, so the outputs are empty.'
+        }
+      },
       compute: async ({ encounterId }, _, ctx) => {
         const found = await storesOf().encounters.findEncounter(ctx.runId, encounterId);
-        if (!found) throw new Error(`Encounter ${encounterId} was not found`);
+        if (!found) return { exit: 'notFound', outputs: {} };
         return {
-          encounter: {
-            ...toEncounter(null),
-            ...(found.data as Record<string, Json>),
-            id: encounterId,
-            revision: found.revision,
-            reportId: found.reportId
+          exit: 'found',
+          outputs: {
+            encounter: {
+              ...toEncounter(null),
+              ...(found.data as Record<string, Json>),
+              id: encounterId,
+              revision: found.revision,
+              reportId: found.reportId
+            }
           }
         };
       }
