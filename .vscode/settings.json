@@ -7,10 +7,12 @@
   },
   "files.exclude": {
     "**/node_modules": true,
-    "**/dist": true
+    "**/dist": true,
+    "**/.cache": true
   },
   "search.exclude": {
     "**/node_modules": true,
-    "**/dist": true
+    "**/dist": true,
+    "**/.cache": true
   }
 }
