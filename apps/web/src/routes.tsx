@@ -1,6 +1,7 @@
 import type { NodeDef } from '@ugula/graph';
 import { lazy, type ReactNode } from 'react';
 import type { AuthClient } from './features/auth/client.ts';
+import { ClaimEditPage } from './features/claims/claim-edit-page.tsx';
 import { CLAIM_TABS, ClaimPage } from './features/claims/claim-page.tsx';
 import { ClaimsPage } from './features/claims/claims-page.tsx';
 import { type ClaimsClient, claimSearchOf } from './features/claims/client.ts';
@@ -173,6 +174,10 @@ const routes: readonly Route[] = [
         tab={CLAIM_TABS.find((t) => t.value === q.get('tab'))?.value ?? 'overview'}
       />
     )
+  },
+  {
+    pattern: '/claims/:id/edit',
+    render: (p, _, c) => <ClaimEditPage client={c.claims} live={c.live} claimId={p.id ?? ''} />
   },
   {
     pattern: '/patients',

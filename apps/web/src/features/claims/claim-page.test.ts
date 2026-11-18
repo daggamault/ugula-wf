@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import type { Permission } from '@ugula/access';
 import type { LiveEvent } from '@ugula/live';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { AccessProvider } from '../../shared/access.tsx';
 import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
 import { claimDetail as claim } from '../../shared/claims/testing.ts';
 import type { Live } from '../../shared/live.ts';
@@ -44,6 +46,26 @@ describe('ClaimView', () => {
     assert.ok(!renderView().includes('Not ready to send'));
   });
 
+  it('offers to edit the claim only to a biller who may correct claims', () => {
+    const view = (permissions: Permission[]) =>
+      renderToStaticMarkup(
+        createElement(AccessProvider, {
+          access: {
+            agencyId: 'a1',
+            agencyName: 'North EMS',
+            organizationId: 'o1',
+            organizationName: 'Acme',
+            userId: 'u1',
+            isOrganizationAdmin: false,
+            permissions
+          },
+          children: createElement(ClaimView, { claim, codes: {} })
+        })
+      );
+    assert.ok(view(['claims:read', 'claims:update']).includes('href="/claims/c1/edit"'));
+    assert.ok(!view(['claims:read']).includes('Edit Claim'));
+  });
+
   it('leaves out a patient number the patient does not have', () => {
     const html = renderView({ patient_number: null });
     assert.ok(!html.includes('Patient 2'));
@@ -61,7 +83,9 @@ describe('ClaimView', () => {
 
 const fakeClaims = (find: ClaimsClient['find']): ClaimsClient => ({
   list: () => new Promise(() => undefined),
-  find
+  find,
+  edit: () => new Promise(() => undefined),
+  payers: async () => []
 });
 
 const shown = () => screen.findByRole('heading', { name: 'Claim 20261001-0012' });

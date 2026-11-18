@@ -102,6 +102,15 @@ export const searchClaims = async (db: Db, agencyId: string, f: ClaimFilters) =>
   return { ...page, items: ids.flatMap((id) => byId.get(id) ?? []), facets };
 };
 
+export const findEditableClaim = (db: Db, agencyId: string, id: string) =>
+  db
+    .selectFrom('claims')
+    .select(['revision', 'status', 'encounter_id', 'patient_id', 'classification', 'reasons'])
+    .where('agency_id', '=', agencyId)
+    .where('id', '=', id)
+    .forUpdate()
+    .executeTakeFirst();
+
 export const findClaim = (db: Db, agencyId: string, id: string) =>
   claimRows(db, agencyId)
     .leftJoinLateral(

@@ -1,12 +1,15 @@
 import {
+  type ClaimInput,
   type ClaimStatus,
   type ClaimSubmission,
   type InsuredRelationship,
   type Submitter,
   submissionIssues
 } from '@ugula/billing';
+import { cancel, enqueueRuns, type RunQueueClient } from '@ugula/run-queue';
 import { sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
+import { sqlExecutor } from './client.ts';
 import type { Db } from './schema.ts';
 
 export type StoredSubmission = ClaimSubmission & {
@@ -192,4 +195,119 @@ export const checkClaim = async (db: Db, agencyId: string, claimId: string) => {
     findSubmitter(db, agencyId)
   ]);
   return claim ? { claim, submitter, issues: submissionIssues(claim, submitter) } : null;
+};
+
+export const claimColumns = (c: Omit<ClaimInput, 'encounterId' | 'patientId'>) => ({
+  classification: c.classification,
+  service_date: c.serviceDate,
+  level: c.level,
+  is_emergency: c.emergency,
+  loaded_miles: c.loadedMiles,
+  origin_code: c.originCode,
+  destination_code: c.destinationCode,
+  transport_reason: c.transportReason,
+  condition_codes: c.conditionCodes,
+  weight_pounds: c.weightPounds,
+  pickup_name: c.pickup.name,
+  pickup_address_line: c.pickup.line,
+  pickup_city: c.pickup.city,
+  pickup_state: c.pickup.state,
+  pickup_postal_code: c.pickup.postalCode,
+  destination_name: c.destination.name,
+  destination_address_line: c.destination.line,
+  destination_city: c.destination.city,
+  destination_state: c.destination.state,
+  destination_postal_code: c.destination.postalCode,
+  prior_authorization: c.priorAuthorization,
+  is_signature_on_file: c.signatureOnFile,
+  note: c.note,
+  total_cents: c.totalCents,
+  reasons: c.reasons
+});
+
+const REVIEW_PERMISSION = 'claims:approve';
+
+export const cancelStaleReviews = async (
+  tx: Db,
+  boss: RunQueueClient,
+  agencyId: string,
+  encounterId: string,
+  exceptRunId: string | null
+) => {
+  let q = tx
+    .selectFrom('workflow_runs as r')
+    .select('r.id')
+    .where('r.agency_id', '=', agencyId)
+    .where('r.status', '=', 'suspended')
+    .where(sql<string>`r.inputs ->> 'encounterId'`, '=', encounterId)
+    .where((eb) =>
+      eb.exists(
+        eb
+          .selectFrom('tasks as t')
+          .select(sql`1`.as('one'))
+          .whereRef('t.run_id', '=', 'r.id')
+          .where('t.status', '=', 'open')
+          .where('t.permission', '=', REVIEW_PERMISSION)
+      )
+    );
+  if (exceptRunId) q = q.where('r.id', '<>', exceptRunId);
+  const stale = await q.execute();
+  await enqueueRuns(
+    boss,
+    sqlExecutor(tx),
+    stale.map((r) => cancel(r.id))
+  );
+  return stale.length;
+};
+
+export const replaceClaimParts = async (
+  tx: Db,
+  agencyId: string,
+  claimId: string,
+  claim: Pick<ClaimInput, 'lines' | 'coverages' | 'diagnoses'>
+) => {
+  await tx.deleteFrom('claim_lines').where('claim_id', '=', claimId).execute();
+  await tx.deleteFrom('claim_coverages').where('claim_id', '=', claimId).execute();
+  await tx.deleteFrom('claim_diagnoses').where('claim_id', '=', claimId).execute();
+  if (claim.lines.length) {
+    await tx
+      .insertInto('claim_lines')
+      .values(
+        claim.lines.map((l, i) => ({
+          claim_id: claimId,
+          position: i + 1,
+          code: l.code,
+          modifiers: l.modifiers,
+          units: l.units,
+          unit_cents: l.unitCents,
+          total_cents: l.totalCents
+        }))
+      )
+      .execute();
+  }
+  if (claim.coverages.length) {
+    await tx
+      .insertInto('claim_coverages')
+      .values(
+        claim.coverages.map((c, i) => ({
+          agency_id: agencyId,
+          claim_id: claimId,
+          position: i + 1,
+          payer_name: c.payerName,
+          payer_id: c.payerId,
+          member_id: c.memberId,
+          group_id: c.groupId,
+          relationship: c.relationship,
+          insured_first_name: c.insuredFirstName,
+          insured_last_name: c.insuredLastName
+        }))
+      )
+      .execute();
+  }
+  if (claim.diagnoses.length) {
+    await tx
+      .insertInto('claim_diagnoses')
+      .values(claim.diagnoses.map((code, i) => ({ claim_id: claimId, position: i + 1, code })))
+      .execute();
+  }
 };

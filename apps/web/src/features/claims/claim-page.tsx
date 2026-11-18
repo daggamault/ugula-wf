@@ -1,5 +1,6 @@
 import type { CodeDescriptions } from '@ugula/billing';
-import { UserIcon } from 'lucide-react';
+import { PencilIcon, UserIcon } from 'lucide-react';
+import { useCan } from '../../shared/access.tsx';
 import { ChargeLines } from '../../shared/claims/charge-lines.tsx';
 import { ClaimDataView } from '../../shared/claims/claim-data.tsx';
 import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
@@ -53,6 +54,7 @@ export const ClaimView = ({
   error?: string;
 }) => {
   const path = `/claims/${claim.id}`;
+  const can = useCan();
   return (
     <Page
       title={`Claim ${claim.number}`}
@@ -66,10 +68,18 @@ export const ClaimView = ({
         </span>
       }
       actions={
-        <ButtonLink to={`/patients/${claim.patient_id}`} variant="outline">
-          <UserIcon aria-hidden="true" className="size-4" />
-          Patient
-        </ButtonLink>
+        <>
+          <ButtonLink to={`/patients/${claim.patient_id}`} variant="outline">
+            <UserIcon aria-hidden="true" className="size-4" />
+            Patient
+          </ButtonLink>
+          {can('claims:update') ? (
+            <ButtonLink to={`${path}/edit`} variant="outline">
+              <PencilIcon aria-hidden="true" className="size-4" />
+              Edit Claim
+            </ButtonLink>
+          ) : null}
+        </>
       }
     >
       {error ? <Alert>{error}</Alert> : null}

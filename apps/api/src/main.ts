@@ -242,8 +242,8 @@ export const createApp = ({
         })
       )
     )
-    .use('/claims/*', guardMethods(read('claims:read')))
-    .route('/claims', createClaimRoutes(createClaimService({ db })))
+    .use('/claims/*', guardMethods({ ...read('claims:read'), PUT: 'claims:update' }))
+    .route('/claims', createClaimRoutes(createClaimService({ db, boss, publish })))
     .use('/imports/*', guardMethods({ ...read('imports:read'), POST: 'imports:create' }))
     .route('/imports', createImportRoutes(imports));
   app.route('/api/imports/sftp', createSftpRoutes(imports, config.SFTP_HOOK_SECRET));

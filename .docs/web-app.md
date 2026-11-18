@@ -32,7 +32,7 @@ Lists search, sort, filter and page on the server, with the state in the URL (`u
 
 | Area               | Paths                                                                                                                                               |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Claims and tasks   | `/claims`, `/claims/:id`, `/tasks/:id`                                                                                                              |
+| Claims and tasks   | `/claims`, `/claims/:id`, `/claims/:id/edit`, `/tasks/:id`                                                                                          |
 | Patients           | `/patients`, `/patients/:id`                                                                                                                        |
 | Imports            | `/imports`, `/imports/:id`                                                                                                                          |
 | Workflows and runs | `/workflows`, `/workflows/:id`, `/tables`, `/tables/:id`, `/runs`, `/runs/:id`                                                                      |
@@ -44,7 +44,9 @@ Billers work tasks. `/tasks` is the work queue (by queue and assignee, Next Task
 
 An import page (`/imports/:id`) shows how many PCRs the file held and how many became new, revised and unchanged encounters, the claims made and their charges, and a row per PCR with its encounter, patient, outcome and claim. Uploading a file links to its import.
 
-The claim page (`/claims/:id`) is a read-only record of a claim that needs review. **Overview** shows the summary (total, classification, level of service, loaded miles), the **Review** (status, revision, and who approved or held it, when and why, or that it waits for a biller), every reason the workflows gave, the encounter it bills (PCR number and revision, times, pickup and destination, narrative, a link to its import), the charge lines with their modifiers, and the payers. **Claim Data** shows the date of service, diagnoses, the origin and destination modifier, the transport reason, condition codes and patient weight, and the patient's birth date and address. Every code shows as Description (code) from the `codes` table.
+The claim page (`/claims/:id`) is a record of a claim and what it lacks to be sent, listed above everything else (the same Check Claim gives the review task). **Overview** shows the summary (total, classification, level of service, loaded miles), the **Review** (status, revision, and who approved or held it, when and why, or that it waits for a biller), every reason the workflows gave, the encounter it bills (PCR number and revision, times, pickup and destination, narrative, a link to its import), the charge lines with their modifiers, and the payers. **Claim Data** shows the date of service, diagnoses, the origin and destination modifier, the transport reason, condition codes and patient weight, the pickup and drop-off locations, prior authorization, signature on file and claim note, and the patient's birth date, sex and address as billed. Every code shows as Description (code) from the `codes` table.
+
+**Edit Claim** (`/claims/:id/edit`, permission `claims:update`) corrects anything on the claim: service, patient as billed, pickup and destination, payers (chosen from the payer directory, with member ID, group and insured) and charge lines. Saving sends the revision it was opened at, so an edit of a claim changed since is refused; it saves a new revision that needs review and emits `claim.edited`.
 
 ## Workflow editor
 

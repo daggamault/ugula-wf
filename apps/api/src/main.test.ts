@@ -259,6 +259,7 @@ describe('api createApp', () => {
       [['settings:update'], 'PUT', '/clearinghouse-connection', {}],
       [['settings:update'], 'DELETE', '/clearinghouse-connection'],
       [['claims:read'], 'GET', '/claims'],
+      [['claims:update'], 'PUT', `/claims/${ID}`, {}],
       [['imports:read'], 'GET', '/imports'],
       [['imports:create'], 'POST', '/imports/auth', {}]
     ];
@@ -288,7 +289,6 @@ describe('api createApp', () => {
     for (const [method, path] of [
       ['POST', '/codes'],
       ['DELETE', `/patients/${ID}`],
-      ['PUT', `/claims/${ID}`],
       ['DELETE', `/claims/${ID}`],
       ['PUT', '/runs']
     ] as const) {

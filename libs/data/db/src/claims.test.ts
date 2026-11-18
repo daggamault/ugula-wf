@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { checkClaim, findClaimSubmission, findSubmitter } from './claims.ts';
+import type { RunQueueClient } from '@ugula/run-queue';
+import {
+  cancelStaleReviews,
+  checkClaim,
+  findClaimSubmission,
+  findSubmitter,
+  replaceClaimParts
+} from './claims.ts';
 import { createRecordingDb } from './testing.ts';
 
 const CLAIM_ROW = {
@@ -148,5 +155,49 @@ describe('checkClaim', () => {
     );
     assert.deepEqual(unprofiled?.issues, ['Add a billing profile in Settings']);
     assert.equal(await checkClaim(createRecordingDb().db, 't-1', 'c-1'), null);
+  });
+});
+
+describe('cancelStaleReviews', () => {
+  it('cancels the open reviews of the encounter, but not the run asking', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.startsWith('select "r"."id"') ? [{ id: 'run-2' }] : []
+    );
+    const jobs: unknown[] = [];
+    const boss: RunQueueClient = { insert: async (_, batch) => void jobs.push(...batch) };
+    assert.equal(await cancelStaleReviews(db, boss, 't-1', 'e-1', 'run-1'), 1);
+    const [select] = queries;
+    assert.match(select?.sql ?? '', /r\.inputs ->> 'encounterId' = \$\d+/);
+    assert.match(select?.sql ?? '', /"r"\."id" <> \$\d+$/);
+    assert.ok(select?.parameters.includes('claims:approve'));
+    assert.deepEqual(
+      jobs.map((j) => (j as { data: unknown }).data),
+      [{ runId: 'run-2', command: { type: 'cancel' } }]
+    );
+    queries.length = 0;
+    await cancelStaleReviews(db, boss, 't-1', 'e-1', null);
+    assert.ok(!queries[0]?.sql.includes('<>'));
+  });
+});
+
+describe('replaceClaimParts', () => {
+  it('replaces the lines, payers and diagnoses in order, and inserts no empty list', async () => {
+    const { db, queries } = createRecordingDb();
+    await replaceClaimParts(db, 't-1', 'c-1', {
+      lines: [{ code: 'A0427', modifiers: ['RH'], units: 1, unitCents: 1, totalCents: 1 }],
+      coverages: [],
+      diagnoses: ['R079', 'I10']
+    });
+    assert.deepEqual(
+      queries.map((q) => q.sql.split(' (')[0]),
+      [
+        'delete from "claim_lines" where "claim_id" = $1',
+        'delete from "claim_coverages" where "claim_id" = $1',
+        'delete from "claim_diagnoses" where "claim_id" = $1',
+        'insert into "claim_lines"',
+        'insert into "claim_diagnoses"'
+      ]
+    );
+    assert.deepEqual(queries[4]?.parameters, ['c-1', 1, 'R079', 'c-1', 2, 'I10']);
   });
 });

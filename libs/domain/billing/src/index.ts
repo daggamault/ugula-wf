@@ -31,6 +31,7 @@ export {
   type ClaimReview,
   type ClaimStatus,
   NOTE_LENGTH,
+  readClaim,
   type StoredClaim
 } from './claims.ts';
 export {
@@ -85,7 +86,15 @@ export { billingModels, CHARGE_LINE, CLAIM, COVERAGE, LOCATION } from './models.
 export { nameKey } from './names.ts';
 export { createBillingNodes } from './nodes.ts';
 export { dailyNumberOf, dollarsToCents } from './numbers.ts';
-export { isSamePerson, type Patient, SEX_LABELS, SEXES, type Sex, sexOf } from './patients.ts';
+export {
+  isSamePerson,
+  type Patient,
+  readAddress,
+  SEX_LABELS,
+  SEXES,
+  type Sex,
+  sexOf
+} from './patients.ts';
 export {
   CLAIM_FILING_CODES,
   type ClaimFilingCode,

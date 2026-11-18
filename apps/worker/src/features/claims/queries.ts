@@ -1,22 +1,16 @@
-import type { ClaimInput, ClaimStore, InsuredRelationship } from '@ugula/billing';
-import { checkClaim, type Database, sqlExecutor } from '@ugula/db';
-import { cancel, enqueueRuns, type RunQueueClient } from '@ugula/run-queue';
-import { type Kysely, type Selectable, sql } from 'kysely';
+import type { ClaimStore, InsuredRelationship } from '@ugula/billing';
+import {
+  cancelStaleReviews,
+  checkClaim,
+  claimColumns,
+  type Database,
+  replaceClaimParts
+} from '@ugula/db';
+import type { RunQueueClient } from '@ugula/run-queue';
+import { type Kysely, sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { isUuid } from '../../shared/ids.ts';
 import { runAgency } from '../../shared/tenancy.ts';
-
-type PatientSnapshot = Pick<
-  Selectable<Database['claims']>,
-  | 'patient_first_name'
-  | 'patient_last_name'
-  | 'patient_birth_date'
-  | 'patient_sex'
-  | 'patient_address_line'
-  | 'patient_city'
-  | 'patient_state'
-  | 'patient_postal_code'
->;
 
 const patientSnapshot = (tx: Kysely<Database>, runId: string, patientId: string) =>
   tx
@@ -34,63 +28,6 @@ const patientSnapshot = (tx: Kysely<Database>, runId: string, patientId: string)
     .where('agency_id', '=', runAgency(tx, runId))
     .where('id', '=', patientId)
     .executeTakeFirst();
-
-const claimColumns = (c: ClaimInput, patient: PatientSnapshot) => ({
-  ...patient,
-  pickup_name: c.pickup.name,
-  pickup_address_line: c.pickup.line,
-  pickup_city: c.pickup.city,
-  pickup_state: c.pickup.state,
-  pickup_postal_code: c.pickup.postalCode,
-  destination_name: c.destination.name,
-  destination_address_line: c.destination.line,
-  destination_city: c.destination.city,
-  destination_state: c.destination.state,
-  destination_postal_code: c.destination.postalCode,
-  prior_authorization: c.priorAuthorization,
-  is_signature_on_file: c.signatureOnFile,
-  note: c.note,
-  patient_id: c.patientId,
-  classification: c.classification,
-  service_date: c.serviceDate,
-  level: c.level,
-  is_emergency: c.emergency,
-  transport_reason: c.transportReason,
-  condition_codes: c.conditionCodes,
-  weight_pounds: c.weightPounds,
-  loaded_miles: c.loadedMiles,
-  origin_code: c.originCode,
-  destination_code: c.destinationCode,
-  total_cents: c.totalCents,
-  reasons: c.reasons
-});
-
-const REVIEW_PERMISSION = 'claims:approve';
-
-const supersededReviews = (
-  tx: Kysely<Database>,
-  agencyId: string,
-  runId: string,
-  encounterId: string
-) =>
-  tx
-    .selectFrom('workflow_runs as r')
-    .select('r.id')
-    .where('r.agency_id', '=', agencyId)
-    .where('r.id', '<>', runId)
-    .where('r.status', '=', 'suspended')
-    .where(sql<string>`r.inputs ->> 'encounterId'`, '=', encounterId)
-    .where((eb) =>
-      eb.exists(
-        eb
-          .selectFrom('tasks as t')
-          .select(sql`1`.as('one'))
-          .whereRef('t.run_id', '=', 'r.id')
-          .where('t.status', '=', 'open')
-          .where('t.permission', '=', REVIEW_PERMISSION)
-      )
-    )
-    .execute();
 
 const numberOrNull = (x: string | number | null) => (x === null ? null : Number(x));
 
@@ -235,11 +172,15 @@ export const createClaimStore = (db: Kysely<Database>, boss: RunQueueClient): Cl
         .values({
           agency_id: runAgency(tx, runId),
           encounter_id: claim.encounterId,
-          ...claimColumns(claim, patient)
+          patient_id: claim.patientId,
+          ...patient,
+          ...claimColumns(claim)
         })
         .onConflict((oc) =>
           oc.columns(['agency_id', 'encounter_id']).doUpdateSet({
-            ...claimColumns(claim, patient),
+            patient_id: claim.patientId,
+            ...patient,
+            ...claimColumns(claim),
             status: 'needs_review',
             revision: sql`claims.revision + 1`,
             reviewed_by: null,
@@ -251,57 +192,9 @@ export const createClaimStore = (db: Kysely<Database>, boss: RunQueueClient): Cl
         .returning(['id', 'agency_id', 'revision', sql<boolean>`xmax = 0`.as('inserted')])
         .executeTakeFirstOrThrow();
       if (!saved.inserted) {
-        const stale = await supersededReviews(tx, saved.agency_id, runId, claim.encounterId);
-        await enqueueRuns(
-          boss,
-          sqlExecutor(tx),
-          stale.map((r) => cancel(r.id))
-        );
+        await cancelStaleReviews(tx, boss, saved.agency_id, claim.encounterId, runId);
       }
-      await tx.deleteFrom('claim_lines').where('claim_id', '=', saved.id).execute();
-      await tx.deleteFrom('claim_coverages').where('claim_id', '=', saved.id).execute();
-      await tx.deleteFrom('claim_diagnoses').where('claim_id', '=', saved.id).execute();
-      if (claim.lines.length) {
-        await tx
-          .insertInto('claim_lines')
-          .values(
-            claim.lines.map((l, i) => ({
-              claim_id: saved.id,
-              position: i + 1,
-              code: l.code,
-              modifiers: l.modifiers,
-              units: l.units,
-              unit_cents: l.unitCents,
-              total_cents: l.totalCents
-            }))
-          )
-          .execute();
-      }
-      if (claim.coverages.length) {
-        await tx
-          .insertInto('claim_coverages')
-          .values(
-            claim.coverages.map((c, i) => ({
-              agency_id: saved.agency_id,
-              claim_id: saved.id,
-              position: i + 1,
-              payer_name: c.payerName,
-              payer_id: c.payerId,
-              member_id: c.memberId,
-              group_id: c.groupId,
-              relationship: c.relationship,
-              insured_first_name: c.insuredFirstName,
-              insured_last_name: c.insuredLastName
-            }))
-          )
-          .execute();
-      }
-      if (claim.diagnoses.length) {
-        await tx
-          .insertInto('claim_diagnoses')
-          .values(claim.diagnoses.map((code, i) => ({ claim_id: saved.id, position: i + 1, code })))
-          .execute();
-      }
+      await replaceClaimParts(tx, saved.agency_id, saved.id, claim);
       return {
         id: saved.id,
         revision: saved.revision,

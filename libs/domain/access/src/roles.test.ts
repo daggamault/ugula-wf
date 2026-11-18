@@ -62,12 +62,13 @@ describe('BUILT_IN_ROLES', () => {
     assert.equal(isUserAdmin(role('Billing Manager')), false);
   });
 
-  it('lets a biller work and approve claims and imports and only read the setup', () => {
+  it('lets a biller work, correct and approve claims and imports and only read the setup', () => {
     assert.deepEqual(role('Biller'), [
       'patients:read',
       'imports:create',
       'imports:read',
       'claims:read',
+      'claims:update',
       'claims:approve',
       'tasks:read',
       'tasks:update',

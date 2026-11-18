@@ -780,6 +780,58 @@ const fromEncounter = (event: string) => {
   return g.def;
 };
 
+const editedClaim = () => {
+  const g = flow(
+    [
+      d('claimId', ID.claim, 'Claim', 'The claim a biller corrected.'),
+      d('encounterId', ID.encounter, 'Encounter', 'The encounter the claim bills.'),
+      d('revision', 'integer', 'Revision', 'The revision the correction made.')
+    ],
+    [d('claimId', ID.claim, 'Claim', 'The claim reviewed.')]
+  );
+  g.trigger({ kind: 'event', event: 'claim.edited', where: {} });
+  g.add('read', 'claim.read', {
+    label: 'Read Claim',
+    note: 'Reads the corrected claim and the reasons it was built with.'
+  });
+  breakRecord(g, 'claim', n('Claim', 'Its reasons, for the review.'), CLAIM, 'read.claim');
+  g.add('encounter', 'encounter.read', {
+    label: 'Read Encounter',
+    note: 'Names the review by its PCR number.'
+  });
+  g.add('pcr', 'encounter.break', {
+    label: 'Encounter',
+    note: 'Its PCR number.'
+  });
+  g.add('missing', 'std.flow.fail', {
+    label: 'Claim Missing',
+    note: 'Stops for inspection when the claim or its encounter is gone.',
+    values: { message: 'The claim or encounter the event names was not found' }
+  });
+  g.add('review', 'billing.review-claim', {
+    label: 'Review Claim',
+    note: 'A biller reviews the corrected claim before it goes out.'
+  });
+  g.wire('entry.exec', 'read.exec');
+  g.wire('entry.claimId', 'read.claimId');
+  g.wire('read.found', 'encounter.exec');
+  g.wire('read.notFound', 'missing.exec');
+  g.wire('entry.encounterId', 'encounter.encounterId');
+  g.wire('encounter.found', 'review.exec');
+  g.wire('encounter.notFound', 'missing.exec');
+  g.wire('encounter.encounter', 'pcr.encounter');
+  g.wire('entry.claimId', 'review.claimId');
+  g.wire('entry.revision', 'review.revision');
+  g.wire('pcr.pcrNumber', 'review.subject');
+  g.wire('claim.reasons', 'review.reasons');
+  for (const outcome of Object.keys(REVIEW_OUTCOMES)) {
+    g.ret(outcome);
+    g.wire(`review.${outcome}`, `${outcome}.exec`);
+    g.wire('entry.claimId', `${outcome}.claimId`);
+  }
+  return g.def;
+};
+
 export const claimGraphs: SeedGraph[] = [
   asStage(
     'billing.review-claim',
@@ -822,5 +874,11 @@ export const claimGraphs: SeedGraph[] = [
     'Revised Encounter to Claim',
     'When a changed copy of a PCR revises an encounter, builds its claim again, saves it over the one before as a new revision and has a biller review it again, even when the one before was approved.',
     fromEncounter('encounter.revised')
+  ),
+  asWorkflow(
+    'billing.edited-claim-review',
+    'Edited Claim to Review',
+    'When a biller corrects a claim, has a biller review its new revision before it can go to the clearinghouse; the review still open on the revision before is cancelled.',
+    editedClaim()
   )
 ];
