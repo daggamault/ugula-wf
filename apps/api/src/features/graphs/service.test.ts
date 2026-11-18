@@ -607,7 +607,7 @@ describe('graph service publish', () => {
 
     const unwired: GraphDef = {
       ...usesComposite,
-      nodes: [...usesComposite.nodes, { id: 'n', type: 'std.text.upper', version: 1 }]
+      nodes: [...usesComposite.nodes, { id: 'n', type: 'std.text.split', version: 1 }]
     };
     const broken = createWorld({
       graphs: [agency()],
