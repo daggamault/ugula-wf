@@ -23,13 +23,14 @@ import {
   ID,
   isCode,
   isIn,
-  isMissing,
+  isKnown,
   isText,
   joinLists,
   type Label,
   listOf,
   lookup,
   makeList,
+  NO_TRANSPORT_KINDS,
   n,
   node,
   not,
@@ -315,19 +316,12 @@ const originAndDestination = (): GraphDef => {
     DESTINATION,
     'trip.destination'
   );
-  const known = (id: string, label: string, value: Port) =>
-    not(
-      g,
-      id,
-      n(label, 'Given in the report.'),
-      isMissing(g, `${id}Missing`, n(`${label}: Missing`, 'Empty.'), value)
-    );
   const atHome = allOf(
     g,
     'atHome',
     n('Picked Up at Home', 'The pickup street and ZIP are the home ones.'),
     [
-      known('pickupStreetKnown', 'Pickup Street Known', 'pickupAddress.line'),
+      isKnown(g, 'pickupStreetKnown', 'Pickup Street Known', 'pickupAddress.line'),
       sameText(g, 'sameStreet', 'Same Street', 'pickupAddress.line', 'homeAddress.line'),
       sameText(g, 'sameZip', 'Same ZIP', 'pickupAddress.postalCode', 'homeAddress.postalCode')
     ]
@@ -344,7 +338,7 @@ const originAndDestination = (): GraphDef => {
     DESTINATION_LETTERS,
     'destination.type'
   );
-  const originKnown = known('originKnown', 'Origin Known', 'origin.letter');
+  const originKnown = isKnown(g, 'originKnown', 'Origin Known', 'origin.letter');
   const both = allOf(g, 'both', n('Both Letters Known', 'A modifier needs both letters.'), [
     originKnown,
     'destinationLetter.found'
@@ -596,7 +590,7 @@ const baseRateCode = (): GraphDef => {
       'noTransportKinds',
       n('Kinds Without Transport', 'Treated without transport, or refused.'),
       'tripClassification',
-      ['treatNoTransport', 'refusal']
+      NO_TRANSPORT_KINDS
     )
   );
   const rateCode = select(

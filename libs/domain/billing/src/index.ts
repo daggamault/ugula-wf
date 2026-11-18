@@ -100,8 +100,6 @@ export {
 export type {
   BillingStores,
   ClaimStore,
-  Diagnosis,
-  DiagnosisMatch,
   DiagnosisStore,
   FeeStore,
   PatientStore,

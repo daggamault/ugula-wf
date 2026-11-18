@@ -100,7 +100,7 @@ export const seedReference = async (db: Db, embed: Embedder['embed']) => {
   await sql`analyze ${sql.join(REFERENCE_TABLES.map((name) => sql.table(name)))}`.execute(db);
 };
 
-export const EMBEDDINGS_CACHE = new URL('../.cache/', import.meta.url);
+const EMBEDDINGS_CACHE = new URL('../.cache/', import.meta.url);
 
 export const createSeedEmbed = async (url: string) => {
   const model = await embeddingModelOf(url, fetch);

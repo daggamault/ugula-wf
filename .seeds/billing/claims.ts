@@ -10,6 +10,7 @@ import {
   allOf,
   asStage,
   asWorkflow,
+  BILLABLE_KINDS,
   breakRecord,
   CODE,
   codes,
@@ -28,7 +29,8 @@ import {
   PAYMENT,
   QUEUE,
   stage,
-  T
+  T,
+  TRANSPORT_KINDS
 } from './shared.ts';
 
 const CLASSIFICATION_OUT = d(
@@ -129,8 +131,6 @@ const reviewClaim = (): GraphDef => {
   return g.def;
 };
 
-const BILLABLE = ['emergency', 'scheduled', 'pronouncedDead', 'treatNoTransport', 'refusal'];
-
 const CHOSEN_KINDS = CLASSIFICATIONS.filter((c) => c !== 'unknown').map((value) => ({
   value,
   label: CLASSIFICATION_LABELS[value]
@@ -212,7 +212,7 @@ const settleClassification = (): GraphDef => {
         'Transports, pronounced dead, treatment and refusal without transport.'
       ),
       'tripClassification',
-      BILLABLE
+      BILLABLE_KINDS
     )
   );
   g.ret('return', 'settled');
@@ -231,8 +231,6 @@ const settleClassification = (): GraphDef => {
   g.wire('chosen.then', 'return.exec');
   return g.def;
 };
-
-const TRANSPORTS = ['emergency', 'scheduled'];
 
 const settleMiles = (): GraphDef => {
   const g = stage(
@@ -275,7 +273,7 @@ const settleMiles = (): GraphDef => {
         'transportKinds',
         n('Kinds of Transport', 'Emergency and scheduled.'),
         'tripClassification',
-        TRANSPORTS
+        TRANSPORT_KINDS
       )
     ),
     isMissing(
@@ -388,7 +386,7 @@ const settlePlaces = (): GraphDef => {
           'transportKinds',
           n('Kinds of Transport', 'Emergency and scheduled.'),
           'tripClassification',
-          TRANSPORTS
+          TRANSPORT_KINDS
         )
       ),
       not(

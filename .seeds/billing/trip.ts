@@ -6,7 +6,8 @@ import {
   anyOf,
   asRule,
   atLeast,
-  type Builder,
+  BILLABLE_KINDS,
+  breakEncounter,
   breakRecord,
   CODE,
   CRITERIA_OUT,
@@ -14,13 +15,12 @@ import {
   criteriaResult,
   DESTINATION,
   d,
-  ENCOUNTER,
   firstSet,
   fixed,
   INTERFACILITY,
   isCode,
   isIn,
-  isMissing,
+  isKnown,
   joinLists,
   listOf,
   n,
@@ -29,6 +29,7 @@ import {
   ODOMETER,
   orZero,
   type Port,
+  pinOf,
   reasonsOf,
   reasonsOut,
   rule,
@@ -118,30 +119,9 @@ const DEATH_PHRASES = [
   'resuscitation terminated'
 ];
 
-const BILLABLE = ['emergency', 'scheduled', 'pronouncedDead', 'treatNoTransport', 'refusal'];
-
-const pinOf = (id: string, pin: string): Port => `${id}.${pin}`;
-
-const breakTrip = (g: Builder) =>
-  breakRecord(
-    g,
-    'trip',
-    n('Encounter', 'Splits the encounter into the fields these tests read.'),
-    ENCOUNTER,
-    'entry.encounter'
-  );
-
-const isKnown = (g: Builder, id: string, label: string, value: Port) =>
-  not(
-    g,
-    id,
-    n(label, 'Holds when the report gives a value, not a not value or nothing.'),
-    isMissing(g, `${id}Missing`, n(`${label}: Missing`, 'Holds when the value is empty.'), value)
-  );
-
 const noPatientCriteria = (): GraphDef => {
   const g = rule([ENCOUNTER_IN], CRITERIA_OUT);
-  breakTrip(g);
+  breakEncounter(g);
   return criteriaResult(g, 'No Patient', [
     {
       id: 'unitNoPatient',
@@ -230,7 +210,7 @@ const noPatientCriteria = (): GraphDef => {
 
 const transportedCriteria = (): GraphDef => {
   const g = rule([ENCOUNTER_IN], CRITERIA_OUT);
-  breakTrip(g);
+  breakEncounter(g);
   return criteriaResult(g, 'Transported', [
     {
       id: 'transportDisposition',
@@ -278,7 +258,7 @@ const transportedCriteria = (): GraphDef => {
 
 const notTransportedCriteria = (): GraphDef => {
   const g = rule([ENCOUNTER_IN], CRITERIA_OUT);
-  breakTrip(g);
+  breakEncounter(g);
   return criteriaResult(g, 'Not Transported', [
     {
       id: 'transportDisposition',
@@ -345,7 +325,7 @@ const notTransportedCriteria = (): GraphDef => {
 
 const arrivalCriteria = (): GraphDef => {
   const g = rule([ENCOUNTER_IN], CRITERIA_OUT);
-  breakTrip(g);
+  breakEncounter(g);
   breakRecord(g, 'times', n('Times', 'The times of the trip.'), TIMES, 'trip.times');
   breakRecord(
     g,
@@ -441,7 +421,7 @@ const arrivalCriteria = (): GraphDef => {
 
 const pronouncedDeadCriteria = (): GraphDef => {
   const g = rule([ENCOUNTER_IN], CRITERIA_OUT);
-  breakTrip(g);
+  breakEncounter(g);
   return criteriaResult(g, 'Pronounced Dead', [
     {
       id: 'deadAtScene',
@@ -568,7 +548,7 @@ const pronouncedDeadCriteria = (): GraphDef => {
 
 const refusalCriteria = (): GraphDef => {
   const g = rule([ENCOUNTER_IN], CRITERIA_OUT);
-  breakTrip(g);
+  breakEncounter(g);
   return criteriaResult(g, 'Refusal', [
     {
       id: 'refusedCare',
@@ -633,7 +613,7 @@ const refusalCriteria = (): GraphDef => {
 
 const treatedCriteria = (): GraphDef => {
   const g = rule([ENCOUNTER_IN], CRITERIA_OUT);
-  breakTrip(g);
+  breakEncounter(g);
   const count = (id: string, label: string, note: string, list: Port) =>
     atLeast(
       g,
@@ -737,7 +717,7 @@ const treatedCriteria = (): GraphDef => {
 
 const scheduledCriteria = (): GraphDef => {
   const g = rule([ENCOUNTER_IN], CRITERIA_OUT);
-  breakTrip(g);
+  breakEncounter(g);
   return criteriaResult(g, 'Scheduled', [
     {
       id: 'scheduled',
@@ -840,7 +820,7 @@ const tripClassification = (): GraphDef => {
     g.add(f.id, f.key, { label: f.label, note: f.note });
     g.wire('entry.encounter', `${f.id}.encounter`);
   }
-  breakTrip(g);
+  breakEncounter(g);
   const transported = anyOf(
     g,
     'carried',
@@ -1019,7 +999,7 @@ const tripClassification = (): GraphDef => {
         'Transports, pronounced dead, treatment and refusal without transport.'
       ),
       'tripClassification',
-      BILLABLE
+      BILLABLE_KINDS
     )
   );
   const unknown = reasonsOf(

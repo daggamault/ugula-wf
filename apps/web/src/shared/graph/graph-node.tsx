@@ -356,7 +356,11 @@ export const GraphNode = (props: NodeProps<GraphFlowNode>) => {
                 node={id}
                 pin={pin}
                 side="in"
-                binding={connected.includes(pin.name) ? null : preview(instance.inputs?.[pin.name])}
+                binding={
+                  connected.includes(pin.name) || (codedValues && pin.name === 'b')
+                    ? null
+                    : preview(instance.inputs?.[pin.name])
+                }
               />
             ))}
           </ul>

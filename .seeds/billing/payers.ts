@@ -30,10 +30,13 @@ import {
   keepWhere,
   listOf,
   lookup,
+  NO_TRANSPORT_KINDS,
   n,
   node,
   not,
   PAYMENT,
+  phraseList,
+  pinOf,
   QUEUE,
   reasonsOf,
   rule,
@@ -184,16 +187,24 @@ const payerType = (): GraphDef => {
       `${t.id}Type`,
       n(`${t.label} by Name`, `The name says ${t.label}.`),
       code(PAYER_TYPE),
-      `${node(
-        g,
-        t.id,
-        'std.text.find-phrases',
-        n(`Named ${t.label}`, 'Looks in the company name.'),
-        {
-          text: 'insurance.companyName',
-          phrases: `${node(g, `${t.id}Words`, 'std.value', n(`${t.label} Words`, `Names that mean ${t.label}.`), {}, { type: listOf('string'), value: t.words })}.value`
-        }
-      )}.found`,
+      pinOf(
+        node(
+          g,
+          t.id,
+          'std.text.find-phrases',
+          n(`Named ${t.label}`, 'Looks in the company name.'),
+          {
+            text: 'insurance.companyName',
+            phrases: phraseList(
+              g,
+              `${t.id}Words`,
+              n(`${t.label} Words`, `Names that mean ${t.label}.`),
+              t.words
+            )
+          }
+        ),
+        'found'
+      ),
       fixed(t.type)
     )
   );
@@ -218,7 +229,7 @@ const payerType = (): GraphDef => {
   const inferred = firstSet(
     g,
     'inferredType',
-    n('Type From the Name or ID', 'The first name match, else the member ID.'),
+    n('Type from the Name or ID', 'The first name match, else the member ID.'),
     code(PAYER_TYPE),
     [...named, byId]
   );
@@ -284,9 +295,12 @@ const notMedicaid = (g: Builder) =>
     g,
     'notMedicaid',
     n('Not Medicaid', 'Medicaid is billed last, whatever its priority.'),
-    `${node(g, 'medicaid', 'billing.is-medicaid', n('Is Medicaid', 'The payer of last resort.'), {
-      insurance: 'entry.insurance'
-    })}.result`
+    pinOf(
+      node(g, 'medicaid', 'billing.is-medicaid', n('Is Medicaid', 'The payer of last resort.'), {
+        insurance: 'entry.insurance'
+      }),
+      'result'
+    )
   );
 
 const hasPriority = (): GraphDef => {
@@ -544,7 +558,7 @@ const payerChecks = (): GraphDef => {
       allOf(
         g,
         'medicareMethod',
-        n('Medicare Pays an Insurance With No Type', 'The payment method says Medicare.'),
+        n('Medicare Pays an Insurance with No Type', 'The payment method says Medicare.'),
         [
           isMissing(
             g,
@@ -615,7 +629,7 @@ const payerChecks = (): GraphDef => {
               'noTransportKinds',
               n('Kinds Without Transport', 'Treated, refused.'),
               'tripClassification',
-              ['treatNoTransport', 'refusal']
+              NO_TRANSPORT_KINDS
             )
           ),
           medicareFirst

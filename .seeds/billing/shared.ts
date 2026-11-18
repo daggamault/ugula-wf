@@ -47,6 +47,10 @@ export const VITAL = encounterModel('vital');
 
 export const TRANSPORT_KINDS = ['emergency', 'scheduled'];
 
+export const NO_TRANSPORT_KINDS = ['treatNoTransport', 'refusal'];
+
+export const BILLABLE_KINDS = [...TRANSPORT_KINDS, 'pronouncedDead', ...NO_TRANSPORT_KINDS];
+
 export const listOf = (type: ValueType): ValueType => ({ list: type });
 
 export const code = (kind: string): ValueType => ({ code: kind });
@@ -331,6 +335,52 @@ export const joinLists = (g: Builder, id: string, label: Label, type: ValueType,
   node(g, id, 'std.list.join', label, numbered('list', lists), { count: lists.length, type });
   return outputOf(id, 'list');
 };
+
+export const pinOf = (id: string, pin: string): Port => `${id}.${pin}`;
+
+export const breakEncounter = (g: Builder) =>
+  breakRecord(
+    g,
+    'trip',
+    n('Encounter', 'Splits the encounter into the fields this graph reads.'),
+    ENCOUNTER,
+    'entry.encounter'
+  );
+
+export const isKnown = (g: Builder, id: string, label: string, value: Port) =>
+  not(
+    g,
+    id,
+    n(label, 'Holds when the report gives a value, not a not value or nothing.'),
+    isMissing(g, `${id}Missing`, n(`${label}: Missing`, 'Holds when the value is empty.'), value)
+  );
+
+export const containsAny = (
+  g: Builder,
+  id: string,
+  label: Noted,
+  kind: string,
+  list: Port,
+  values: readonly string[],
+  valuesLabel: Noted
+) =>
+  pinOf(
+    node(
+      g,
+      id,
+      'std.list.contains-any',
+      label,
+      { list, other: codes(g, `${id}Codes`, valuesLabel, kind, values) },
+      { type: code(kind) }
+    ),
+    'result'
+  );
+
+export const phraseList = (g: Builder, id: string, label: Noted, values: readonly string[]) =>
+  pinOf(
+    node(g, id, 'std.value', label, {}, { type: listOf('string'), value: [...values] }),
+    'value'
+  );
 
 export type Criterion = { id: string; label: string; reason: string; holds: Port };
 

@@ -52,7 +52,7 @@ const externalCause = (): GraphDef => {
         startsWith(
           g,
           `starts${letter}`,
-          n(`Starts With ${letter}`, `External causes run from V00 to Y99.`),
+          n(`Starts with ${letter}`, `External causes run from V00 to Y99.`),
           'entry.diagnosis',
           letter
         )

@@ -6,6 +6,7 @@ import {
   asRule,
   atLeast,
   type Builder,
+  breakEncounter,
   breakRecord,
   CODE,
   CRITERIA_OUT,
@@ -13,10 +14,10 @@ import {
   code,
   codes,
   codeTable,
+  containsAny,
   criteriaResult,
   DESTINATION,
   d,
-  ENCOUNTER,
   firstSet,
   fixed,
   INTERFACILITY,
@@ -38,6 +39,8 @@ import {
   PERSON,
   type Port,
   PROCEDURE,
+  phraseList,
+  pinOf,
   reasonsOf,
   reasonsOut,
   rule,
@@ -244,17 +247,6 @@ const LIGHTS = ['2224015', '2224017', '2224021', '2224023'];
 
 const QUIET = ['2224007', '2224019'];
 
-const pinOf = (id: string, pin: string): Port => `${id}.${pin}`;
-
-const breakTrip = (g: Builder) =>
-  breakRecord(
-    g,
-    'trip',
-    n('Encounter', 'Splits the encounter into the fields this rule reads.'),
-    ENCOUNTER,
-    'entry.encounter'
-  );
-
 const breakPayment = (g: Builder) =>
   breakRecord(
     g,
@@ -274,35 +266,6 @@ const countIn = (name: string, label: string, description: string) =>
 
 const flagIn = (name: string, label: string, description: string) =>
   d(name, 'boolean', label, description);
-
-const containsAny = (
-  g: Builder,
-  id: string,
-  label: string,
-  note: string,
-  kind: string,
-  list: Port,
-  values: readonly string[],
-  valuesLabel: string,
-  valuesNote: string
-) =>
-  pinOf(
-    node(
-      g,
-      id,
-      'std.list.contains-any',
-      n(label, note),
-      { list, other: codes(g, `${id}Codes`, n(valuesLabel, valuesNote), kind, values) },
-      { type: code(kind) }
-    ),
-    'result'
-  );
-
-const phrases = (g: Builder, id: string, label: string, note: string, values: string[]) =>
-  pinOf(
-    node(g, id, 'std.value', n(label, note), {}, { type: listOf('string'), value: values }),
-    'value'
-  );
 
 const byThisUnit = (): GraphDef => {
   const g = rule(
@@ -605,7 +568,7 @@ const crewLevels = (g: Builder) =>
 
 const alsCrewCriteria = (): GraphDef => {
   const g = rule([ENCOUNTER_IN], CRITERIA_OUT);
-  breakTrip(g);
+  breakEncounter(g);
   return criteriaResult(g, 'ALS Crew', [
     {
       id: 'alsUnit',
@@ -636,13 +599,14 @@ const alsCrewCriteria = (): GraphDef => {
       holds: containsAny(
         g,
         'alsCrew',
-        'ALS Crew Member',
-        'Any crew member certified above EMT.',
+        n('ALS Crew Member', 'Any crew member certified above EMT.'),
         KIND.crewLevel,
         crewLevels(g),
         ALS_CREW,
-        'ALS Crew Levels',
-        'AEMT, intermediate, paramedic, critical care paramedic, nurse, NP, PA, physician.'
+        n(
+          'ALS Crew Levels',
+          'AEMT, intermediate, paramedic, critical care paramedic, nurse, NP, PA, physician.'
+        )
       )
     },
     {
@@ -669,7 +633,7 @@ const alsCrewCriteria = (): GraphDef => {
 
 const specialtyCrewCriteria = (): GraphDef => {
   const g = rule([ENCOUNTER_IN], CRITERIA_OUT);
-  breakTrip(g);
+  breakEncounter(g);
   breakPayment(g);
   return criteriaResult(g, 'Specialty Crew', [
     {
@@ -698,13 +662,14 @@ const specialtyCrewCriteria = (): GraphDef => {
       holds: containsAny(
         g,
         'specialtyCrew',
-        'Specialty Crew Member',
-        'A critical care paramedic, nurse, NP, PA or physician.',
+        n('Specialty Crew Member', 'A critical care paramedic, nurse, NP, PA or physician.'),
         KIND.crewLevel,
         crewLevels(g),
         SPECIALTY_CREW,
-        'Specialty Crew Levels',
-        'Critical care paramedic, registered nurse, nurse practitioner, physician assistant, physician.'
+        n(
+          'Specialty Crew Levels',
+          'Critical care paramedic, registered nurse, nurse practitioner, physician assistant, physician.'
+        )
       )
     },
     {
@@ -753,7 +718,7 @@ const sctCriteria = (): GraphDef => {
     ],
     CRITERIA_OUT
   );
-  breakTrip(g);
+  breakEncounter(g);
   breakPayment(g);
   const between = interfacility(g);
   return criteriaResult(g, 'SCT', [
@@ -880,7 +845,7 @@ const als1Criteria = (): GraphDef => {
     ],
     CRITERIA_OUT
   );
-  breakTrip(g);
+  breakEncounter(g);
   breakPayment(g);
   const any = (id: string, label: string, port: Port) =>
     atLeast(g, id, n(label, 'Counted per item.'), 'integer', port, 1);
@@ -970,7 +935,7 @@ const reportedLevel = (): GraphDef => {
       )
     ]
   );
-  breakTrip(g);
+  breakEncounter(g);
   breakPayment(g);
   const as = (id: string, label: string, values: string[], level: string) =>
     select(
@@ -1017,7 +982,7 @@ const narrativeCare = (): GraphDef => {
       d('alsPhrases', listOf('string'), 'ALS Phrases', 'What it mentions.')
     ]
   );
-  breakTrip(g);
+  breakEncounter(g);
   const find = (id: string, label: string, list: Port) =>
     node(
       g,
@@ -1029,22 +994,23 @@ const narrativeCare = (): GraphDef => {
   find(
     'als2',
     'ALS2 Care in the Narrative',
-    phrases(
+    phraseList(
       g,
       'als2Words',
-      'Words for ALS2 Procedures',
-      'Intubation, cricothyrotomy, decompression, pacing, cardioversion, IO, central line.',
+      n(
+        'Words for ALS2 Procedures',
+        'Intubation, cricothyrotomy, decompression, pacing, cardioversion, IO, central line.'
+      ),
       ALS2_PHRASES
     )
   );
   find(
     'als',
     'ALS Care in the Narrative',
-    phrases(
+    phraseList(
       g,
       'alsWords',
-      'Words for ALS Care',
-      'IV access, ECG, advanced airways and ALS medications.',
+      n('Words for ALS Care', 'IV access, ECG, advanced airways and ALS medications.'),
       ALS_PHRASES
     )
   );
@@ -1064,7 +1030,7 @@ const levelOfService = (): GraphDef => {
       reasonsOut('the level was chosen')
     ]
   );
-  breakTrip(g);
+  breakEncounter(g);
   const keep = (id: string, label: string, note: string, key: string, item: string, list: Port) =>
     keepWhere(g, id, n(label, note), key, item, list);
   keep(
@@ -1363,7 +1329,7 @@ const emergencyStatus = (): GraphDef => {
       reasonsOut('the response is or is not an emergency')
     ]
   );
-  breakTrip(g);
+  breakEncounter(g);
   breakPayment(g);
   const decide = (
     id: string,
@@ -1457,13 +1423,11 @@ const emergencyStatus = (): GraphDef => {
       containsAny(
         g,
         'withLights',
-        'Responded With Lights',
-        'Lights, with or without sirens, at dispatch.',
+        n('Responded with Lights', 'Lights, with or without sirens, at dispatch.'),
         KIND.responseModifier,
         'trip.responseModifiers',
         LIGHTS,
-        'Lights Modifiers',
-        'Lights and sirens, lights only, upgraded or downgraded.'
+        n('Lights Modifiers', 'Lights and sirens, lights only, upgraded or downgraded.')
       ),
       true,
       'Emergency: the unit responded with lights'
@@ -1475,13 +1439,11 @@ const emergencyStatus = (): GraphDef => {
       containsAny(
         g,
         'withoutLights',
-        'Responded Without Lights',
-        'No lights or sirens, or scheduled.',
+        n('Responded Without Lights', 'No lights or sirens, or scheduled.'),
         KIND.responseModifier,
         'trip.responseModifiers',
         QUIET,
-        'Quiet Modifiers',
-        'Scheduled, or no lights or sirens.'
+        n('Quiet Modifiers', 'Scheduled, or no lights or sirens.')
       ),
       false,
       'Not an emergency: the unit responded without lights'
@@ -1598,7 +1560,7 @@ const loadedMiles = (): GraphDef => {
       reasonsOut('the miles came from where they did')
     ]
   );
-  breakTrip(g);
+  breakEncounter(g);
   breakRecord(
     g,
     'odometer',
@@ -1741,7 +1703,7 @@ const loadedMiles = (): GraphDef => {
     select(
       g,
       'rounded',
-      n('Whole Miles From 100, Else Tenths', 'CMS rounding.'),
+      n('Whole Miles from 100, Else Tenths', 'CMS rounding.'),
       'number',
       long,
       'whole.result',
@@ -1757,7 +1719,7 @@ const loadedMiles = (): GraphDef => {
       [
         {
           id: 'narrative',
-          label: 'Miles From the Narrative',
+          label: 'Miles from the Narrative',
           reason:
             'Loaded miles come from the narrative because the odometer readings are missing: confirm them',
           holds: narrativeUsed
@@ -1798,7 +1760,7 @@ const serviceDate = (): GraphDef => {
       )
     ]
   );
-  breakTrip(g);
+  breakEncounter(g);
   breakRecord(g, 'times', n('Times', 'The times of the trip.'), TIMES, 'trip.times');
   const first = firstSet(
     g,
@@ -1935,7 +1897,7 @@ const ambulanceDetails = (): GraphDef => {
       reasonsOut('the ambulance details are what they are')
     ]
   );
-  breakTrip(g);
+  breakEncounter(g);
   breakPayment(g);
   breakRecord(g, 'patient', n('Patient', 'The patient’s weight.'), PERSON, 'trip.patient');
   breakRecord(
@@ -2071,7 +2033,7 @@ const diagnoses = (): GraphDef => {
       )
     ]
   );
-  breakTrip(g);
+  breakEncounter(g);
   const all = joinLists(
     g,
     'all',

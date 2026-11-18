@@ -185,7 +185,7 @@ const dialysisDiagnosis = (): GraphDef => {
         startsWith(
           g,
           `prefix${i + 1}`,
-          n(`Starts With ${prefix}`, 'Written with or without the dot.'),
+          n(`Starts with ${prefix}`, 'Written with or without the dot.'),
           'entry.diagnosis',
           prefix
         )
@@ -299,7 +299,7 @@ const claimChecks = (): GraphDef => {
   const fromHomeUnscheduled = allOf(
     g,
     'fromHomeUnscheduled',
-    n('Unscheduled From a Residence', 'Medicare needs no PCS for an unscheduled trip from home.'),
+    n('Unscheduled from a Residence', 'Medicare needs no PCS for an unscheduled trip from home.'),
     [
       isCode(
         g,
@@ -321,7 +321,7 @@ const claimChecks = (): GraphDef => {
       not(
         g,
         'notFromHome',
-        n('Not Unscheduled From Home', 'Facility and scheduled trips need a PCS.'),
+        n('Not Unscheduled from Home', 'Facility and scheduled trips need a PCS.'),
         fromHomeUnscheduled
       )
     ]
@@ -463,7 +463,7 @@ const claimChecks = (): GraphDef => {
           daysBetween(
             g,
             'pcsAge',
-            'Days From Certification to Service',
+            'Days from Certification to Service',
             'payment.certificationDate',
             'entry.serviceDate'
           ),

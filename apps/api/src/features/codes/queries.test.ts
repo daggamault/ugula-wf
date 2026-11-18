@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
-import { searchCodes } from './queries.ts';
+import { describeNemsisCodes, searchCodes } from './queries.ts';
 
 const SELECT = 'select "c"."code", "c"."description", "c"."is_billable" from "codes" as "c"';
 
@@ -105,6 +105,29 @@ describe('searchCodes', () => {
   it('describes no codes without a query for an empty list', async () => {
     const { db, queries } = createRecordingDb(() => []);
     assert.deepEqual(await searchCodes(db, { set: 'icd10cm', codes: [], q: 'chest' }), []);
+    assert.equal(queries.length, 0);
+  });
+});
+
+describe('describeNemsisCodes', () => {
+  it('describes the codes of one NEMSIS element in one query', async () => {
+    const row = { code: '4212007', description: 'Canceled (Prior to Arrival At Scene)' };
+    const { db, queries } = createRecordingDb(() => [row]);
+    assert.deepEqual(await describeNemsisCodes(db, 'eDisposition.12', ['4212007']), [row]);
+    assert.deepEqual(
+      queries.map((q) => [q.sql, q.parameters]),
+      [
+        [
+          'select "code", "description" from "nemsis_codes" where "list" = $1 and "code" in ($2) order by "code"',
+          ['eDisposition.12', '4212007']
+        ]
+      ]
+    );
+  });
+
+  it('asks nothing for no codes', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    assert.deepEqual(await describeNemsisCodes(db, 'eDisposition.12', []), []);
     assert.equal(queries.length, 0);
   });
 });

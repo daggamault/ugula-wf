@@ -11,7 +11,7 @@ const TIMEOUT_MS = 120_000;
 const isVector = (x: unknown): x is number[] =>
   Array.isArray(x) && x.length > 0 && x.every((n) => typeof n === 'number');
 
-export type Wait = (ms: number) => Promise<void>;
+type Wait = (ms: number) => Promise<void>;
 
 const BUSY = new Set([429, 503]);
 

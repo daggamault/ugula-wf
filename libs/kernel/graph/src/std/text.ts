@@ -90,7 +90,7 @@ const sentencesOf = (text: string) => text.slice(0, MAX_SEARCHED).split(/[.;!?\n
 const isNegated = (sentence: string, at: number) =>
   NEGATION.test(sentence.slice(0, at).trim().split(/\s+/).slice(-NEGATION_WORDS).join(' '));
 
-export const phrasesIn = (text: string, phrases: readonly string[], skipNegated: boolean) =>
+const phrasesIn = (text: string, phrases: readonly string[], skipNegated: boolean) =>
   phrases.filter(
     (phrase) =>
       phrase.trim() !== '' &&
