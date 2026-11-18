@@ -3,7 +3,6 @@ import {
   Background,
   Controls,
   type Edge,
-  MiniMap,
   type NodeChangeset,
   Panel,
   ReactFlow,
@@ -472,18 +471,6 @@ export const GraphCanvas = ({
           >
             <Background gap={24} />
             <Controls showInteractive={false} />
-            <MiniMap<CanvasNode>
-              pannable
-              zoomable
-              ariaLabel="Mini Map"
-              className="border-border overflow-hidden rounded-xl border max-sm:hidden"
-              bgColor="var(--color-surface)"
-              maskColor="color-mix(in oklab, var(--color-canvas) 70%, transparent)"
-              nodeColor={(n) =>
-                isGraphNode(n) ? `var(--color-node-${n.data.kind})` : 'transparent'
-              }
-              nodeStrokeColor={(n) => (isGraphNode(n) ? 'transparent' : 'var(--color-border)')}
-            />
             {tools || editable ? (
               <Panel position="top-left" className="flex flex-wrap items-center gap-2">
                 {tools}
