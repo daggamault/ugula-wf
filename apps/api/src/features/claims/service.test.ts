@@ -151,9 +151,18 @@ const CURRENT = {
   reasons: ['Emergency response']
 };
 
-const editing = (current: object | null = CURRENT) => {
+const editing = (current: object | null = CURRENT, decided: object[] = []) => {
   const { db, queries } = createRecordingDb((q: CompiledQuery) => {
     if (q.sql.startsWith('select "revision", "status"')) return current ? [current] : [];
+    if (q.sql.startsWith('select "code", "modifiers", "units", "unit_cents"')) {
+      return decided.length
+        ? [
+            { code: 'A0427', modifiers: ['RH'], units: '1', unit_cents: 85_000 },
+            { code: 'A0425', modifiers: ['RH'], units: '7.4', unit_cents: 1_250 }
+          ]
+        : [];
+    }
+    if (q.sql.startsWith('select "payer_id", "payer_name"')) return decided;
     if (q.sql.startsWith('update "claims"')) return [{ revision: 3 }];
     if (q.sql.startsWith('insert into "events"')) return [{ id: 'ev-1' }];
     return [];
@@ -201,7 +210,30 @@ describe('editing a claim', () => {
       'c1',
       EDIT
     );
-    assert.match(sent.ok ? '' : sent.failure.message, /already sent to the clearinghouse/);
+    assert.match(sent.ok ? '' : sent.failure.message, /A payer has this claim now/);
+  });
+
+  it('keeps the lines and the payers that already decided the claim', async () => {
+    const paid = { payer_id: null, payer_name: 'Medicare', member_id: '1EG4', status: 'paid' };
+    const pending = { ...paid, payer_name: 'Blue Plan', status: 'pending' };
+    const ok = editing(CURRENT, [paid, pending]);
+    const kept = await ok.service.edit('t-1', 'u-1', 'c1', EDIT);
+    assert.ok(kept.ok);
+    const removed = ok.queries.find((q) => q.sql.startsWith('delete from "claim_coverages"'));
+    assert.deepEqual(removed?.parameters, ['c1', 1]);
+    const repriced = await editing(CURRENT, [paid, pending]).service.edit('t-1', 'u-1', 'c1', {
+      ...EDIT,
+      lines: [{ code: 'A0427', modifiers: ['RH'], units: 1, unitCents: 90_000 }]
+    });
+    assert.match(repriced.ok ? '' : repriced.failure.message, /charge lines can no longer change/);
+    const repaid = await editing(CURRENT, [paid, pending]).service.edit('t-1', 'u-1', 'c1', {
+      ...EDIT,
+      coverages: [{ ...(EDIT.coverages[0] as ClaimEdit['coverages'][number]), memberId: 'X' }]
+    });
+    assert.match(
+      repaid.ok ? '' : repaid.failure.message,
+      /already decided this claim can no longer change/
+    );
   });
 
   it('says what is wrong with an edit it cannot save, and saves nothing', async () => {

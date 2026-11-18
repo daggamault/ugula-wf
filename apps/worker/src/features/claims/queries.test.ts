@@ -67,7 +67,7 @@ const queue = () => {
 
 const STALE_RUN = '0195f2a4-0000-7000-8000-000000000009';
 
-const notSent = async () => ({ outcome: 'notApproved' as const });
+const notSent = async () => ({ outcome: 'nothingToSend' as const });
 
 const PATIENT_ROW = {
   patient_first_name: 'Ada',
@@ -355,7 +355,7 @@ describe('createClaimStore', () => {
     });
     assert.match(
       queries.find((q) => q.sql.startsWith('insert into "claims"'))?.sql ?? '',
-      /where "claims"\."status" <> \$\d+ returning/
+      /where "claims"\."status" in \(\$\d+, \$\d+, \$\d+\) returning/
     );
     assert.ok(!queries.some((q) => q.sql.startsWith('delete')));
   });

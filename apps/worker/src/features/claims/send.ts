@@ -1,5 +1,13 @@
 import { posix } from 'node:path';
-import { build837, isSelfPay, type SentClaim, x837ClaimOf } from '@ugula/billing';
+import {
+  build837,
+  type ClaimStatus,
+  currentPayerIndex,
+  isBillable,
+  isSelfPay,
+  type SentClaim,
+  x837ClaimOf
+} from '@ugula/billing';
 import { openSecret, type SecretKeyring, type SftpAccount, uploadFile } from '@ugula/clearinghouse';
 import { checkClaim, type Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
@@ -18,6 +26,7 @@ type SenderDeps = {
 type Submission = {
   id: string;
   revision: number;
+  coverage_position: number;
   control_number: number;
   file_name: string;
   content: string;
@@ -28,7 +37,16 @@ type Prepared = SentClaim | { outcome: 'upload'; submission: Submission };
 const NO_CONNECTION =
   'The agency has no active clearinghouse connection: set one up in Settings, then retry this run';
 
-const SUBMISSION_COLUMNS = ['id', 'revision', 'control_number', 'file_name', 'content'] as const;
+const SUBMISSION_COLUMNS = [
+  'id',
+  'revision',
+  'coverage_position',
+  'control_number',
+  'file_name',
+  'content'
+] as const;
+
+const SENDABLE: readonly ClaimStatus[] = ['approved', 'submitted', 'rejected'];
 
 export const fileNameOf = (submitterId: string, controlNumber: number, extension: string) =>
   `${submitterId.replace(/[^A-Za-z0-9]/g, '').slice(0, 15)}${String(controlNumber).padStart(9, '0')}${extension}`;
@@ -64,17 +82,22 @@ export const createClaimSender =
         .forUpdate()
         .executeTakeFirst();
       if (!locked) throw new Error(`Claim ${claimId} does not exist`);
-      if (locked.status !== 'approved') return { outcome: 'notApproved' };
+      if (!SENDABLE.includes(locked.status)) return { outcome: 'nothingToSend' };
+      const check = await checkClaim(tx, agencyId, claimId);
+      if (!check) throw new Error(`Claim ${claimId} does not exist`);
+      if (isSelfPay(check.claim)) return { outcome: 'selfPay' };
+      const current = currentPayerIndex(check.claim.coverages);
+      const payer = check.claim.coverages[current];
+      if (!payer || !isBillable(payer.status)) return { outcome: 'nothingToSend' };
       const reserved = await tx
         .selectFrom('claim_submissions')
         .select(SUBMISSION_COLUMNS)
         .where('claim_id', '=', claimId)
         .where('revision', '=', locked.revision)
+        .where('coverage_position', '=', current + 1)
+        .where('sent_at', 'is', null)
         .executeTakeFirst();
       if (reserved) return { outcome: 'upload', submission: reserved };
-      const check = await checkClaim(tx, agencyId, claimId);
-      if (!check) throw new Error(`Claim ${claimId} does not exist`);
-      if (isSelfPay(check.claim)) return { outcome: 'selfPay' };
       if (check.issues.length || !check.submitter?.submitterId) {
         return { outcome: 'notReady', issues: check.issues };
       }
@@ -93,6 +116,7 @@ export const createClaimSender =
           agency_id: agencyId,
           claim_id: claimId,
           revision: locked.revision,
+          coverage_position: current + 1,
           control_number: controlNumber,
           file_name: fileNameOf(
             check.submitter.submitterId,
@@ -134,12 +158,18 @@ export const createClaimSender =
         .where('id', '=', submission.id)
         .execute();
       await tx
+        .updateTable('claim_coverages')
+        .set({ status: 'sent', status_note: null, updated_at: sql`now()` })
+        .where('claim_id', '=', claimId)
+        .where('position', '=', submission.coverage_position)
+        .execute();
+      await tx
         .updateTable('claims')
         .set({ status: 'submitted', updated_at: sql`now()` })
         .where('agency_id', '=', agencyId)
         .where('id', '=', claimId)
         .where('revision', '=', submission.revision)
-        .where('status', '=', 'approved')
+        .where('status', 'in', SENDABLE)
         .execute();
     });
     return {

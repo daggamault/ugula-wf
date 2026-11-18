@@ -76,7 +76,9 @@ export const findClaimSubmission = async (
             'cc.group_id',
             'cc.relationship',
             'cc.insured_first_name',
-            'cc.insured_last_name'
+            'cc.insured_last_name',
+            'cc.status',
+            'cc.adjudication'
           ])
           .whereRef('cc.claim_id', '=', 'c.id')
           .orderBy('cc.position')
@@ -141,7 +143,9 @@ export const findClaimSubmission = async (
       groupId: cc.group_id,
       relationship: cc.relationship as InsuredRelationship,
       insuredFirstName: cc.insured_first_name,
-      insuredLastName: cc.insured_last_name
+      insuredLastName: cc.insured_last_name,
+      status: cc.status,
+      adjudication: cc.adjudication
     })),
     lines: c.lines.map((l) => ({
       code: l.code,
@@ -264,11 +268,17 @@ export const replaceClaimParts = async (
   tx: Db,
   agencyId: string,
   claimId: string,
-  claim: Pick<ClaimInput, 'lines' | 'coverages' | 'diagnoses'>
+  claim: Pick<ClaimInput, 'lines' | 'coverages' | 'diagnoses'>,
+  keptPayers = 0
 ) => {
   await tx.deleteFrom('claim_lines').where('claim_id', '=', claimId).execute();
-  await tx.deleteFrom('claim_coverages').where('claim_id', '=', claimId).execute();
+  await tx
+    .deleteFrom('claim_coverages')
+    .where('claim_id', '=', claimId)
+    .where('position', '>', keptPayers)
+    .execute();
   await tx.deleteFrom('claim_diagnoses').where('claim_id', '=', claimId).execute();
+  const coverages = claim.coverages.slice(keptPayers);
   if (claim.lines.length) {
     await tx
       .insertInto('claim_lines')
@@ -285,14 +295,14 @@ export const replaceClaimParts = async (
       )
       .execute();
   }
-  if (claim.coverages.length) {
+  if (coverages.length) {
     await tx
       .insertInto('claim_coverages')
       .values(
-        claim.coverages.map((c, i) => ({
+        coverages.map((c, i) => ({
           agency_id: agencyId,
           claim_id: claimId,
-          position: i + 1,
+          position: keptPayers + i + 1,
           payer_name: c.payerName,
           payer_id: c.payerId,
           member_id: c.memberId,

@@ -386,7 +386,7 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
       title: 'Send Claim',
       category: 'Claim',
       description:
-        "Sends an approved claim to the agency's clearinghouse as an 837P file, billed to its first payer, and marks it Sent. A claim the patient pays has no payer to send to.",
+        "Sends a claim to the agency's clearinghouse as an 837P file, billed to its current payer: the first payer not done with it, with what each payer before it paid. It marks that payer and the claim Sent. A claim is sent once approved, again after a rejection, and to the next payer once the one before has paid; a claim the patient pays has no payer to send to.",
       level: 'basic',
       keywords: ['claim', 'send', 'submit', '837', 'clearinghouse', 'sftp'],
       effect: true,
@@ -418,10 +418,10 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
           label: 'Not Ready',
           description: 'The claim lacks something the 837P needs; the issues say what.'
         },
-        notApproved: {
-          label: 'Not Approved',
+        nothingToSend: {
+          label: 'Nothing to Send',
           description:
-            'The claim is not approved, or was already sent, such as when it was revised after it was approved.'
+            'The claim is not approved, its current payer already has it, or every payer is done with it.'
         }
       },
       compute: async ({ claimId }, _, ctx) => {

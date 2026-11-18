@@ -1,6 +1,7 @@
 import type {
   ClaimStatus,
   Classification,
+  CoverageStatus,
   InsuredRelationship,
   Sex,
   TransportReason
@@ -41,6 +42,11 @@ export type ClaimCoverage = {
   payer_id: string | null;
   member_id: string | null;
   group_id: string | null;
+  status: CoverageStatus;
+  payer_claim_number: string | null;
+  status_note: string | null;
+  paid_cents: number | null;
+  patient_cents: number | null;
 };
 
 type EncounterAddress = {

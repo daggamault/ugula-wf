@@ -1,4 +1,4 @@
-import { BILLING_EVENTS, claimCodeRefs, readAddress, readClaim } from '@ugula/billing';
+import { BILLING_EVENTS, claimCodeRefs, isEditable, readAddress, readClaim } from '@ugula/billing';
 import {
   cancelStaleReviews,
   checkClaim,
@@ -13,7 +13,13 @@ import { sql } from 'kysely';
 import { isForeignKeyViolation } from '../../shared/http.ts';
 import { type Publish, publishAfter } from '../../shared/live.ts';
 import { fail, ok } from '../../shared/result.ts';
-import { type ClaimFilters, findClaim, findEditableClaim, searchClaims } from './queries.ts';
+import {
+  type ClaimFilters,
+  findClaim,
+  findDecidedParts,
+  findEditableClaim,
+  searchClaims
+} from './queries.ts';
 import type { ClaimEdit } from './schemas.ts';
 
 type ClaimServiceDeps = { db: Db; boss: RunQueueClient; publish: Publish };
@@ -36,6 +42,43 @@ const invalidAddress = (e: ClaimEdit) =>
   addressIssue('Patient address', e.patient) ??
   addressIssue('Pickup', e.pickup) ??
   addressIssue('Destination', e.destination);
+
+type Decided = Awaited<ReturnType<typeof findDecidedParts>>;
+
+const sameLines = (edit: ClaimEdit['lines'], kept: Decided['lines']) =>
+  edit.length === kept.length &&
+  edit.every((l, i) => {
+    const k = kept[i];
+    return (
+      k !== undefined &&
+      l.code.toUpperCase() === k.code &&
+      l.modifiers.map((m) => m.toUpperCase()).join(' ') === k.modifiers.join(' ') &&
+      l.units === Number(k.units) &&
+      l.unitCents === k.unit_cents
+    );
+  });
+
+const samePayers = (edit: ClaimEdit['coverages'], kept: Decided['payers']) =>
+  kept.every((k, i) => {
+    const e = edit[i];
+    return (
+      e !== undefined &&
+      e.payerId === k.payer_id &&
+      e.payerName === k.payer_name &&
+      (e.memberId ?? null) === k.member_id
+    );
+  });
+
+const decidedChange = (edit: ClaimEdit, decided: Decided) => {
+  if (!decided.payers.length) return null;
+  if (!sameLines(edit.lines, decided.lines)) {
+    return 'A payer has already decided this claim, so its charge lines can no longer change; the payer needs a corrected claim.';
+  }
+  if (!samePayers(edit.coverages, decided.payers)) {
+    return 'The payers that have already decided this claim can no longer change.';
+  }
+  return null;
+};
 
 type Kept = { encounterId: string; patientId: string; classification: string; reasons: string[] };
 
@@ -88,12 +131,15 @@ export const createClaimService = ({ db, boss, publish }: ClaimServiceDeps) => (
         .execute(async (tx) => {
           const current = await findEditableClaim(tx, agencyId, id);
           if (!current) return notFound;
-          if (current.status === 'submitted') {
+          if (!isEditable(current.status)) {
             return fail(
               'conflict',
-              'This claim was already sent to the clearinghouse, so it can no longer be edited; the payer needs a corrected claim.'
+              'A payer has this claim now, so it can no longer be edited; it can be corrected once the payer decides it or rejects it.'
             );
           }
+          const decided = await findDecidedParts(tx, id);
+          const frozen = decidedChange(edit, decided);
+          if (frozen) return fail('conflict', frozen);
           if (current.revision !== edit.revision) {
             return fail(
               'conflict',
@@ -137,7 +183,7 @@ export const createClaimService = ({ db, boss, publish }: ClaimServiceDeps) => (
             .where('id', '=', id)
             .returning(['revision'])
             .executeTakeFirstOrThrow();
-          await replaceClaimParts(tx, agencyId, id, claim);
+          await replaceClaimParts(tx, agencyId, id, claim, decided.payers.length);
           await cancelStaleReviews(tx, boss, agencyId, current.encounter_id, null);
           await emitAndDispatch(tx, boss, {
             agencyId,

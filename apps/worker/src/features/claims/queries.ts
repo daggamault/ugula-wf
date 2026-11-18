@@ -1,4 +1,4 @@
-import type { ClaimStore, InsuredRelationship } from '@ugula/billing';
+import { CLAIM_STATUSES, type ClaimStore, type InsuredRelationship, wasSent } from '@ugula/billing';
 import {
   cancelStaleReviews,
   checkClaim,
@@ -30,6 +30,8 @@ const patientSnapshot = (tx: Kysely<Database>, runId: string, patientId: string)
     .executeTakeFirst();
 
 const numberOrNull = (x: string | number | null) => (x === null ? null : Number(x));
+
+const UNSENT = CLAIM_STATUSES.filter((s) => !wasSent(s));
 
 const issuesOf = async (db: Kysely<Database>, runId: string, claimId: string) => {
   if (!isUuid(claimId)) return null;
@@ -194,7 +196,7 @@ export const createClaimStore = (
               review_note: null,
               updated_at: sql`now()`
             })
-            .where('claims.status', '<>', 'submitted')
+            .where('claims.status', 'in', UNSENT)
         )
         .returning(['id', 'agency_id', 'revision', sql<boolean>`xmax = 0`.as('inserted')])
         .executeTakeFirst();

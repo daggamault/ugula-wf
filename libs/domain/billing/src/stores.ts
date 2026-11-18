@@ -34,7 +34,7 @@ type SavedClaim = {
 
 export type SentClaim =
   | { outcome: 'sent'; fileName: string; controlNumber: number }
-  | { outcome: 'selfPay' | 'notApproved' }
+  | { outcome: 'selfPay' | 'nothingToSend' }
   | { outcome: 'notReady'; issues: string[] };
 
 export type ClaimStore = {

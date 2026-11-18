@@ -193,7 +193,7 @@ describe('searchClaims', () => {
     await searchClaims(db, 't-1', { ...PAGE, sort: 'status', dir: 'asc' });
     assert.equal(
       listOf(queries)[0]?.sql,
-      `${CLAIM_IDS} order by array_position(array['needs_review', 'approved', 'on_hold', 'submitted']::text[], c.status::text) ` +
+      `${CLAIM_IDS} order by array_position(array['needs_review', 'approved', 'on_hold', 'submitted', 'rejected', 'denied', 'patient_balance', 'closed']::text[], c.status::text) ` +
         'asc nulls last, "c"."id" asc limit $2 offset $3'
     );
   });
@@ -231,7 +231,7 @@ describe('findClaim', () => {
       '"e"."data" as "encounter"',
       'inner join "imports" as "i" on "i"."id" = "ir"."import_id" where "ir"."encounter_id" = "e"."id"',
       'from "claim_submissions" as "s" where "s"."claim_id" = "c"."id" and "s"."sent_at" is not null order by "s"."sent_at" desc',
-      '"cc"."relationship", "cc"."insured_first_name", "cc"."insured_last_name" from "claim_coverages" as "cc"',
+      '"cc"."relationship", "cc"."insured_first_name", "cc"."insured_last_name", "cc"."status", "cc"."payer_claim_number", "cc"."status_note"',
       '"l"."modifiers", "l"."units", "l"."unit_cents", "l"."total_cents" from "claim_lines" as "l" where "l"."claim_id" = "c"."id" order by "l"."position"',
       'array((select "d"."code" from "claim_diagnoses" as "d" where "d"."claim_id" = "c"."id" order by "d"."position")) as "diagnoses"'
     ]) {

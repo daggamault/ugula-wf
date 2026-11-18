@@ -1,5 +1,6 @@
 import type { Permission } from '@ugula/access';
 import type {
+  Adjudication,
   AfterDownload,
   ClaimFilingCode,
   ClaimStatus,
@@ -7,6 +8,7 @@ import type {
   ClearinghouseVendor,
   CodeSet,
   CorrectionMethod,
+  CoverageStatus,
   FacilityKind,
   InsuredRelationship,
   PlanType,
@@ -511,11 +513,15 @@ type ClaimSubmissionsTable = {
   agency_id: string;
   claim_id: string;
   revision: number;
+  coverage_position: number;
   control_number: number;
   file_name: string;
   content: string;
   created_at: Timestamp;
   sent_at: NullableTimestamp;
+  ack_status: 'accepted' | 'rejected' | null;
+  ack_note: string | null;
+  acknowledged_at: NullableTimestamp;
 };
 
 type EncountersTable = {
@@ -567,6 +573,11 @@ type ClaimCoveragesTable = {
   relationship: InsuredRelationship;
   insured_first_name: string | null;
   insured_last_name: string | null;
+  status: Generated<CoverageStatus>;
+  payer_claim_number: string | null;
+  status_note: string | null;
+  adjudication: NullableJsonColumn<Adjudication>;
+  updated_at: Timestamp;
 };
 
 type ClaimDiagnosesTable = {

@@ -6,7 +6,11 @@ const INTENTS: Record<ClaimStatus, Intent> = {
   needs_review: 'warning',
   approved: 'success',
   on_hold: 'danger',
-  submitted: 'info'
+  submitted: 'info',
+  rejected: 'danger',
+  denied: 'danger',
+  patient_balance: 'warning',
+  closed: 'primary'
 };
 
 export const ClaimStatusBadge = ({ status }: { status: ClaimStatus }) => (

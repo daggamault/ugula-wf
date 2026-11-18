@@ -94,7 +94,7 @@ const fakeStores = () => {
       },
       sendClaim: async (_, id) => {
         const last = saved.at(-1);
-        if (id !== 'c-1' || !last) return { outcome: 'notApproved' };
+        if (id !== 'c-1' || !last) return { outcome: 'nothingToSend' };
         if (!last.coverages.length) return { outcome: 'selfPay' };
         return last.diagnoses.length
           ? { outcome: 'sent', fileName: 'S000000007.CLP', controlNumber: 7 }
@@ -273,7 +273,7 @@ describe('Send Claim', () => {
     );
     await run(stores, 'claim.save', { claim: { ...CLAIM, coverages: [] } });
     assert.equal((await run(stores, 'claim.send', { claimId: 'c-1' })).pin, 'selfPay');
-    assert.equal((await run(stores, 'claim.send', { claimId: 'c-9' })).pin, 'notApproved');
+    assert.equal((await run(stores, 'claim.send', { claimId: 'c-9' })).pin, 'nothingToSend');
   });
 });
 

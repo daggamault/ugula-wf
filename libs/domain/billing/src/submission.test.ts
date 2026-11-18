@@ -37,7 +37,9 @@ const READY: ClaimSubmission = {
       groupId: null,
       relationship: '18',
       insuredFirstName: null,
-      insuredLastName: null
+      insuredLastName: null,
+      status: 'pending',
+      adjudication: null
     },
     {
       payerName: 'Unknown Plan',
@@ -46,7 +48,9 @@ const READY: ClaimSubmission = {
       groupId: null,
       relationship: '01',
       insuredFirstName: null,
-      insuredLastName: null
+      insuredLastName: null,
+      status: 'pending',
+      adjudication: null
     }
   ],
   lines: [
@@ -87,9 +91,9 @@ describe('submissionIssues', () => {
         'The claim has no date of service',
         'The claim has no diagnosis',
         'Line 1 (A0427) has no price: add a fee for it, then edit the claim',
-        'The first payer, Medicare, is not in the payer directory: add it there, or choose a directory payer on the claim',
-        'The first payer, Medicare, has no member ID',
-        'The first payer, Medicare, has no insured name, and the patient is not the insured',
+        'Payer 1, Medicare, is not in the payer directory: add it there, or choose a directory payer on the claim',
+        'Payer 1, Medicare, has no member ID',
+        'Payer 1, Medicare, has no insured name, and the patient is not the insured',
         'The patient address has no street or ZIP code',
         'The pickup location has no city',
         'The destination has no street, city, state or ZIP code',
@@ -116,6 +120,85 @@ describe('submissionIssues', () => {
     assert.deepEqual(
       submissionIssues({ ...selfPay, patient: { ...READY.patient, city: null } }, null),
       ['The patient address has no city']
+    );
+  });
+});
+
+const MEDICARE_PAID = {
+  paidCents: 70_000,
+  adjustedCents: 24_250,
+  paidOn: '2026-10-20',
+  adjustments: [
+    { group: 'CO' as const, reason: '45', cents: 6_750 },
+    { group: 'PR' as const, reason: '2', cents: 17_500 }
+  ],
+  lines: []
+};
+
+const BLUE_PLAN = {
+  payerName: 'Blue Plan',
+  payer: { name: 'Blue Plan', payerCode: 'DEMOBCBS', claimFiling: 'BL' },
+  memberId: 'XGB1',
+  groupId: 'G1',
+  relationship: '18' as const,
+  insuredFirstName: null,
+  insuredLastName: null,
+  status: 'pending' as const,
+  adjudication: null
+};
+
+describe('the payer cycle', () => {
+  it('bills the next payer once the one before has paid, with what it paid', () => {
+    const [primary] = READY.coverages;
+    assert.ok(primary);
+    const secondary = {
+      ...READY,
+      coverages: [{ ...primary, status: 'paid' as const, adjudication: MEDICARE_PAID }, BLUE_PLAN]
+    };
+    assert.deepEqual(submissionIssues(secondary, sampleSubmitter), []);
+    const claim = x837ClaimOf(secondary);
+    assert.equal(claim.payer.payerId, 'DEMOBCBS');
+    assert.deepEqual(
+      claim.otherPayers.map((o) => [o.payerId, o.paidCents, o.paidOn]),
+      [['DEMOMCR', 70_000, '2026-10-20']]
+    );
+    const x12 = build837(sampleSubmitter, [readX837Claim(claim)], sampleEnvelope);
+    assert.match(x12, /SBR\*S\*18\*G1/);
+    assert.match(x12, /AMT\*D\*700~/);
+    assert.match(x12, /CAS\*PR\*2\*175~/);
+  });
+
+  it('skips a payer that was skipped, and asks for nothing once every payer is done', () => {
+    const [primary] = READY.coverages;
+    assert.ok(primary);
+    const claim = x837ClaimOf({
+      ...READY,
+      coverages: [{ ...primary, status: 'skipped' as const }, BLUE_PLAN]
+    });
+    assert.deepEqual([claim.payer.payerId, claim.otherPayers.length], ['DEMOBCBS', 0]);
+    const done = {
+      ...READY,
+      coverages: [{ ...primary, status: 'paid' as const, adjudication: MEDICARE_PAID }]
+    };
+    assert.deepEqual(submissionIssues(done, null), []);
+    assert.throws(() => x837ClaimOf(done), /not ready to send/);
+  });
+
+  it('needs the payer that paid to be fully named for the next one', () => {
+    const [primary] = READY.coverages;
+    assert.ok(primary);
+    assert.deepEqual(
+      submissionIssues(
+        {
+          ...READY,
+          coverages: [
+            { ...primary, memberId: null, status: 'paid' as const, adjudication: MEDICARE_PAID },
+            BLUE_PLAN
+          ]
+        },
+        sampleSubmitter
+      ),
+      ['Payer 1, Medicare, has no member ID']
     );
   });
 });

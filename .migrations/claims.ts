@@ -3,6 +3,7 @@ import {
   CLAIM_STATUSES,
   CLASSIFICATIONS,
   CONDITION_LIMIT,
+  COVERAGE_STATUSES,
   DIAGNOSIS_LIMIT,
   HCPCS_PATTERN,
   ICD10_PATTERN,
@@ -172,6 +173,11 @@ const buildClaimCoveragesTable = (db: Kysely<Database>) =>
     .addColumn('relationship', 'text', (col) => col.notNull())
     .addColumn('insured_first_name', 'text')
     .addColumn('insured_last_name', 'text')
+    .addColumn('status', 'text', (col) => col.notNull().defaultTo('pending'))
+    .addColumn('payer_claim_number', 'text')
+    .addColumn('status_note', 'text')
+    .addColumn('adjudication', 'jsonb')
+    .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addForeignKeyConstraint(
       'claim_coverages_claim_id_fkey',
       ['agency_id', 'claim_id'],
@@ -185,6 +191,11 @@ const buildClaimCoveragesTable = (db: Kysely<Database>) =>
     .addCheckConstraint(
       'claim_coverages_relationship_check',
       sql`relationship in (${list(INSURED_RELATIONSHIPS)})`
+    )
+    .addCheckConstraint('claim_coverages_status_check', sql`status in (${list(COVERAGE_STATUSES)})`)
+    .addCheckConstraint(
+      'claim_coverages_adjudication_check',
+      sql`(adjudication is not null) = (status in ('paid', 'denied'))`
     );
 
 const buildClaimCoveragesPayerForeignKey = () =>
@@ -213,11 +224,15 @@ const buildClaimSubmissionsTable = (db: Kysely<Database>) =>
     .addColumn('agency_id', 'uuid', (col) => col.notNull())
     .addColumn('claim_id', 'uuid', (col) => col.notNull())
     .addColumn('revision', 'integer', (col) => col.notNull())
+    .addColumn('coverage_position', 'smallint', (col) => col.notNull())
     .addColumn('control_number', 'integer', (col) => col.notNull())
     .addColumn('file_name', 'text', (col) => col.notNull())
     .addColumn('content', 'text', (col) => col.notNull())
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('sent_at', 'timestamptz')
+    .addColumn('ack_status', 'text')
+    .addColumn('ack_note', 'text')
+    .addColumn('acknowledged_at', 'timestamptz')
     .addForeignKeyConstraint(
       'claim_submissions_claim_id_fkey',
       ['agency_id', 'claim_id'],
@@ -225,7 +240,6 @@ const buildClaimSubmissionsTable = (db: Kysely<Database>) =>
       ['agency_id', 'id'],
       (fk) => fk.onDelete('cascade').onUpdate('cascade')
     )
-    .addUniqueConstraint('claim_submissions_claim_id_revision_unique', ['claim_id', 'revision'])
     .addUniqueConstraint('claim_submissions_agency_id_control_number_unique', [
       'agency_id',
       'control_number'
@@ -235,7 +249,12 @@ const buildClaimSubmissionsTable = (db: Kysely<Database>) =>
       sql`control_number between 1 and ${sql.lit(MAX_CONTROL_NUMBER)}`
     )
     .addCheckConstraint('claim_submissions_file_name_check', sql`file_name <> ''`)
-    .addCheckConstraint('claim_submissions_revision_check', sql`revision >= 1`);
+    .addCheckConstraint('claim_submissions_revision_check', sql`revision >= 1`)
+    .addCheckConstraint('claim_submissions_coverage_position_check', sql`coverage_position >= 1`)
+    .addCheckConstraint(
+      'claim_submissions_ack_check',
+      sql`ack_status in ('accepted', 'rejected') and (ack_status is null) = (acknowledged_at is null)`
+    );
 
 const buildClaimsIndexes = (db: Kysely<Database>) => [
   db.schema

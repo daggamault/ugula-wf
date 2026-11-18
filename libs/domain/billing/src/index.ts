@@ -1,4 +1,10 @@
-export { MAX_LINE_MODIFIERS, MODIFIER_PATTERN } from './adjudications.ts';
+export {
+  type Adjudication,
+  type Adjustment,
+  type LineAdjudication,
+  MAX_LINE_MODIFIERS,
+  MODIFIER_PATTERN
+} from './adjudications.ts';
 export {
   CLASSIFICATION_LABELS,
   CLASSIFICATIONS,
@@ -30,9 +36,11 @@ export {
   type ClaimLocation,
   type ClaimReview,
   type ClaimStatus,
+  isEditable,
   NOTE_LENGTH,
   readClaim,
-  type StoredClaim
+  type StoredClaim,
+  wasSent
 } from './claims.ts';
 export {
   AFTER_DOWNLOAD,
@@ -95,6 +103,15 @@ export {
   type Sex,
   sexOf
 } from './patients.ts';
+export {
+  COVERAGE_STATUS_LABELS,
+  COVERAGE_STATUSES,
+  type CoverageStatus,
+  currentPayerIndex,
+  isAdjudicated,
+  isBillable,
+  isWaiting
+} from './payer-cycle.ts';
 export {
   CLAIM_FILING_CODES,
   type ClaimFilingCode,

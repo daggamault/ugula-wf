@@ -52,7 +52,9 @@ const CLAIM_ROW = {
       group_id: null,
       relationship: '18',
       insured_first_name: null,
-      insured_last_name: null
+      insured_last_name: null,
+      status: 'pending',
+      adjudication: null
     },
     {
       payer_name: 'Unknown Plan',
@@ -63,7 +65,9 @@ const CLAIM_ROW = {
       group_id: null,
       relationship: '01',
       insured_first_name: null,
-      insured_last_name: null
+      insured_last_name: null,
+      status: 'pending',
+      adjudication: null
     }
   ],
   lines: [{ code: 'A0427', modifiers: ['RH'], units: '1.00', total_cents: 85_000 }]
@@ -192,12 +196,35 @@ describe('replaceClaimParts', () => {
       queries.map((q) => q.sql.split(' (')[0]),
       [
         'delete from "claim_lines" where "claim_id" = $1',
-        'delete from "claim_coverages" where "claim_id" = $1',
+        'delete from "claim_coverages" where "claim_id" = $1 and "position" > $2',
         'delete from "claim_diagnoses" where "claim_id" = $1',
         'insert into "claim_lines"',
         'insert into "claim_diagnoses"'
       ]
     );
     assert.deepEqual(queries[4]?.parameters, ['c-1', 1, 'R079', 'c-1', 2, 'I10']);
+  });
+
+  it('keeps the payers that already decided the claim, and numbers the rest after them', async () => {
+    const { db, queries } = createRecordingDb();
+    const payer = {
+      payerId: null,
+      payerName: 'Medicare',
+      memberId: 'M1',
+      groupId: null,
+      relationship: '18' as const,
+      insuredFirstName: null,
+      insuredLastName: null
+    };
+    await replaceClaimParts(
+      db,
+      't-1',
+      'c-1',
+      { lines: [], diagnoses: [], coverages: [payer, { ...payer, payerName: 'Blue Plan' }] },
+      1
+    );
+    assert.deepEqual(queries[1]?.parameters, ['c-1', 1]);
+    const inserted = queries.find((q) => q.sql.startsWith('insert into "claim_coverages"'));
+    assert.deepEqual(inserted?.parameters.slice(0, 4), ['t-1', 'c-1', 2, 'Blue Plan']);
   });
 });

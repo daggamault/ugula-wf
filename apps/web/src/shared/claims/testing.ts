@@ -91,7 +91,12 @@ export const claimDetail: ClaimDetail = {
       group_id: null,
       relationship: '18',
       insured_first_name: null,
-      insured_last_name: null
+      insured_last_name: null,
+      status: 'pending',
+      payer_claim_number: null,
+      status_note: null,
+      paid_cents: null,
+      patient_cents: null
     },
     {
       id: 'cov-b',
@@ -102,7 +107,12 @@ export const claimDetail: ClaimDetail = {
       group_id: null,
       relationship: '01',
       insured_first_name: 'John',
-      insured_last_name: 'Doe'
+      insured_last_name: 'Doe',
+      status: 'pending',
+      payer_claim_number: null,
+      status_note: null,
+      paid_cents: null,
+      patient_cents: null
     }
   ],
   diagnoses: ['R079', 'I10'],

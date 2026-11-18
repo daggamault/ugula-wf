@@ -1,12 +1,41 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { CLAIM_STATUS_LABELS, CLAIM_STATUSES, type ClaimValue, readClaim } from './claims.ts';
+import {
+  CLAIM_STATUS_LABELS,
+  CLAIM_STATUSES,
+  type ClaimValue,
+  isEditable,
+  readClaim,
+  wasSent
+} from './claims.ts';
 
 describe('claim statuses', () => {
+  it('edits a claim until a payer has it, and knows which were sent', () => {
+    assert.deepEqual(CLAIM_STATUSES.filter(isEditable), [
+      'needs_review',
+      'approved',
+      'on_hold',
+      'rejected'
+    ]);
+    assert.deepEqual(
+      CLAIM_STATUSES.filter((s) => !wasSent(s)),
+      ['needs_review', 'approved', 'on_hold']
+    );
+  });
+
   it('labels every status', () => {
     assert.deepEqual(
       CLAIM_STATUSES.map((s) => CLAIM_STATUS_LABELS[s]),
-      ['Needs Review', 'Approved', 'On Hold', 'Sent']
+      [
+        'Needs Review',
+        'Approved',
+        'On Hold',
+        'Sent',
+        'Rejected',
+        'Denied',
+        'Patient Balance',
+        'Closed'
+      ]
     );
   });
 });

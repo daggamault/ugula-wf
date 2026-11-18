@@ -834,7 +834,7 @@ const sendApproved = () => {
   g.wire('entry.exec', 'send.exec');
   g.wire('entry.claimId', 'send.claimId');
   g.wire('send.notReady', 'notReady.exec');
-  for (const outcome of ['sent', 'selfPay', 'notApproved']) {
+  for (const outcome of ['sent', 'selfPay', 'nothingToSend']) {
     g.ret(outcome);
     g.wire(`send.${outcome}`, `${outcome}.exec`);
     g.wire('entry.claimId', `${outcome}.claimId`);

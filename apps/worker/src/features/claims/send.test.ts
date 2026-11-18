@@ -53,7 +53,9 @@ const CLAIM_ROW = {
       group_id: null,
       relationship: '18',
       insured_first_name: null,
-      insured_last_name: null
+      insured_last_name: null,
+      status: 'pending',
+      adjudication: null
     }
   ],
   lines: [{ code: 'A0427', modifiers: ['RH'], units: '1', total_cents: 85_000 }]
@@ -102,7 +104,7 @@ const setup = ({
     if (q.sql.startsWith('select "agency_id" from "workflow_runs"')) return [{ agency_id: AGENCY }];
     if (q.sql.startsWith('select "status", "revision" from "claims"'))
       return [{ status, revision: 2 }];
-    if (q.sql.startsWith('select "id", "revision", "control_number"'))
+    if (q.sql.startsWith('select "id", "revision", "coverage_position"'))
       return reserved ? [reserved] : [];
     if (q.sql.includes('from "claims" as "c"')) return [claim];
     if (q.sql.includes('from "billing_profiles"')) return [PROFILE_ROW];
@@ -113,9 +115,10 @@ const setup = ({
         {
           id: 's-1',
           revision: q.parameters[2],
-          control_number: q.parameters[3],
-          file_name: q.parameters[4],
-          content: q.parameters[5]
+          coverage_position: q.parameters[3],
+          control_number: q.parameters[4],
+          file_name: q.parameters[5],
+          content: q.parameters[6]
         }
       ];
     }
@@ -162,8 +165,46 @@ describe('createClaimSender', () => {
     assert.ok(sql.some((q) => q.includes('pg_advisory_xact_lock')));
     const marked = queries.find((q) => q.sql.startsWith('update "claims"'));
     assert.ok(marked?.parameters.includes('submitted'));
-    assert.match(marked?.sql ?? '', /"revision" = \$\d+ and "status" = \$\d+$/);
+    assert.match(marked?.sql ?? '', /"revision" = \$\d+ and "status" in \(\$\d+, \$\d+, \$\d+\)$/);
+    const payer = queries.find((q) => q.sql.startsWith('update "claim_coverages"'));
+    assert.deepEqual(payer?.parameters.slice(0, 2), ['sent', null]);
+    assert.deepEqual(payer?.parameters.slice(-2), [CLAIM_ID, 1]);
     assert.ok(sql.some((q) => q.startsWith('update "claim_submissions" set "sent_at" = now()')));
+  });
+
+  it('bills the next payer once the first has paid, with what the first paid', async () => {
+    const paid = {
+      ...CLAIM_ROW.coverages[0],
+      status: 'paid',
+      adjudication: {
+        paidCents: 60_000,
+        adjustedCents: 25_000,
+        paidOn: '2026-10-20',
+        adjustments: [
+          { group: 'CO', reason: '45', cents: 10_000 },
+          { group: 'PR', reason: '2', cents: 15_000 }
+        ],
+        lines: []
+      }
+    };
+    const blue = {
+      ...CLAIM_ROW.coverages[0],
+      payer_name: 'Blue Plan',
+      directory_name: 'Blue Plan',
+      payer_code: 'DEMOBCBS',
+      claim_filing: 'BL',
+      member_id: 'XGB1'
+    };
+    const { send, queries, uploads } = setup({
+      status: 'submitted',
+      claim: { ...CLAIM_ROW, coverages: [paid, blue] }
+    });
+    assert.equal((await send('r1', CLAIM_ID)).outcome, 'sent');
+    const content = uploads[0]?.[2] ?? '';
+    assert.match(content, /NM1\*PR\*2\*BLUE PLAN\*{5}PI\*DEMOBCBS/);
+    assert.match(content, /AMT\*D\*600~/);
+    const reserved = queries.find((q) => q.sql.startsWith('insert into "claim_submissions"'));
+    assert.equal(reserved?.parameters[3], 2);
   });
 
   it('uploads the file it already built for the revision when retried, under the same number', async () => {
@@ -171,6 +212,7 @@ describe('createClaimSender', () => {
       reserved: {
         id: 's-1',
         revision: 2,
+        coverage_position: 1,
         control_number: 7,
         file_name: 'SUB01000000007.CLP',
         content: 'ISA*built~'
@@ -185,9 +227,9 @@ describe('createClaimSender', () => {
     assert.ok(!queries.some((q) => q.sql.startsWith('insert into "claim_submissions"')));
   });
 
-  it('sends nothing for a claim not approved, paid by the patient, or not ready', async () => {
+  it('sends nothing for a claim not approved, paid by the patient, not ready, or with its payer', async () => {
     const notApproved = setup({ status: 'needs_review' });
-    assert.deepEqual(await notApproved.send('r1', CLAIM_ID), { outcome: 'notApproved' });
+    assert.deepEqual(await notApproved.send('r1', CLAIM_ID), { outcome: 'nothingToSend' });
     const selfPay = setup({ claim: { ...CLAIM_ROW, coverages: [] } });
     assert.deepEqual(await selfPay.send('r1', CLAIM_ID), { outcome: 'selfPay' });
     const lacking = setup({ claim: { ...CLAIM_ROW, diagnoses: [] } });
@@ -195,7 +237,12 @@ describe('createClaimSender', () => {
       outcome: 'notReady',
       issues: ['The claim has no diagnosis']
     });
-    for (const s of [notApproved, selfPay, lacking]) assert.deepEqual(s.uploads, []);
+    const waiting = setup({
+      status: 'submitted',
+      claim: { ...CLAIM_ROW, coverages: [{ ...CLAIM_ROW.coverages[0], status: 'sent' }] }
+    });
+    assert.deepEqual(await waiting.send('r1', CLAIM_ID), { outcome: 'nothingToSend' });
+    for (const s of [notApproved, selfPay, lacking, waiting]) assert.deepEqual(s.uploads, []);
   });
 
   it('stops for a person to fix it when the agency has no clearinghouse connection', async () => {

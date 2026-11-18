@@ -1,6 +1,8 @@
+import type { Adjudication } from './adjudications.ts';
 import { type InsuredRelationship, SELF } from './claim-details.ts';
 import type { ClaimLocation } from './claims.ts';
 import type { Address, Sex } from './patients.ts';
+import { type CoverageStatus, currentPayerIndex, isAdjudicated } from './payer-cycle.ts';
 import { type Submitter, submitterIssues, type X837Claim } from './x837.ts';
 
 type DirectoryEntry = { name: string; payerCode: string; claimFiling: string };
@@ -13,6 +15,8 @@ export type SubmissionCoverage = {
   relationship: InsuredRelationship;
   insuredFirstName: string | null;
   insuredLastName: string | null;
+  status: CoverageStatus;
+  adjudication: Adjudication | null;
 };
 
 type SubmissionLine = {
@@ -72,15 +76,17 @@ const patientIssues = (c: ClaimSubmission) =>
     postalCode: c.patient.postalCode
   });
 
-const coverageIssues = (c: SubmissionCoverage) => [
+const payerName = (c: SubmissionCoverage, i: number) => `Payer ${i + 1}, ${c.payerName},`;
+
+const coverageIssues = (c: SubmissionCoverage, i: number) => [
   ...(c.payer
     ? []
     : [
-        `The first payer, ${c.payerName}, is not in the payer directory: add it there, or choose a directory payer on the claim`
+        `${payerName(c, i)} is not in the payer directory: add it there, or choose a directory payer on the claim`
       ]),
-  ...(c.memberId ? [] : [`The first payer, ${c.payerName}, has no member ID`]),
+  ...(c.memberId ? [] : [`${payerName(c, i)} has no member ID`]),
   ...(c.relationship !== SELF && !c.insuredLastName
-    ? [`The first payer, ${c.payerName}, has no insured name, and the patient is not the insured`]
+    ? [`${payerName(c, i)} has no insured name, and the patient is not the insured`]
     : [])
 ];
 
@@ -98,17 +104,23 @@ const loadedMiles = (c: ClaimSubmission) =>
 
 const transported = (c: ClaimSubmission) => loadedMiles(c) !== null;
 
+const priorPayers = (c: ClaimSubmission, current: number) =>
+  c.coverages.slice(0, current).filter((p) => isAdjudicated(p.status));
+
 export const isSelfPay = (c: Pick<ClaimSubmission, 'coverages'>) => c.coverages.length === 0;
 
 export const submissionIssues = (c: ClaimSubmission, submitter: Submitter | null): string[] => {
-  const [primary] = c.coverages;
-  if (!primary) return patientIssues(c);
+  const current = currentPayerIndex(c.coverages);
+  const payer = c.coverages[current];
+  if (!payer) return patientIssues(c);
   return [
     ...submitterIssues(submitter),
     ...(c.serviceDate ? [] : ['The claim has no date of service']),
     ...(c.diagnoses.length ? [] : ['The claim has no diagnosis']),
     ...lineIssues(c.lines),
-    ...coverageIssues(primary),
+    ...c.coverages
+      .slice(0, current + 1)
+      .flatMap((p, i) => (i === current || isAdjudicated(p.status) ? coverageIssues(p, i) : [])),
     ...patientIssues(c),
     ...addressIssue('The pickup location', c.pickup),
     ...(transported(c)
@@ -128,12 +140,32 @@ const location = (l: ClaimLocation) => ({
   postalCode: l.postalCode
 });
 
+const insuredOf = (p: SubmissionCoverage, c: ClaimSubmission) => ({
+  lastName: p.insuredLastName ?? c.patient.lastName,
+  firstName: p.insuredLastName ? p.insuredFirstName : c.patient.firstName
+});
+
+const notReady = (c: ClaimSubmission) => new Error(`Claim ${c.number} is not ready to send`);
+
+const otherPayerOf = (c: ClaimSubmission) => (p: SubmissionCoverage) => {
+  if (!p.payer || !p.memberId || !p.adjudication) throw notReady(c);
+  return {
+    name: p.payer.name,
+    payerId: p.payer.payerCode,
+    claimFiling: p.payer.claimFiling,
+    memberId: p.memberId,
+    groupId: p.groupId,
+    relationship: p.relationship,
+    ...insuredOf(p, c),
+    ...p.adjudication
+  };
+};
+
 export const x837ClaimOf = (c: ClaimSubmission): X837Claim => {
-  const [primary] = c.coverages;
-  const payer = primary?.payer;
-  if (!primary || !payer || !primary.memberId || !c.serviceDate) {
-    throw new Error(`Claim ${c.number} is not ready to send`);
-  }
+  const current = currentPayerIndex(c.coverages);
+  const billed = c.coverages[current];
+  const payer = billed?.payer;
+  if (!billed || !payer || !billed.memberId || !c.serviceDate) throw notReady(c);
   const serviceDate = c.serviceDate;
   return {
     claimId: c.number,
@@ -145,11 +177,10 @@ export const x837ClaimOf = (c: ClaimSubmission): X837Claim => {
     priorAuthorization: c.priorAuthorization,
     note: c.note,
     subscriber: {
-      relationship: primary.relationship,
-      lastName: primary.insuredLastName ?? c.patient.lastName,
-      firstName: primary.insuredLastName ? primary.insuredFirstName : c.patient.firstName,
-      memberId: primary.memberId,
-      groupId: primary.groupId
+      relationship: billed.relationship,
+      ...insuredOf(billed, c),
+      memberId: billed.memberId,
+      groupId: billed.groupId
     },
     patient: {
       lastName: c.patient.lastName,
@@ -167,7 +198,7 @@ export const x837ClaimOf = (c: ClaimSubmission): X837Claim => {
       claimFiling: payer.claimFiling,
       insuranceType: null
     },
-    otherPayers: [],
+    otherPayers: priorPayers(c, current).map(otherPayerOf(c)),
     weightPounds: c.weightPounds,
     transportReason: c.transportReason,
     loadedMiles: loadedMiles(c),

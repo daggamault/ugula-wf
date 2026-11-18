@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { render, screen, within } from '../testing-dom.ts';
 import type { ClaimCoverage } from './claim-detail.ts';
-import { coverageIds, insuredText, PayersPanel } from './claim-payers.tsx';
+import { coverageIds, insuredText, outcomeText, PayersPanel } from './claim-payers.tsx';
 
 const coverage = (over: Partial<ClaimCoverage> = {}): ClaimCoverage => ({
   id: 'c',
@@ -15,6 +15,11 @@ const coverage = (over: Partial<ClaimCoverage> = {}): ClaimCoverage => ({
   relationship: '18',
   insured_first_name: null,
   insured_last_name: null,
+  status: 'pending',
+  payer_claim_number: null,
+  status_note: null,
+  paid_cents: null,
+  patient_cents: null,
   ...over
 });
 
@@ -64,7 +69,34 @@ describe('insuredText', () => {
   });
 });
 
+describe('outcomeText', () => {
+  it('says what the payer paid, what the patient owes and the payer claim number', () => {
+    assert.equal(
+      outcomeText(
+        coverage({ paid_cents: 60_000, patient_cents: 15_000, payer_claim_number: 'P9' })
+      ),
+      'Paid $600.00 · patient owes $150.00 · payer claim P9'
+    );
+    assert.equal(outcomeText(coverage()), '');
+  });
+});
+
 describe('PayersPanel', () => {
+  it('shows where each payer is with the claim, and why one rejected it', () => {
+    render(
+      createElement(PayersPanel, {
+        coverages: [
+          coverage({ status: 'paid', paid_cents: 60_000 }),
+          { ...spouse, status: 'rejected', status_note: 'Invalid member ID' }
+        ]
+      })
+    );
+    assert.ok(screen.getByText('Paid', { selector: 'span' }));
+    assert.ok(screen.getByText('Paid $600.00'));
+    assert.ok(screen.getByText('Rejected'));
+    assert.ok(screen.getByText('Invalid member ID'));
+  });
+
   it('lists the payers in billing order with their IDs and insured', () => {
     render(createElement(PayersPanel, { coverages: [coverage(), spouse] }));
     const panel = screen.getByRole('region', { name: 'Payers' });

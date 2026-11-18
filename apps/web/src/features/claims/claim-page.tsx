@@ -1,4 +1,4 @@
-import type { CodeDescriptions } from '@ugula/billing';
+import { type CodeDescriptions, isEditable } from '@ugula/billing';
 import { PencilIcon, UserIcon } from 'lucide-react';
 import { useCan } from '../../shared/access.tsx';
 import { ChargeLines } from '../../shared/claims/charge-lines.tsx';
@@ -73,7 +73,7 @@ export const ClaimView = ({
             <UserIcon aria-hidden="true" className="size-4" />
             Patient
           </ButtonLink>
-          {can('claims:update') && claim.status !== 'submitted' ? (
+          {can('claims:update') && isEditable(claim.status) ? (
             <ButtonLink to={`${path}/edit`} variant="outline">
               <PencilIcon aria-hidden="true" className="size-4" />
               Edit Claim

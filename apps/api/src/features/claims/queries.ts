@@ -1,4 +1,10 @@
-import { CLAIM_STATUSES, type ClaimStatus, dailyNumberOf, nameKey } from '@ugula/billing';
+import {
+  CLAIM_STATUSES,
+  type ClaimStatus,
+  currentPayerIndex,
+  dailyNumberOf,
+  nameKey
+} from '@ugula/billing';
 import type { Db } from '@ugula/db';
 import { sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
@@ -111,6 +117,25 @@ export const findEditableClaim = (db: Db, agencyId: string, id: string) =>
     .forUpdate()
     .executeTakeFirst();
 
+export const findDecidedParts = async (db: Db, id: string) => {
+  const [lines, payers] = await Promise.all([
+    db
+      .selectFrom('claim_lines')
+      .select(['code', 'modifiers', 'units', 'unit_cents'])
+      .where('claim_id', '=', id)
+      .orderBy('position')
+      .execute(),
+    db
+      .selectFrom('claim_coverages')
+      .select(['payer_id', 'payer_name', 'member_id', 'status'])
+      .where('claim_id', '=', id)
+      .orderBy('position')
+      .execute()
+  ]);
+  const current = currentPayerIndex(payers);
+  return { lines, payers: payers.slice(0, current < 0 ? payers.length : current) };
+};
+
 export const findClaim = (db: Db, agencyId: string, id: string) =>
   claimRows(db, agencyId)
     .leftJoinLateral(
@@ -196,7 +221,16 @@ export const findClaim = (db: Db, agencyId: string, id: string) =>
             'cc.group_id',
             'cc.relationship',
             'cc.insured_first_name',
-            'cc.insured_last_name'
+            'cc.insured_last_name',
+            'cc.status',
+            'cc.payer_claim_number',
+            'cc.status_note',
+            sql<number | null>`(cc.adjudication ->> 'paidCents')::int`.as('paid_cents'),
+            sql<
+              number | null
+            >`(select coalesce(sum((a ->> 'cents')::int), 0) from jsonb_array_elements(cc.adjudication -> 'adjustments') a where a ->> 'group' = 'PR')`.as(
+              'patient_cents'
+            )
           ])
           .whereRef('cc.claim_id', '=', 'c.id')
           .orderBy('cc.position')

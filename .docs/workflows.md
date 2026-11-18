@@ -142,7 +142,7 @@ Read Encounter (Not Found stops at **Encounter Missing**, a Fail for inspection)
 
 ### Send Claim (on `claim.approved`)
 
-Send Claim uploads the approved claim to the agency's clearinghouse as an 837P billed to its first payer and marks it Sent: Sent, Self Pay (nothing to send) or Not Approved (revised since). A claim that lacks something stops at **Not Ready to Send** for a person to fix and retry. See [Clearinghouse](clearinghouse.md#sending-claims).
+Send Claim uploads the approved claim to the agency's clearinghouse as an 837P billed to its current payer and marks that payer and the claim Sent: Sent, Self Pay (nothing to send) or Nothing to Send (not approved, or its payer already has it). A claim is one record billed down its payers: each payer on it has its own state and, once it decides the claim, what it paid, which the next payer's 837P carries. A claim that lacks something stops at **Not Ready to Send** for a person to fix and retry. See [Clearinghouse](clearinghouse.md#sending-claims).
 
 When a revised PCR arrives for a claim already sent, Save Claim keeps the claim as sent (Already Sent), and Encounter to Claim gives a **Correct the Sent Claim** task (permission `claims:update`) instead of a review.
 

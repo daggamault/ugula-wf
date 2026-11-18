@@ -17,8 +17,6 @@ type Reviewed = Pick<
   | 'sent_control_number'
 >;
 
-const DECIDED = { approved: 'Approved By', on_hold: 'Held By', submitted: 'Approved By' } as const;
-
 export const ClaimReviewPanel = ({ claim }: { claim: Reviewed }) => (
   <SectionPanel title="Review">
     <DetailList>
@@ -32,7 +30,9 @@ export const ClaimReviewPanel = ({ claim }: { claim: Reviewed }) => (
         </Detail>
       ) : (
         <>
-          <Detail label={DECIDED[claim.status]}>{claim.reviewed_by ?? emptyValue}</Detail>
+          <Detail label={claim.status === 'on_hold' ? 'Held By' : 'Approved By'}>
+            {claim.reviewed_by ?? emptyValue}
+          </Detail>
           <Detail label="Reviewed">{formatDateTime(claim.reviewed_at)}</Detail>
           <Detail label="Note">{claim.review_note ?? emptyValue}</Detail>
         </>

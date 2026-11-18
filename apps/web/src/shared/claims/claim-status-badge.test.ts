@@ -25,7 +25,11 @@ describe('ClaimStatusBadge', () => {
       needs_review: 'Needs Review',
       approved: 'Approved',
       on_hold: 'On Hold',
-      submitted: 'Sent'
+      submitted: 'Sent',
+      rejected: 'Rejected',
+      denied: 'Denied',
+      patient_balance: 'Patient Balance',
+      closed: 'Closed'
     });
   });
 
@@ -38,7 +42,11 @@ describe('ClaimStatusBadge', () => {
       needs_review: 'text-warning-text',
       approved: 'text-success',
       on_hold: 'text-danger',
-      submitted: 'text-info'
+      submitted: 'text-info',
+      rejected: 'text-danger',
+      denied: 'text-danger',
+      patient_balance: 'text-warning-text',
+      closed: 'text-primary'
     });
   });
 });
