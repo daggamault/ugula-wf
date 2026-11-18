@@ -43,10 +43,6 @@ describe('parseLiveEvent', () => {
     });
     assert.deepEqual(parseLiveEvent('{"kind":"claim","id":"c1"}'), { kind: 'claim', id: 'c1' });
     assert.deepEqual(parseLiveEvent('{"kind":"import","id":null}'), { kind: 'import', id: null });
-    assert.deepEqual(parseLiveEvent('{"kind":"payerFile","id":"f1"}'), {
-      kind: 'payerFile',
-      id: 'f1'
-    });
     assert.deepEqual(parseLiveEvent('{"kind":"notification","id":"n1"}'), {
       kind: 'notification',
       id: 'n1'
@@ -78,7 +74,7 @@ describe('parseLiveEvent', () => {
       '{"kind":"claim"}',
       '{"kind":"claim","id":7}',
       '{"kind":"import","id":7}',
-      '{"kind":"payerFile","id":false}',
+      '{"kind":"payerFile","id":"f1"}',
       '{"kind":"notification","id":{}}'
     ]) {
       assert.equal(parseLiveEvent(message), null, message);

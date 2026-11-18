@@ -3,7 +3,6 @@ export type LiveEvent =
   | { kind: 'task'; id: string | null; runId: string | null }
   | { kind: 'claim'; id: string | null }
   | { kind: 'import'; id: string | null }
-  | { kind: 'payerFile'; id: string | null }
   | { kind: 'notification'; id: string | null };
 
 type LiveKind = LiveEvent['kind'];
@@ -39,7 +38,6 @@ const parsers: { [K in LiveKind]: (v: Fields) => Extract<LiveEvent, { kind: K }>
     isOptionalText(id) && isOptionalText(runId) ? { kind: 'task', id, runId } : null,
   claim: ({ id }) => (isOptionalText(id) ? { kind: 'claim', id } : null),
   import: ({ id }) => (isOptionalText(id) ? { kind: 'import', id } : null),
-  payerFile: ({ id }) => (isOptionalText(id) ? { kind: 'payerFile', id } : null),
   notification: ({ id }) => (isOptionalText(id) ? { kind: 'notification', id } : null)
 };
 
