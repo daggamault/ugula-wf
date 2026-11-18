@@ -176,6 +176,42 @@ describe('kinds', () => {
   });
 });
 
+describe('model types', () => {
+  const claim: ValueType = { object: { total: 'number', payer: 'string' }, model: 'claim' };
+  const quote: ValueType = { object: { total: 'number', payer: 'string' }, model: 'quote' };
+  const loose: ValueType = { object: { total: 'number', payer: 'string' } };
+
+  it('takes a model only where that model, or any record with its fields, is wanted', () => {
+    assert.equal(isAssignable(claim, claim), true);
+    assert.equal(isAssignable(claim, { object: { total: 'number' } }), true);
+    assert.equal(isAssignable(claim, { object: {} }), true);
+    assert.equal(isAssignable(quote, claim), false);
+    assert.equal(isAssignable(loose, claim), false);
+    assert.equal(isAssignable('any', claim), true);
+    assert.equal(isAssignable({ list: claim }, { list: claim }), true);
+    assert.equal(isAssignable({ list: quote }, { list: claim }), false);
+  });
+
+  it('names a model by its key and checks values by its fields', () => {
+    assert.equal(formatType(claim), 'model<claim>');
+    assert.equal(formatType({ list: claim }), 'list<model<claim>>');
+    assert.equal(checkValue(claim, { total: 3, payer: 'Aetna' }), null);
+    assert.equal(checkValue(claim, { total: 'x' }), 'total: expected number, got string');
+  });
+
+  it('lists the models a type uses that nobody declared, once any are declared', () => {
+    const model = { key: 'claim', name: 'claim', title: 'Claim', category: 'C', description: '' };
+    const kinds = mergeKinds(STD_KINDS, {
+      id: {},
+      code: {},
+      models: { claim: { ...model, fields: [] } }
+    });
+    assert.deepEqual(unknownKinds({ list: claim }, kinds), []);
+    assert.deepEqual(unknownKinds(quote, kinds), ['model<quote>']);
+    assert.deepEqual(unknownKinds(quote, STD_KINDS), []);
+  });
+});
+
 describe('field paths', () => {
   const claim = {
     object: { id: { id: 'claim' }, patient: { object: { name: 'string', meta: 'any' } } }

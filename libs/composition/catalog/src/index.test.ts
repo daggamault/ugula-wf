@@ -16,7 +16,7 @@ import {
   unknownKinds
 } from '@ugula/graph';
 import { createNemsisNodes, encounterModels, nemsisKinds } from '@ugula/nemsis';
-import { createNodeCatalog, valueKinds, workflowEvents } from './index.ts';
+import { createNodeCatalog, valueKinds, valueModels, workflowEvents } from './index.ts';
 
 const UNWIRED: GraphDef = {
   signature: { execIn: [], execOut: [], inputs: [], outputs: [] },
@@ -85,11 +85,13 @@ describe('createNodeCatalog', () => {
     assert.deepEqual(unleveled, []);
   });
 
-  it('merges the standard, NEMSIS and billing value kinds', () => {
+  it('merges the standard, NEMSIS and billing value kinds, and names every model', () => {
     assert.deepEqual(valueKinds, {
       id: { ...STD_KINDS.id, ...nemsisKinds.id, ...billingKinds.id },
-      code: { ...STD_KINDS.code, ...nemsisKinds.code, ...billingKinds.code }
+      code: { ...STD_KINDS.code, ...nemsisKinds.code, ...billingKinds.code },
+      models: Object.fromEntries(valueModels.map((m) => [m.key, m]))
     });
+    assert.equal(new Set(valueModels.map((m) => m.key)).size, valueModels.length);
   });
 
   it('uses only the kinds the domains declare', () => {

@@ -1,20 +1,12 @@
 import { pin, pureNode } from './define.ts';
 import { isRecord } from './json.ts';
-import type { NodeDef, PinSpec, ValueType } from './types.ts';
+import type { Model, ModelField, NodeDef, PinSpec, ValueType } from './types.ts';
 
-export type ModelField = { name: string; type: ValueType; label: string; description: string };
+export type { Model, ModelField };
 
-export type Model = {
-  key: string;
-  name: string;
-  title: string;
-  category: string;
-  description: string;
-  fields: readonly ModelField[];
-};
-
-export const modelType = (m: Pick<Model, 'fields'>): ValueType => ({
-  object: Object.fromEntries(m.fields.map((f) => [f.name, f.type]))
+export const modelType = (m: Pick<Model, 'key' | 'fields'>): ValueType => ({
+  object: Object.fromEntries(m.fields.map((f) => [f.name, f.type])),
+  model: m.key
 });
 
 const fieldPins = (m: Model): PinSpec[] =>

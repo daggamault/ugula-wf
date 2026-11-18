@@ -5,10 +5,16 @@ export const KIND_NAME = /^[a-z][a-zA-Z0-9]*$/;
 
 export const STD_KINDS: ValueKinds = { id: { run: 'Run ID' }, code: {} };
 
-export const mergeKinds = (...all: ValueKinds[]): ValueKinds => ({
-  id: Object.assign({}, ...all.map((k) => k.id)),
-  code: Object.assign({}, ...all.map((k) => k.code))
-});
+export const MODEL_NAME = /^[a-z][a-z0-9.-]*$/;
+
+export const mergeKinds = (...all: ValueKinds[]): ValueKinds => {
+  const models = Object.assign({}, ...all.map((k) => k.models ?? {}));
+  return {
+    id: Object.assign({}, ...all.map((k) => k.id)),
+    code: Object.assign({}, ...all.map((k) => k.code)),
+    ...(Object.keys(models).length ? { models } : {})
+  };
+};
 
 const scalarCompat: Record<string, readonly string[]> = {
   number: ['integer'],
@@ -22,6 +28,7 @@ export const formatType = (type: ValueType): string => {
   if ('id' in type) return `id<${type.id}>`;
   if ('code' in type) return `code<${type.code}>`;
   if ('list' in type) return `list<${formatType(type.list)}>`;
+  if (type.model) return `model<${type.model}>`;
   return `object{${Object.entries(type.object)
     .map(([k, t]) => `${k}: ${formatType(t)}`)
     .join(', ')}}`;
@@ -97,6 +104,7 @@ export const isAssignable = (from: ValueType, to: ValueType): boolean => {
   }
   if ('list' in from && 'list' in to) return isAssignable(from.list, to.list);
   if ('object' in from && 'object' in to) {
+    if (to.model && from.model !== to.model) return false;
     return Object.entries(to.object).every(([k, t]) => {
       const f = Object.hasOwn(from.object, k) ? from.object[k] : undefined;
       return f !== undefined && isAssignable(f, t);
@@ -175,6 +183,9 @@ export const unknownKinds = (type: ValueType, kinds: ValueKinds): string[] => {
   if ('id' in type) return Object.hasOwn(kinds.id, type.id) ? [] : [formatType(type)];
   if ('code' in type) return Object.hasOwn(kinds.code, type.code) ? [] : [formatType(type)];
   if ('list' in type) return unknownKinds(type.list, kinds);
+  if (type.model && kinds.models && !Object.hasOwn(kinds.models, type.model)) {
+    return [formatType(type)];
+  }
   return Object.values(type.object).flatMap((t) => unknownKinds(t, kinds));
 };
 

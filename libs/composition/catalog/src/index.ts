@@ -10,6 +10,7 @@ import {
   createModelNodes,
   createStdNodes,
   type EventDef,
+  type Model,
   mergeKinds,
   type NodeDef,
   STD_KINDS,
@@ -28,7 +29,13 @@ type CatalogDeps = Omit<StdDeps, 'permissions'> & {
   billing?: BillingStores;
 };
 
-export const valueKinds = mergeKinds(STD_KINDS, nemsisKinds, billingKinds);
+export const valueModels: readonly Model[] = [...encounterModels, ...billingModels];
+
+export const valueKinds = mergeKinds(STD_KINDS, nemsisKinds, billingKinds, {
+  id: {},
+  code: {},
+  models: Object.fromEntries(valueModels.map((m) => [m.key, m]))
+});
 
 export const workflowEvents: readonly EventDef[] = [...nemsisEvents, ...billingEvents];
 
@@ -36,5 +43,5 @@ export const createNodeCatalog = ({ nemsis, billing, ...std }: CatalogDeps): Nod
   ...createStdNodes({ ...std, permissions: PERMISSIONS }),
   ...createNemsisNodes(nemsis ?? null),
   ...createBillingNodes(billing ?? null),
-  ...createModelNodes([...encounterModels, ...billingModels])
+  ...createModelNodes(valueModels)
 ];

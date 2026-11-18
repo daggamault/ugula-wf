@@ -9,7 +9,7 @@ import {
   type Values,
   type ValueType
 } from './types.ts';
-import { KIND_NAME } from './value-types.ts';
+import { KIND_NAME, MODEL_NAME } from './value-types.ts';
 
 const unreserved = v.check((s: string) => !(s in Object.prototype), 'This name is reserved');
 const name = v.pipe(
@@ -45,7 +45,10 @@ export const valueTypeSchema: v.GenericSchema<ValueType> = v.lazy(() =>
     v.strictObject({ id: kindName }),
     v.strictObject({ code: kindName }),
     v.strictObject({ list: valueTypeSchema }),
-    v.strictObject({ object: v.record(name, valueTypeSchema) })
+    v.strictObject({
+      object: v.record(name, valueTypeSchema),
+      model: v.exactOptional(v.pipe(v.string(), v.regex(MODEL_NAME, 'Models are kebab-case names')))
+    })
   ])
 );
 
@@ -80,7 +83,14 @@ const signatureSchema: v.GenericSchema<Signature> = v.strictObject({
 
 export const graphDefSchema: v.GenericSchema<GraphDef> = v.strictObject({
   signature: signatureSchema,
-  variables: v.array(v.strictObject({ name, type: valueTypeSchema, default: jsonSchema })),
+  variables: v.array(
+    v.strictObject({
+      name,
+      type: valueTypeSchema,
+      default: jsonSchema,
+      label: v.exactOptional(v.string())
+    })
+  ),
   nodes: v.array(
     v.strictObject({
       id,

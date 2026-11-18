@@ -16,7 +16,7 @@ const PERSON: Model = {
   ]
 };
 
-const PERSON_TYPE = { object: { name: 'string', age: 'integer' } } as const;
+const PERSON_TYPE = { object: { name: 'string', age: 'integer' }, model: 'test.person' } as const;
 
 const FIELD_PINS = [
   pin('name', 'string', {
@@ -34,7 +34,7 @@ const nodes = () => {
 };
 
 describe('modelType', () => {
-  it('types a model as an object of its fields', () => {
+  it('types a model as an object of its fields, named after the model', () => {
     assert.deepEqual(modelType(PERSON), PERSON_TYPE);
   });
 });

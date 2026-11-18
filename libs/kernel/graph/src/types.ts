@@ -8,9 +8,21 @@ export const SCALAR_TYPES = ['any', 'string', 'number', 'integer', 'boolean', 'd
 
 export type ScalarType = (typeof SCALAR_TYPES)[number];
 
+export type ModelField = { name: string; type: ValueType; label: string; description: string };
+
+export type Model = {
+  key: string;
+  name: string;
+  title: string;
+  category: string;
+  description: string;
+  fields: readonly ModelField[];
+};
+
 export type ValueKinds = {
   id: Readonly<Record<string, string>>;
   code: Readonly<Record<string, string>>;
+  models?: Readonly<Record<string, Model>>;
 };
 
 export type ValueType =
@@ -18,7 +30,7 @@ export type ValueType =
   | { id: string }
   | { code: string }
   | { list: ValueType }
-  | { object: Record<string, ValueType> };
+  | { object: Record<string, ValueType>; model?: string };
 
 export type PinSpec = {
   name: string;
@@ -77,6 +89,7 @@ export type VariableDef = {
   name: string;
   type: ValueType;
   default: Json;
+  label?: string;
 };
 
 export const COMMENT_COLORS = [
