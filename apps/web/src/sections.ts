@@ -4,9 +4,9 @@ import {
   ActivityIcon,
   BadgeDollarSignIcon,
   Building2Icon,
+  ChartColumnIcon,
   FileUpIcon,
   HospitalIcon,
-  LandmarkIcon,
   ListChecksIcon,
   ReceiptTextIcon,
   SettingsIcon,
@@ -17,7 +17,7 @@ import {
   WorkflowIcon
 } from 'lucide-react';
 import { FACILITIES_PATH } from './features/facilities/facilities-page.tsx';
-import { REMITTANCES_PATH } from './features/remittances/remittances-page.tsx';
+import { REPORTS_PATH } from './features/reports/reports-page.tsx';
 import { ROLES_PATH } from './features/roles/roles-page.tsx';
 import { TASKS_PATH } from './features/tasks/tasks-page.tsx';
 import { USERS_PATH } from './features/users/users-page.tsx';
@@ -62,10 +62,10 @@ export const SECTIONS: readonly Section[] = [
     permission: 'claims:read'
   },
   {
-    id: 'remittances',
-    label: 'Remittances',
-    href: REMITTANCES_PATH,
-    icon: LandmarkIcon,
+    id: 'reports',
+    label: 'Reports',
+    href: REPORTS_PATH,
+    icon: ChartColumnIcon,
     permission: 'claims:read'
   },
   {

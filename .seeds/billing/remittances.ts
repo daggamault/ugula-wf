@@ -463,7 +463,7 @@ const remittanceReceived = (): GraphDef => {
       queue: QUEUE,
       permission: 'claims:update',
       instructions:
-        'This remittance does not balance, or some of its payments matched no claim. Open it under Remittances, match each unmatched payment to its claim or find why it is not ours, and explain any difference between the payments and the deposit. Note what you found.',
+        'This remittance does not balance, or some of its payments matched no claim. Run the Remittances report for the day it was paid: it lists the remittance and each payment that matched no claim. Match each unmatched payment to its claim or find why it is not ours, and explain any difference between the payments and the deposit. Note what you found.',
       fields: [{ name: 'note', type: 'string', label: 'What You Found', required: ['reconciled'] }],
       outcomes: ['reconciled'],
       hints: { reconciled: 'The remittance is accounted for.' }

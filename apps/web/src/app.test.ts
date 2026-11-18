@@ -273,7 +273,7 @@ describe('Workspace', () => {
       links.map((l) => [l.textContent, l.getAttribute('href'), l.getAttribute('aria-current')]),
       [
         ['Claims', `/agencies/${NORTH}/claims`, 'page'],
-        ['Remittances', `/agencies/${NORTH}/remittances`, null],
+        ['Reports', `/agencies/${NORTH}/reports`, null],
         ['Fees', `/agencies/${NORTH}/fees`, null]
       ]
     );

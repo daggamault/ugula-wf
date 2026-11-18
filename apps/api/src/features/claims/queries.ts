@@ -142,7 +142,6 @@ export const findClaimPayments = (db: Db, agencyId: string, claimId: string) =>
     .innerJoin('remittances as r', 'r.id', 'p.remittance_id')
     .select([
       'p.id',
-      'p.remittance_id',
       'p.coverage_position',
       'p.outcome',
       'p.paid_cents',

@@ -21,9 +21,12 @@ import { PatientsPage } from './features/patients/patients-page.tsx';
 import type { PayersClient } from './features/payers/client.ts';
 import { PayerPage } from './features/payers/payer-page.tsx';
 import { PAYERS_PATH, PayersPage } from './features/payers/payers-page.tsx';
-import type { RemittancesClient } from './features/remittances/client.ts';
-import { RemittancePage } from './features/remittances/remittance-page.tsx';
-import { REMITTANCES_PATH, RemittancesPage } from './features/remittances/remittances-page.tsx';
+import type { ReportsClient } from './features/reports/client.ts';
+import {
+  REMITTANCE_REPORT_PATH,
+  RemittanceReportPage
+} from './features/reports/remittance-report-page.tsx';
+import { REPORTS_PATH, ReportsPage } from './features/reports/reports-page.tsx';
 import type { RolesClient } from './features/roles/client.ts';
 import { RolePage } from './features/roles/role-page.tsx';
 import { ROLES_PATH, RolesPage } from './features/roles/roles-page.tsx';
@@ -62,7 +65,7 @@ export type AppClients = {
   tasks: TasksClient;
   imports: ImportsClient;
   fees: FeesClient;
-  remittances: RemittancesClient;
+  reports: ReportsClient;
   claims: ClaimsClient;
   patients: PatientsClient;
   payers: PayersClient;
@@ -183,20 +186,10 @@ const routes: readonly Route[] = [
     pattern: '/claims/:id/edit',
     render: (p, _, c) => <ClaimEditPage client={c.claims} live={c.live} claimId={p.id ?? ''} />
   },
+  { pattern: REPORTS_PATH, render: () => <ReportsPage /> },
   {
-    pattern: REMITTANCES_PATH,
-    render: (_, __, c) => <RemittancesPage client={c.remittances} live={c.live} />
-  },
-  {
-    pattern: `${REMITTANCES_PATH}/:id`,
-    render: (p, q, c) => (
-      <RemittancePage
-        client={c.remittances}
-        live={c.live}
-        remittanceId={p.id ?? ''}
-        back={backOf(q, REMITTANCES_PATH)}
-      />
-    )
+    pattern: REMITTANCE_REPORT_PATH,
+    render: (_, __, c) => <RemittanceReportPage client={c.reports} live={c.live} />
   },
   {
     pattern: '/patients',
