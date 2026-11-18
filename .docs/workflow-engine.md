@@ -12,7 +12,7 @@ A graph (`GraphDef`) has a **signature**, **variables**, **nodes**, **edges** an
 - `documentationIssues(def)` lists pins without a description, exits without a label or description and labels that are not Title Case; the editor shows them as warnings, never blocking.
 - Graph kinds: `workflow` (runs on its own) and `node` (a subworkflow other graphs call as a node). Every graph also has a role (`workflow`, `stage`, `rule`) that sets who may override it; see [Overrides](overrides.md).
 - `comments` are boxes drawn behind nodes (`id`, `text`, `position`, `size`, optional `color` from `COMMENT_COLORS`). They are layout only: the engine, validation and `contractOf` ignore them, and an override that only adds or moves comments changes nothing.
-- `runRule({ nodes, graphs }, ref, inputs, now)` evaluates a pure graph (a rule) outside a run, through a one-step host graph, and returns its outputs; the API uses it to show the agency's own rules on a claim.
+- `runRule({ nodes, graphs }, ref, inputs, now)` evaluates a pure graph (a rule) outside a run, through a one-step host graph, and returns its outputs.
 
 ## Types
 
@@ -35,7 +35,7 @@ Pin, variable and field types are `ValueType`s, written as text by `formatType` 
 
 At run time a kind is plain text (`checkValue`); `isTextType` tells the types entered as text.
 
-The engine knows no kinds of its own beyond `run` (`STD_KINDS`); kind names only have to be camelCase (`a-z` first). Each domain declares the kinds it owns with their labels (`billingKinds`: `claim`, `coverage`, `document`, `facility`, `patient`, `payer`, `payerFile`, `task` and `carc`, `hcpcs`, `icd10`, `modifier`, `rarc`; `nemsisKinds`: `icd10`), and `valueKinds` in `libs/composition/catalog` merges them (`mergeKinds`). `createRegistry(nodes, graphs, kinds)` carries them, and `validateGraph` reports any graph pin, variable or node pin using a kind nobody declared (`unknownKinds`), so the API save and the seed gate catch typos. The editor names a kind by its label, or by its name in Title Case.
+The engine knows no kinds of its own beyond `run` (`STD_KINDS`); kind names only have to be camelCase (`a-z` first). Each domain declares the kinds it owns with their labels (`billingKinds`: `claim`, `coverage`, `document`, `facility`, `patient`, `payer`, `payerFile`, `task` and `carc`, `hcpcs`, `icd10`, `modifier`, `rarc`; `nemsisKinds`: `encounter`, `report` and `icd10`), and `valueKinds` in `libs/composition/catalog` merges them (`mergeKinds`). `createRegistry(nodes, graphs, kinds)` carries them, and `validateGraph` reports any graph pin, variable or node pin using a kind nobody declared (`unknownKinds`), so the API save and the seed gate catch typos. The editor names a kind by its label, or by its name in Title Case.
 
 ## Nodes
 
@@ -43,7 +43,7 @@ Nodes are defined with `pureNode`, `actionNode` or `branchNode` and `pin()` (`li
 
 A node definition (`NodeDef`) also carries what the editor shows:
 
-- `level`: `basic` for what billers compose rules from (billing and NEMSIS actions, tables, human tasks, conditions, Choose Value, comparisons, logic, math, text, time, list basics, rules run per item, fields, Make and Break, Constant, branch, switch, for each, sequence, run and start workflow, Reroute), `advanced` for internals (formulas, variables, untyped paths, JSON, loop and gate machinery).
+- `level`: `basic` for what billers compose rules from (service nodes, tables, human tasks, conditions, Choose Value, comparisons, logic, math, text, time, list basics, rules run per item, fields, Make and Break, Constant, branch, switch, for each, sequence, run and start workflow, Reroute), `advanced` for internals (formulas, variables, untyped paths, JSON, loop and gate machinery).
 - `keywords`: more words the palette search matches.
 - `exits`: a label and description per exec output, as in `signature.exits`. `branchNode` takes them as `exits: { name: { label, description } }`, whose keys are its exec outputs.
 - `summary(config)`: one line describing the configured node on the canvas (the formula, `Table: <key>`, `Task: <title>`, the switch cases, the variable or workflow), or `null`.
@@ -65,16 +65,16 @@ Node titles are Title Case with minor words in lowercase (Greater or Equal, Wait
 
 `std.flow.reroute` is a knot on a wire: it passes `value` through unchanged, typed by its `type` setting (`any` by default).
 
-| Kind       | Examples                                                                                                                                                                                                                                                                                                |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Standard   | flow (branch, switch, reroute, for-each, while, try, wait, wait for signal, run/start/map/spawn workflows), variables, math, logic, text, lists, objects, time, tables (Decision Table, Lookup Table, inline or a shared table by key; Where can keep items listed in a shared table), human task, HTTP |
-| Models     | A **Break** and a **Make** node per model field set (NEMSIS sections, claim, 837P parts)                                                                                                                                                                                                                |
-| Capability | Billing and NEMSIS nodes that do I/O or heavy logic: read NEMSIS, match patients and payers, read narratives, price, save claims, file 837P, apply payer files                                                                                                                                          |
-| Composite  | Any published `node` graph, called like a node                                                                                                                                                                                                                                                          |
+| Kind      | Examples                                                                                                                                                                                                                                                                                                                    |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Standard  | flow (branch, switch, reroute, for-each, while, try, wait, wait for signal, run/start/map/spawn workflows), variables, math, logic, text, lists, objects, time, tables (Decision Table, Lookup Table, inline or a shared table by key; Where can keep items listed in a shared table), human task, HTTP                     |
+| Records   | A **Break** and a **Make** node per record (`createModelNodes`): the Encounter and its parts in `libs/domain/nemsis` (Person, Address, Location, Times, Odometer, Payment, Insurance, Medication, Procedure, Vital Signs, Signature, Crew Member, Attachment), the Claim, Coverage and Charge Line in `libs/domain/billing` |
+| Services  | Nodes that do I/O: Read PCR File, Read PCR, Save Encounter and Read Encounter (`libs/domain/nemsis/src/nodes.ts`); Find Patient, Save Patient, Find Payer, Find Fee and Save Claim (`libs/domain/billing/src/nodes.ts`). They reach the database through store ports the worker implements                                  |
+| Composite | Any published `node` graph, called like a node                                                                                                                                                                                                                                                                              |
 
 ## Triggers and events
 
-Like an Unreal **Event** node or an n8n trigger, a workflow's **Entry** says what starts it (`config.trigger`, `triggerSchema` in `libs/kernel/graph/src/triggers.ts`):
+Like an Unreal **Event** node or an n8n trigger, a workflow's start node (`Entry`) says what starts it (`config.trigger`, `triggerSchema` in `libs/kernel/graph/src/triggers.ts`):
 
 | Trigger  | Config                              | Starts                                                                                     |
 | -------- | ----------------------------------- | ------------------------------------------------------------------------------------------ |
@@ -82,13 +82,23 @@ Like an Unreal **Event** node or an n8n trigger, a workflow's **Entry** says wha
 | On Event | `{ kind: 'event', event, where }`   | Once per event of that type whose payload passes every `where` test (the Condition tests)  |
 | Schedule | `{ kind: 'schedule', every, hour }` | Every day, every Monday or the first of every month, at the hour in the agency's time zone |
 
-- **Events** are typed: each domain declares an `EventDef` (`type` such as `claim.denied`, `label`, `description` and `payload` pins), and `workflowEvents` in `libs/composition/catalog` merges them. `createRegistry(nodes, graphs, kinds, events)` carries them, and `validateGraph` (`triggerIssues`) checks that the event exists, that each tested field is in its payload, and that every input of the workflow is a payload field of an assignable type, optional or defaulted; a scheduled workflow gets no inputs, so each needs a default. Only a `workflow` graph may have a trigger (`SUBWORKFLOW_TRIGGER`, checked on save, publish and seed). A run takes the payload fields its inputs name (`triggerInputs`).
-- **Outbox:** an event is a row in `events`, written in the same transaction as the change it reports. Code writes one with `emitEvent` (`libs/data/db/src/events.ts`); the claim history and claim and task changes write theirs with database triggers generated from the domain (`.migrations/events.ts`: `claim_events` kinds through `CLAIM_LEDGER_EVENTS`, claim status and classification, completed tasks), so no code path can change a claim without its event. Every insert notifies `workflow_events`.
-- **Dispatcher:** each worker listens on `workflow_events` (and sweeps every 30 seconds in case it missed a notice) and runs `dispatchEvents`: it takes up to 100 undispatched events `for update skip locked`, finds the agency's effective published workflows whose trigger names the event (`findEventWorkflows`: overrides resolved like any run, so an agency copy that changes or drops the trigger replaces the built-in one), starts one run per match with `startRun` (pinned, leased and fenced like every run), records it in `event_runs` (event, workflow, run; one run per event and workflow) and marks the batch dispatched, all in one transaction. A person's action that should open its run at once (a payer file upload) uses `emitAndDispatch`, which starts the runs in the request's own transaction and returns them; the run is interactive and started by that user.
+- **Events** are typed: each domain declares an `EventDef` (`type` such as `encounter.created`, `label`, `description` and `payload` pins), and `workflowEvents` in `libs/composition/catalog` merges them. `createRegistry(nodes, graphs, kinds, events)` carries them, and `validateGraph` (`triggerIssues`) checks that the event exists, that each tested field is in its payload, and that every input of the workflow is a payload field of an assignable type, optional or defaulted; a scheduled workflow gets no inputs, so each needs a default. Only a `workflow` graph may have a trigger (`SUBWORKFLOW_TRIGGER`, checked on save, publish and seed). A run takes the payload fields its inputs name (`triggerInputs`).
+- **Outbox:** an event is a row in `events`, written in the same transaction as the change it reports. Code writes one with `emitEvent` (`libs/data/db/src/events.ts`); encounters, claims and tasks write theirs with database triggers (`.migrations/events.ts`), so no code path can save an encounter or claim without its event. Every insert notifies `workflow_events`.
+- **Dispatcher:** each worker listens on `workflow_events` (and sweeps every 30 seconds in case it missed a notice) and runs `dispatchEvents`: it takes up to 100 undispatched events `for update skip locked`, finds the agency's effective published workflows whose trigger names the event (`findEventWorkflows`: overrides resolved like any run, so an agency copy that changes or drops the trigger replaces the built-in one), starts one run per match with `startRun` (pinned, leased and fenced like every run), records it in `event_runs` (event, workflow, run; one run per event and workflow) and marks the batch dispatched, all in one transaction. A person's action that should open its run at once (a PCR file upload) uses `emitAndDispatch`, which starts the runs in the request's own transaction and returns them; the run is interactive and started by that user.
 - **Schedules:** `graph_versions.trigger` is a stored column generated from the definition, indexed by kind and event. The worker's `workflow-schedules` job (every 15 minutes) asks, per active agency, for its scheduled workflows (`findScheduledWorkflows`), and starts each once its period has reached the hour in the agency's time zone, claiming `schedule_runs` (agency, workflow, day) first so a retried job never starts it twice.
-- **Where it shows:** the editor's **Trigger** section on a workflow's Entry picks the start, the event and its conditions or the schedule, and the canvas summarises it ("On Claim Denied (1 condition)", "Every Day at 06:00"); the Workflows list has a **Starts** column; a run started by an event says which one.
+- **Where it shows:** the editor's **Trigger** section on a workflow's start node picks the start, the event and its conditions or the schedule; the canvas titles the node by it (Start, On Encounter Created, On Schedule) and summarises it ("On Encounter Created (1 condition)", "Every Day at 06:00"); the Workflows list has a **Starts** column; a run started by an event says which one.
 
-An agency adds "when a payer file is received, do X" by creating a workflow on `payer_file.received`; it runs next to Receive Payer File without overriding it.
+The events today:
+
+| Event               | Payload                                | Written by                                                   |
+| ------------------- | -------------------------------------- | ------------------------------------------------------------ |
+| `pcr_file.received` | `importId`, `file`, `fileName`         | The API, when a NEMSIS file is uploaded or arrives over SFTP |
+| `encounter.created` | `encounterId`, `pcrNumber`             | A trigger, when an encounter is inserted                     |
+| `encounter.revised` | `encounterId`, `pcrNumber`, `revision` | A trigger, when an encounter's revision rises                |
+| `claim.created`     | `claimId`, `encounterId`               | A trigger, when a claim is inserted                          |
+| `task.completed`    | `taskId`, `queue`, `outcome`           | A trigger, when a task is completed                          |
+
+An agency adds "when a claim is created, do X" by creating a workflow on `claim.created`; it runs next to the built-in workflows without overriding them.
 
 ## Durable runs
 

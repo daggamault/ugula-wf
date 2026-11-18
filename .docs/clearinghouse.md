@@ -1,5 +1,7 @@
 # Clearinghouse
 
+The clearinghouse foundations are in place: the port, its SFTP and real-time transports, sealed per-agency connections, the X12 builders and readers, and the mock. No workflow uses them yet: submission, acknowledgments, eligibility, claim status and remittance are rebuilt on the [workflow](workflows.md) model next, each started from an event.
+
 ## The port
 
 `Clearinghouse` (`libs/domain/billing/src/clearinghouse.ts`) is an operations port, not a transport:
@@ -18,40 +20,14 @@
 
 - `sftp-batch`: SFTP (`ssh2-sftp-client`) with an upload folder and any number of download folders: one session per upload and one per poll of a connection. It accepts only the server whose host key matches the pinned SHA256 fingerprint (and names the key it saw when another answers), gives every operation a deadline (60s) on top of SSH keepalives, and uploads under `<name>.part` before renaming the file into place, so the clearinghouse never picks up half a file.
 - `core-realtime`: a CAQH CORE Connectivity vC2.2.0 client. It posts a `multipart/form-data` envelope (`PayloadType`, `ProcessingMode=RealTime`, `PayloadID`, `TimeStamp`, `SenderID`, `ReceiverID`, `CORERuleVersion=2.2.0`, `Payload`) with HTTP Basic auth and a timeout, and returns the payload or an error (HTTP status, `ErrorCode`/`ErrorMessage`, a different `PayloadID`, a timeout). The domain maps 270 to `X12_270_Request_005010X279A1` / `X12_271_Response_005010X279A1` and 276 to `X12_276_Request_005010X212` / `X12_277_Response_005010X212`.
-- `secrets`: AES-256-GCM sealing of connection passwords as `v1.<key id>.<iv>.<tag>.<body>`, with the agency ID as associated data so a sealed password only opens for its agency. The key id is derived from the key, so a keyring of the current key and any previous ones opens every password; the worker seals passwords from a previous key again with the current one on its next poll.
+- `secrets`: AES-256-GCM sealing of connection passwords as `v1.<key id>.<iv>.<tag>.<body>`, with the agency ID as associated data so a sealed password only opens for its agency. The key id is derived from the key, so a keyring of the current key and any previous ones opens every password; a password sealed with a previous key opens until it is saved again under the current one.
 
 ## Connections
 
 - Each agency can have one row in `clearinghouse_connections` (Settings → Clearinghouse Connection, permission `settings:update`): vendor (`waystar`, `mock` or `custom-sftp`, each a preset in `VENDOR_PRESETS`), on or paused, SFTP host, port, host key fingerprint (`SHA256:…`, required; only the mock preset fills it), username and password, upload and download folders, the 837P, 270 and 276 extensions, delete or keep after download, and an optional CORE real-time URL. The real-time client uses the SFTP username and password (an MVP assumption; Waystar may issue separate API credentials) and sends the billing profile's submitter ID as `SenderID` and its receiver ID as `ReceiverID`.
-- A paused connection exchanges nothing for its agency: no uploads, no real-time checks and no polling; the server default does not stand in for it.
+- A paused connection exchanges nothing for its agency.
 - Outside `NODE_ENV=development` the API refuses the mock vendor, SFTP hosts and real-time URLs on loopback, private, link-local or local names, and real-time URLs that are not https.
-- The password is sealed with `CLEARINGHOUSE_SECRET_KEY` (32 random bytes, base64) before it is stored. The key is parsed only in the api and worker composition roots. The API never returns the password, only `secret_set`; leaving the field blank keeps it, but only while the host, port, host key, username and real-time URL stay the same, so a stored password is never sent to a server it was not entered for. Without the key the API refuses to store passwords and the worker skips agency connections.
-- Agencies without a row use the `CLEARINGHOUSE_*` connection from the worker's environment (the dev default, pinned with `CLEARINGHOUSE_SFTP_HOST_KEY`); leave `CLEARINGHOUSE_SFTP_HOST` empty for none. Without any connection, 837P files wait on the claim for a biller and eligibility checks say why they cannot run (the 270 can still be downloaded).
-
-## Polling and routing
-
-- Every `CLEARINGHOUSE_POLL_MINUTES` the worker lists the download folders of the default connection and every enabled agency connection, once per distinct `username@host:port` and folders (agencies sharing an account are polled once).
-- Each new file (by connection, path, size and modification time, `clearinghouse_downloads`) is recognized by content (ISA/GS/ST), routed to the agency whose billing profile submitter ID is the interchange receiver (ISA08) and emits `payer_file.received` (`clearinghouse_downloads.event_id`), which starts `billing.receive-payer-file` and any agency workflow on that event; a file no published workflow would receive stays on the server; it is stored under a key that includes a hash of its remote path, so files with the same name in two folders never overwrite each other. A file from an agency's own connection only goes to an agency using that connection; only the server default routes to any agency.
-- A file no single agency takes (not X12, no or several agencies with that submitter ID, the workflow not published) stays on the server and its `clearinghouse_downloads` row keeps the reason but no run. The worker tries it again at most once an hour (`clearinghouse_downloads.tried_at`), logging the reason only when it changes, so fixing a submitter ID or publishing the workflow picks it up within the hour.
-- Each poll of an agency connection records how it went on its `clearinghouse_connections` rows: `last_polled_at` when it worked, `last_error` and `last_error_at` when it failed (a failure to receive one file does not count). A connection is failing while its last error is newer than its last good poll (`isFailing`). When a working connection fails, the worker emits `clearinghouse.failed` (`connection` host and port, `error`; never the account or password) for each agency using it, which starts `billing.clearinghouse-alert`; when a failing one works again it emits `clearinghouse.recovered` and signals `clearinghouse:recovered`. The server default has no row, so its failures only go to the worker log. Settings → Clearinghouse Connection shows the last successful poll and the last error, with an alert while polling fails.
-- Kinds: 835, 999, 277CA (`005010X214`, kind `277`), 271, TA1 (an interchange with a `TA1` segment and no transaction set) and 277 claim status (`005010X212`, kind `277S`). Payer Files lists them all with `PAYER_FILE_LABELS`.
-
-## What each answer does
-
-- **TA1**: an accepted interchange is recorded; a rejected one marks the 837P batch with that ISA13 control number rejected (`claim_batches.rejected_at`, `rejection`), sends each of its claims back to review like a 999 rejection ("The clearinghouse rejected the file envelope of 837P file N: reason"), and `Receive Payer File` opens a **Fix clearinghouse setup** task naming the reason, since an envelope problem is setup, not claim data.
-- **271**: active or inactive coverage on the traced claim payer (an inactive coverage blocks billing that payer) and an eligibility event in the claim History. A Medicare answer (payer claim filing MA/MB) that names a Medicare Advantage plan (`EB*R` with HM, HN, PR or PS, plan from the 2120C `NM1*PRP/PR/P3` or EB05) becomes a review line: "Bill the Medicare Advantage plan instead: plan".
-- **277 claim status**: a `claim_status` event per claim (category, code and text, and the payer claim number), shown in History and in the follow-up task.
-
-## Eligibility and claim status requests
-
-- `billing.check-eligibility` runs `Check Eligibility with Clearinghouse` (`billing.send-270`): real time when the connection has a real-time URL, applying the 271 at once as a payer file; otherwise, or when real time gets no answer, a batch `.ELG` upload (an answer that cannot be read is not re-sent in batch). Coverages already answered or with a request pending (`eligibility_requested_at`) are skipped, and an answer from another claim of the same patient, payer and member ID in the same month of service is copied instead of asking. Each request is recorded per run step in `eligibility_requests`, and the payers it asked about are stamped with its result in one transaction, so a retried step returns the answer or upload it already got (a request that never got that far is sent again with its control number). It starts when Encounter to Claim saves a claim's payers and from **Check Eligibility** on a claim, which forces a new request; **Download 270** still builds the file for a biller.
-- `Follow Up with Payer` first runs `Check Claim Status with Clearinghouse` (`billing.send-276`): real time, or, when real time gets no answer, a batch `.CLS` upload followed by a wait of up to a day for the claim to change, then shows the latest status in the follow-up task. Each request is recorded per run step in `claim_status_requests`, so a retried step returns what was already sent instead of paying for another 276.
-
-## Insurance discovery
-
-- A payer marked **Accepts Insurance Searches** in the payer directory (`payers.is_searchable`, Admin → Payers) is asked by `Discover Coverage` (`billing.discover-coverage`): one real-time 270 per such payer without a member ID (NM1*IL with no NM108/NM109), by the patient's name, birth date and sex (DMG) and, when known, address (N3/N4), as X12 5010 270 allows a subscriber search by demographics. Each 271 gives the subscriber member ID (2100C NM109), group (REF*6P, else REF*18), plan, and the other payers it reports (EB*R with the 2120C NM1 PRP, SEP, TTP or PR name and payer ID, and the member ID from REF*1W or IG). An active coverage found, and every other payer with a member ID, becomes a candidate when its payer ID matches a directory payer; the rest are only noted.
-- It needs the agency's connection to have a real-time URL, so batch-only connections say why and ask nothing. One control number is allocated per discovery and shared by its 270s. Each discovery is recorded per run step in `discovery_requests` with its candidates, so a retried step returns what it found instead of searching again, and logs a `discovery` event in the claim History saying what it found or why it could not search (no payer accepts searches, no patient birth date, no real-time connection, every payer failed).
-- `billing.discover-insurance` (Discover Insurance) runs it from the claim cycle, once, when no payer covers the claim, and from **Discover Insurance** on a claim: `Candidate Coverages` drops payers already on the claim and orders the rest by the Discovered Payer Order table, and a **Confirm discovered coverage** task adds the one a biller confirms with `Add Payer` (member and group ID, after the payers on the claim), then starts Check Eligibility.
+- The password is sealed with `CLEARINGHOUSE_SECRET_KEY` (32 random bytes, base64; rotate by moving the old key to `CLEARINGHOUSE_PREVIOUS_SECRET_KEYS`) before it is stored. The key is parsed only in the API's composition root. The API never returns the password, only `secret_set`; leaving the field blank keeps it, but only while the host, port, host key, username and real-time URL stay the same, so a stored password is never sent to a server it was not entered for. Without the key the API refuses to store passwords.
 
 ## Waystar conventions
 
@@ -82,23 +58,21 @@ The Waystar preset fills these folders and extensions with receiver ID `WAYSTAR`
 
 Waystar's own API adapter (including its insurance discovery product behind `discoverCoverage`), separate real-time credentials and proprietary front-end rejection reports.
 
-## Clearinghouse connection
+## Pointing at a clearinghouse
 
-Each agency can set its own clearinghouse connection in Settings (Clearinghouse Connection: Waystar, the mock or another SFTP clearinghouse, with SFTP account, pinned host key, folders, extensions and an optional CAQH CORE real-time URL). Its password is encrypted with `CLEARINGHOUSE_SECRET_KEY` (32 random bytes, base64; the api and worker both need it; rotate by moving the old key to `CLEARINGHOUSE_PREVIOUS_SECRET_KEYS`) and never sent back to the browser. A paused connection exchanges nothing. Agencies without one use the worker's `CLEARINGHOUSE_*` connection from `.env`, the dev default; leave `CLEARINGHOUSE_SFTP_HOST` empty for no default. Outside `NODE_ENV=development` the api refuses the mock, private or local hosts, and real-time URLs that are not https. Pointing at a real clearinghouse is a settings change:
+| Setting             | Mock                                  | TriZetto                               | Waystar                       |
+| ------------------- | ------------------------------------- | -------------------------------------- | ----------------------------- |
+| SFTP host and port  | `localhost` / `2223`                  | from your TriZetto setup               | `sshftp.waystar.com` / `22`   |
+| Host key            | the mock's fixed `SHA256:VM15…`       | from TriZetto                          | from Waystar                  |
+| Upload folder       | `/upload`                             | the upload folder they give you        | `/upload` (write-only)        |
+| Download folders    | `/download`                           | one folder each for 999, 277CA and 835 | `/download`                   |
+| 837P extension      | `.CLP`                                | `.txt`                                 | `.CLP`                        |
+| Batch 270 extension | `.ELG`                                | `.txt`                                 | `.ELG`                        |
+| Batch 276 extension | `.CLS`                                | `.txt`                                 | `.CLS` (assumed; confirm)     |
+| After download      | delete                                | delete                                 | delete or keep                |
+| Real-time URL       | `http://localhost:2224/core/realtime` | empty (batch only)                     | from Waystar (not public yet) |
 
-| Setting                                | Mock (default)                        | TriZetto                               | Waystar                       |
-| -------------------------------------- | ------------------------------------- | -------------------------------------- | ----------------------------- |
-| `CLEARINGHOUSE_SFTP_HOST` / `_PORT`    | `localhost` / `2223`                  | from your TriZetto setup               | `sshftp.waystar.com` / `22`   |
-| `CLEARINGHOUSE_SFTP_HOST_KEY`          | the mock's fixed `SHA256:VM15…`       | from TriZetto                          | from Waystar                  |
-| `CLEARINGHOUSE_UPLOAD_PATH`            | `/upload`                             | the upload folder they give you        | `/upload` (write-only)        |
-| `CLEARINGHOUSE_DOWNLOAD_PATHS`         | `/download`                           | one folder each for 999, 277CA and 835 | `/download`                   |
-| `CLEARINGHOUSE_CLAIM_EXTENSION` (837P) | `.CLP`                                | `.txt`                                 | `.CLP`                        |
-| `CLEARINGHOUSE_ELIGIBILITY_EXTENSION`  | `.ELG`                                | `.txt`                                 | `.ELG`                        |
-| `CLEARINGHOUSE_STATUS_EXTENSION`       | `.CLS`                                | `.txt`                                 | `.CLS` (assumed; confirm)     |
-| `CLEARINGHOUSE_AFTER_DOWNLOAD`         | `delete`                              | `delete`                               | `delete` or `keep`            |
-| `CLEARINGHOUSE_REALTIME_URL`           | `http://localhost:2224/core/realtime` | empty (batch only)                     | from Waystar (not public yet) |
-
-Response files are recognized by content (ISA/GS/ST, or a TA1 segment), not by name, and each agency's billing profile submitter ID must be the ID the clearinghouse addresses its responses to (its Receiver ID is `WAYSTAR` for Waystar). The worker polls every distinct connection once. Confirm folder names, extensions, IDs and real-time credentials with the clearinghouse during enrollment. See [.docs/clearinghouse.md](clearinghouse.md).
+Each agency's billing profile submitter ID must be the ID the clearinghouse addresses its responses to (its Receiver ID is `WAYSTAR` for Waystar). Confirm folder names, extensions, IDs and real-time credentials with the clearinghouse during enrollment.
 
 ## Mock clearinghouse
 
@@ -114,4 +88,4 @@ Response files are recognized by content (ISA/GS/ST, or a TA1 segment), not by n
   - `.277` (claim status, 005010X212) answers each 276: in process (A2) for an accepted claim, paid (F1) once its 835 went out, rejected (A3), or not found (A4) for a claim it never saw.
 - `POST /core/realtime` takes a CAQH CORE multipart envelope (Basic auth, `PayloadType` `X12_270_Request_005010X279A1` or `X12_276_Request_005010X212`) and returns the 271 or 277 in the same envelope.
 
-The answers come from the Waystar mock in `@ugula/billing/testing`.
+The answers come from the Waystar mock in `@ugula/billing/testing`. No workflow uploads to it yet.

@@ -3,7 +3,7 @@
 ## Organizations and agencies
 
 - An **organization** is the customer: an EMS service, a county, or a billing company.
-- An **agency** belongs to one organization and owns the billing data: claims, patients, imports, payer files, payers, fees, the billing profile and tasks.
+- An **agency** belongs to one organization and owns the billing data: encounters, claims, patients, imports, payers, facilities, fees, the billing profile and tasks.
 - Workflows and shared tables are built in or belong to one agency; an agency can customize them (see [Overrides](overrides.md)), and nothing is customized for a whole organization. In an agency, `workflows:update` may override rules and tables; `workflows:manage` is needed for stages and workflows.
 
 ## Users
@@ -21,37 +21,35 @@ A user belongs to at most one organization. Email addresses are unique and store
 - Permissions are `resource:action` strings defined once in `libs/domain/access/src/permissions.ts` and checked by a database `CHECK` constraint.
 - Roles are custom per agency (`roles`, `role_permissions`). Every agency starts with the built-in roles below (`BUILT_IN_ROLES` in `@ugula/access`), which it can change afterwards. Whatever creates an agency calls `saveBuiltInRoles` from `@ugula/db` in the same transaction; seeding calls it too and so resets the built-in roles to their definitions.
 
-| Built-in role   | Holds                                                                                                                                                                                                 |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Admin           | Every permission                                                                                                                                                                                      |
-| Billing Manager | Everything on patients, imports, claims (`claims:approve` included), tasks, payer files, payers, facilities, fees, reports and runs; reading settings, users, roles and workflows; `workflows:update` |
-| Biller          | Create, read and update on patients, imports, claims, tasks and payer files (not `claims:approve`); reading everything else                                                                           |
-| Viewer          | Reading everything                                                                                                                                                                                    |
+| Built-in role   | Holds                                                                                                                                               |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Admin           | Every permission                                                                                                                                    |
+| Billing Manager | Everything on patients, imports, claims, tasks, payers, facilities, fees and runs; reading settings, users, roles and workflows; `workflows:update` |
+| Biller          | Create, read and update on patients, imports, claims and tasks; reading everything else                                                             |
+| Viewer          | Reading everything                                                                                                                                  |
 
 - A membership (`memberships`) gives one user one role in one agency. Composite foreign keys make it impossible to join an agency or role outside your organization.
 
-| Resource    | Actions                                                                                       |
-| ----------- | --------------------------------------------------------------------------------------------- |
-| settings    | read, update                                                                                  |
-| users       | create, read, update, delete                                                                  |
-| roles       | create, read, update, delete                                                                  |
-| patients    | read                                                                                          |
-| imports     | create, read                                                                                  |
-| claims      | read, update, approve (refunds, write-offs and collections above the Claim Policy thresholds) |
-| tasks       | read, update                                                                                  |
-| payer_files | create, read                                                                                  |
-| payers      | create, read, update, delete (the payer directory)                                            |
-| facilities  | create, read, update, delete (facilities that pay for the trips they are responsible for)     |
-| fees        | create, read, update, delete                                                                  |
-| reports     | read                                                                                          |
-| workflows   | read, update (rules, tables), manage (stages, workflows)                                      |
-| runs        | create (start runs, upload their files), read, update (cancel runs)                           |
+| Resource   | Actions                                                                                   |
+| ---------- | ----------------------------------------------------------------------------------------- |
+| settings   | read, update                                                                              |
+| users      | create, read, update, delete                                                              |
+| roles      | create, read, update, delete                                                              |
+| patients   | read                                                                                      |
+| imports    | create, read                                                                              |
+| claims     | read                                                                                      |
+| tasks      | read, update                                                                              |
+| payers     | create, read, update, delete (the payer directory)                                        |
+| facilities | create, read, update, delete (facilities that pay for the trips they are responsible for) |
+| fees       | create, read, update, delete                                                              |
+| workflows  | read, update (rules, tables), manage (stages, workflows)                                  |
+| runs       | create (start runs, upload their files), read, update (cancel runs)                       |
 
 Saving a payer or fee adds it or changes the one with the same name or code, so it needs `create` when it is new and `update` when it exists; the write itself checks which one happens, so a race cannot slip past either.
 
 ### Tasks that need a permission
 
-A human task can name the permission whoever completes it needs (`permission` in the task config, stored on `tasks.permission`). The API refuses to complete it without that permission (403) and the task page explains why its outcomes are disabled. **Approve Refund**, **Approve Write-Off** and **Approve Collections** need `claims:approve`, which Admin and Billing Manager hold and Biller does not. A separate `claims:approve` was chosen over reusing `claims:update` so that the billers who work claims cannot approve money leaving the agency or balances written off, and over a `refunds:approve` so one approval right covers refunds, large write-offs and collections placements alike.
+A human task can name the permission whoever completes it needs (`permission` in the task config, stored on `tasks.permission`). The API refuses to complete it without that permission (403) and the task page explains why its outcomes are disabled. The built-in tasks need none; an agency can require one on a task in its own workflows.
 
 ### Rules that prevent escalation
 

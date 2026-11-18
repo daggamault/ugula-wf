@@ -1,16 +1,16 @@
 # Architecture
 
-Ugula is a durable visual workflow engine with an EMS ambulance billing app built on it. The engine knows nothing about billing; billing is a set of nodes, models and graphs plugged into it.
+Ugula is a durable visual workflow engine with an EMS ambulance billing app built on it. The engine knows nothing about billing; billing is a set of service nodes, records and graphs plugged into it.
 
 ## Apps
 
-| App           | Role                                                                                                                                                                                     | Entry                     |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
-| `apps/api`    | Hono HTTP API. Signs users in, checks agency access and permissions, serves every page's data, starts runs and completes tasks.                                                          | `apps/api/src/main.ts`    |
-| `apps/worker` | Leases runs from the pg-boss queue and executes them; implements the billing store ports; polls the clearinghouse; dispatches workflow events and starts scheduled workflows per agency. | `apps/worker/src/main.ts` |
-| `apps/sse`    | Streams live events (runs, tasks, claims, imports, payer files, notifications) to browsers, one stream per agency.                                                                       | `apps/sse/src/main.ts`    |
-| `apps/web`    | React app: claims, tasks, patients, imports, payer files, reports, workflows, runs, payers, fees, users, roles, settings.                                                                | `apps/web/src/main.ts`    |
-| `apps/chouse` | Mock clearinghouse: dev-only SFTP and CORE real-time server that answers 837P, 270 and 276 like Waystar; never built or deployed.                                                        | `apps/chouse/src/main.ts` |
+| App           | Role                                                                                                                                                                          | Entry                     |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| `apps/api`    | Hono HTTP API. Signs users in, checks agency access and permissions, serves every page's data, starts runs and completes tasks.                                               | `apps/api/src/main.ts`    |
+| `apps/worker` | Leases runs from the pg-boss queue and executes them; implements the encounter and billing store ports; dispatches workflow events and starts scheduled workflows per agency. | `apps/worker/src/main.ts` |
+| `apps/sse`    | Streams live events (runs, tasks, claims, imports, notifications) to browsers, one stream per agency.                                                                         | `apps/sse/src/main.ts`    |
+| `apps/web`    | React app: tasks, patients, imports, claims, workflows, tables, runs, payers, facilities, fees, users, roles, settings.                                                       | `apps/web/src/main.ts`    |
+| `apps/chouse` | Mock clearinghouse: dev-only SFTP and CORE real-time server that answers 837P, 270 and 276 like Waystar; never built or deployed.                                             | `apps/chouse/src/main.ts` |
 
 ## Library layers
 
@@ -22,13 +22,13 @@ data ─────────► domain, platform, kernel
 platform ─────► kernel
 ```
 
-| Layer         | Libs                                                         | Holds                                                                                                                           |
-| ------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| `kernel`      | `graph`, `config`, `live`                                    | The engine, expression language, standard nodes, env validators, live event contract                                            |
-| `platform`    | `auth`, `clearinghouse`, `inference`, `run-queue`, `storage` | Passwords, sessions, tokens; SFTP batch, CORE real-time and sealed secrets; embeddings and completions; the run queue; S3 blobs |
-| `domain`      | `access`, `billing`, `nemsis`                                | Permissions and built-in roles; billing models, rules, nodes and X12; NEMSIS parsing and models                                 |
-| `data`        | `db`                                                         | Kysely schema, graph and rule resolution, run pinning, payer file persistence                                                   |
-| `composition` | `catalog`                                                    | The one node catalog every app shares                                                                                           |
+| Layer         | Libs                                                         | Holds                                                                                                                                    |
+| ------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `kernel`      | `graph`, `config`, `live`                                    | The engine, expression language, standard nodes, env validators, live event contract                                                     |
+| `platform`    | `auth`, `clearinghouse`, `inference`, `run-queue`, `storage` | Passwords, sessions, tokens; SFTP batch, CORE real-time and sealed secrets; embeddings and completions; the run queue; S3 blobs          |
+| `domain`      | `access`, `billing`, `nemsis`                                | Permissions and built-in roles; claim records, billing service nodes and X12; NEMSIS parsing, the Encounter record and its service nodes |
+| `data`        | `db`                                                         | Kysely schema, graph resolution, run pinning, the event outbox and dispatch                                                              |
+| `composition` | `catalog`                                                    | The one node catalog every app shares                                                                                                    |
 
 The web app may only import `kernel`, `domain` and `composition`.
 
@@ -44,11 +44,11 @@ See [Tenancy and Access](tenancy-and-access.md).
 
 ## A run
 
-1. Something starts a workflow: an import, a payer file, a user, or a parent run.
+1. Something starts a workflow: an event (a PCR file received, an encounter saved), a schedule, a user, or a parent run.
 2. `startRun` inserts the run and **pins** every graph version it depends on (`workflow_run_graphs`), resolving overrides for the run's agency.
 3. A worker leases the run, builds an engine from the pinned definitions and executes nodes, saving state after each side effect.
 4. The run suspends on tasks, timers, signals or child runs and resumes later on any worker.
-5. Child runs inherit the parent's pinned versions, so one claim never mixes versions.
+5. Child runs inherit the parent's pinned versions, so one run never mixes versions.
 
 See [Workflow Engine](workflow-engine.md) and [Overrides](overrides.md).
 
