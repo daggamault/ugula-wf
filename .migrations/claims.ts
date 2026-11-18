@@ -9,8 +9,10 @@ import {
   INSURED_RELATIONSHIPS,
   MAX_LINE_MODIFIERS,
   MODIFIER_PATTERN,
+  NOTE_LENGTH,
   ORIGIN_DESTINATION_CODES,
   SERVICE_LEVELS,
+  SEXES,
   TRANSPORT_REASONS,
   UNIT_SCALE
 } from '@ugula/billing';
@@ -54,6 +56,27 @@ const buildClaimsTable = (db: Kysely<Database>) =>
     .addColumn('transport_reason', 'text')
     .addColumn('condition_codes', sql`text[]`, (col) => col.notNull().defaultTo(sql`'{}'`))
     .addColumn('weight_pounds', 'integer')
+    .addColumn('patient_first_name', 'text', (col) => col.notNull())
+    .addColumn('patient_last_name', 'text', (col) => col.notNull())
+    .addColumn('patient_birth_date', 'date', (col) => col.notNull())
+    .addColumn('patient_sex', 'text')
+    .addColumn('patient_address_line', 'text')
+    .addColumn('patient_city', 'text')
+    .addColumn('patient_state', 'text')
+    .addColumn('patient_postal_code', 'text')
+    .addColumn('pickup_name', 'text')
+    .addColumn('pickup_address_line', 'text')
+    .addColumn('pickup_city', 'text')
+    .addColumn('pickup_state', 'text')
+    .addColumn('pickup_postal_code', 'text')
+    .addColumn('destination_name', 'text')
+    .addColumn('destination_address_line', 'text')
+    .addColumn('destination_city', 'text')
+    .addColumn('destination_state', 'text')
+    .addColumn('destination_postal_code', 'text')
+    .addColumn('prior_authorization', 'text')
+    .addColumn('is_signature_on_file', 'boolean', (col) => col.notNull().defaultTo(false))
+    .addColumn('note', 'text')
     .addColumn('total_cents', 'integer', (col) => col.notNull().defaultTo(0))
     .addColumn('reasons', sql`text[]`, (col) => col.notNull().defaultTo(sql`'{}'`))
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
@@ -101,6 +124,14 @@ const buildClaimsTable = (db: Kysely<Database>) =>
       sql`cardinality(condition_codes) <= ${sql.lit(CONDITION_LIMIT)} and condition_codes <@ array[${list(Object.keys(AMBULANCE_CONDITIONS))}]`
     )
     .addCheckConstraint('claims_weight_check', sql`weight_pounds > 0`)
+    .addCheckConstraint(
+      'claims_patient_check',
+      sql`patient_first_name <> '' and patient_last_name <> '' and patient_sex in (${list(SEXES)})`
+    )
+    .addCheckConstraint(
+      'claims_note_check',
+      sql`note <> '' and char_length(note) <= ${sql.lit(NOTE_LENGTH)}`
+    )
     .addCheckConstraint('claims_total_check', sql`total_cents >= 0`)
     .addCheckConstraint('claims_reasons_check', sql`array_position(reasons, '') is null`);
 

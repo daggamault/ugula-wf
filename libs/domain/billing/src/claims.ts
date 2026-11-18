@@ -18,6 +18,7 @@ import {
   TRANSPORT_REASONS,
   type TransportReason
 } from './claim-details.ts';
+import { readAddress } from './patients.ts';
 import { isCents, textOrNull } from './values.ts';
 
 export const CLAIM_STATUSES = ['needs_review', 'approved', 'on_hold'] as const;
@@ -73,6 +74,16 @@ export type ClaimCoverage = {
   insuredLastName: string | null;
 };
 
+export type ClaimLocation = {
+  name: string | null;
+  line: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+};
+
+export const NOTE_LENGTH = 80;
+
 type ClaimChargeLine = {
   code: string;
   modifiers: string[];
@@ -95,6 +106,11 @@ export type ClaimInput = {
   transportReason: TransportReason | null;
   conditionCodes: string[];
   weightPounds: number | null;
+  pickup: ClaimLocation;
+  destination: ClaimLocation;
+  priorAuthorization: string | null;
+  signatureOnFile: boolean;
+  note: string | null;
   coverages: ClaimCoverage[];
   lines: ClaimChargeLine[];
   totalCents: number;
@@ -117,6 +133,8 @@ type LineValue = Maybe<Omit<ClaimChargeLine, 'modifiers'>> & {
 
 type CoverageValue = Maybe<Omit<ClaimCoverage, 'relationship'>> & { relationship: string | null };
 
+type LocationValue = Maybe<ClaimLocation> | null;
+
 export type ClaimValue = Maybe<
   Omit<
     ClaimInput,
@@ -128,6 +146,8 @@ export type ClaimValue = Maybe<
     | 'transportReason'
     | 'conditionCodes'
     | 'reasons'
+    | 'pickup'
+    | 'destination'
   >
 > & {
   classification: string | null;
@@ -138,6 +158,8 @@ export type ClaimValue = Maybe<
   coverages: (CoverageValue | null)[] | null;
   lines: (LineValue | null)[] | null;
   reasons: (string | null)[] | null;
+  pickup: LocationValue;
+  destination: LocationValue;
 };
 
 const present = <T>(xs: readonly (T | null)[] | null) =>
@@ -252,6 +274,30 @@ const readOriginDestination = (origin: string | null, destination: string | null
   return { originCode: o, destinationCode: d };
 };
 
+const readLocation = (l: LocationValue): ClaimLocation => {
+  const a = readAddress({
+    addressLine: l?.line,
+    city: l?.city,
+    state: l?.state,
+    postalCode: l?.postalCode
+  });
+  return {
+    name: textOrNull(l?.name),
+    line: a.addressLine,
+    city: a.city,
+    state: a.state,
+    postalCode: a.postalCode
+  };
+};
+
+const readNote = (x: string | null) => {
+  const note = textOrNull(x);
+  if (note !== null && note.length > NOTE_LENGTH) {
+    throw new Error(`The claim note takes at most ${NOTE_LENGTH} characters`);
+  }
+  return note;
+};
+
 export const readClaim = (c: ClaimValue): ClaimInput => {
   const lines = present(c.lines).map(readLine);
   const totalCents = lines.reduce((sum, l) => sum + l.totalCents, 0);
@@ -278,6 +324,11 @@ export const readClaim = (c: ClaimValue): ClaimInput => {
     transportReason: readTransportReason(c.transportReason),
     conditionCodes: readConditionCodes(c.conditionCodes),
     weightPounds: readWeight(c.weightPounds ?? null),
+    pickup: readLocation(c.pickup ?? null),
+    destination: readLocation(c.destination ?? null),
+    priorAuthorization: textOrNull(c.priorAuthorization),
+    signatureOnFile: c.signatureOnFile ?? false,
+    note: readNote(c.note ?? null),
     coverages: present(c.coverages).map(readCoverage),
     lines,
     totalCents,

@@ -12,6 +12,7 @@ import {
   type InsuredRelationship,
   SELF
 } from './claim-details.ts';
+import { NOTE_LENGTH } from './claims.ts';
 import { ZIP_PLUS_4_PATTERN } from './geo.ts';
 import { claimLevelAdjustments } from './line-adjudications.ts';
 import { money } from './numbers.ts';
@@ -76,8 +77,6 @@ export type BatchClaim = {
 const AMBULANCE_TAXONOMY = '3416L0300X';
 
 const RESPONSIBILITY = 'PSTABCDEFGH';
-
-export const NOTE_LENGTH = 80;
 
 const REPLACEMENT_FREQUENCIES: readonly string[] = ['7', '8'];
 

@@ -58,6 +58,23 @@ export const COVERAGE = model(
   ]
 );
 
+export const LOCATION = model(
+  'claim-location',
+  'location',
+  'Claim Location',
+  'Claim',
+  'where a claim says the patient was picked up or taken: the place name and street address',
+  [
+    f('name', 'string', 'Name', 'The facility or place name.'),
+    f('line', 'string', 'Street Address', 'The street address.'),
+    f('city', 'string', 'City', 'The city.'),
+    f('state', 'string', 'State', 'The two-letter state code.'),
+    f('postalCode', 'string', 'ZIP Code', 'The ZIP code, five or nine digits.')
+  ]
+);
+
+const LOCATION_TYPE = modelType(LOCATION);
+
 export const CLAIM = model(
   'claim',
   'claim',
@@ -109,6 +126,36 @@ export const CLAIM = model(
       'integer',
       'Weight in Pounds',
       'The patient weight, in whole pounds, for the ambulance transport information (CR1).'
+    ),
+    f(
+      'pickup',
+      LOCATION_TYPE,
+      'Pickup Location',
+      'Where the patient was picked up, for the ambulance pickup location (2310E).'
+    ),
+    f(
+      'destination',
+      LOCATION_TYPE,
+      'Destination Location',
+      'Where the patient was taken, for the ambulance drop-off location (2310F).'
+    ),
+    f(
+      'priorAuthorization',
+      'string',
+      'Prior Authorization',
+      'The prior authorization number the payer gave for the trip (REF G1).'
+    ),
+    f(
+      'signatureOnFile',
+      'boolean',
+      'Signature on File',
+      'Whether the patient, a representative or the signature exception authorized billing, which assigns the benefits to the agency (CLM08).'
+    ),
+    f(
+      'note',
+      'string',
+      'Claim Note',
+      'A note for the payer, at most 80 characters, such as the condition that made the transport necessary (NTE).'
     ),
     f(
       'coverages',
@@ -210,6 +257,7 @@ export const billingModels: Model[] = [
   CLAIM,
   COVERAGE,
   CHARGE_LINE,
+  LOCATION,
   PATIENT,
   PATIENT_ADDRESS,
   PAYER

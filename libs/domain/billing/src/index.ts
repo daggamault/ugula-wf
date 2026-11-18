@@ -27,8 +27,10 @@ export {
   CLAIM_STATUSES,
   type ClaimDecision,
   type ClaimInput,
+  type ClaimLocation,
   type ClaimReview,
   type ClaimStatus,
+  NOTE_LENGTH,
   type StoredClaim
 } from './claims.ts';
 export {
@@ -79,7 +81,7 @@ export {
   RURALITIES,
   type Rurality
 } from './medicare-fees.ts';
-export { billingModels, CHARGE_LINE, CLAIM, COVERAGE } from './models.ts';
+export { billingModels, CHARGE_LINE, CLAIM, COVERAGE, LOCATION } from './models.ts';
 export { nameKey } from './names.ts';
 export { createBillingNodes } from './nodes.ts';
 export { dailyNumberOf, dollarsToCents } from './numbers.ts';

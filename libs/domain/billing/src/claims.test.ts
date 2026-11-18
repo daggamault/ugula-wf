@@ -25,6 +25,11 @@ const CLAIM: ClaimValue = {
   transportReason: 'a',
   conditionCodes: ['06', '09', '06', ' '],
   weightPounds: 180,
+  pickup: { name: ' ', line: '1 Elm St', city: 'Dayton', state: 'oh', postalCode: '45402-1234' },
+  destination: null,
+  priorAuthorization: ' PA-1 ',
+  signatureOnFile: true,
+  note: ' Chest pain, unable to walk ',
   coverages: [
     {
       payerName: 'Medicare',
@@ -82,6 +87,29 @@ describe('readClaim', () => {
     });
   });
 
+  it('normalizes the locations, prior authorization and note the 837P needs', () => {
+    const c = readClaim(CLAIM);
+    assert.deepEqual(c.pickup, {
+      name: null,
+      line: '1 Elm St',
+      city: 'Dayton',
+      state: 'OH',
+      postalCode: '454021234'
+    });
+    assert.deepEqual(c.destination, {
+      name: null,
+      line: null,
+      city: null,
+      state: null,
+      postalCode: null
+    });
+    assert.deepEqual(
+      [c.priorAuthorization, c.signatureOnFile, c.note],
+      ['PA-1', true, 'Chest pain, unable to walk']
+    );
+    assert.equal(readClaim({ ...CLAIM, signatureOnFile: null }).signatureOnFile, false);
+  });
+
   it('allows a claim with no lines, payers, diagnoses or trip', () => {
     const c = readClaim({
       ...CLAIM,
@@ -124,6 +152,7 @@ describe('readClaim', () => {
     wrong({ conditionCodes: ['01', '04', '05', '06', '07', '08'] }, /at most 5 condition/);
     wrong({ weightPounds: 180.5 }, /whole number of pounds/);
     wrong({ weightPounds: 0 }, /whole number of pounds/);
+    wrong({ note: 'x'.repeat(81) }, /note takes at most 80 characters/);
     wrong({ totalCents: 1 }, /not the sum of the lines, 97400/);
     wrong({ lines: [line({ code: 'X1' })] }, /Line 1 has no valid/);
     wrong({ lines: [line({ modifiers: ['RHX'] })] }, /invalid modifier RHX/);

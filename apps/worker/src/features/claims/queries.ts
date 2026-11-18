@@ -1,12 +1,55 @@
 import type { ClaimInput, ClaimStore, InsuredRelationship } from '@ugula/billing';
 import { type Database, sqlExecutor } from '@ugula/db';
 import { cancel, enqueueRuns, type RunQueueClient } from '@ugula/run-queue';
-import { type Kysely, sql } from 'kysely';
+import { type Kysely, type Selectable, sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { isUuid } from '../../shared/ids.ts';
 import { runAgency } from '../../shared/tenancy.ts';
 
-const claimColumns = (c: ClaimInput) => ({
+type PatientSnapshot = Pick<
+  Selectable<Database['claims']>,
+  | 'patient_first_name'
+  | 'patient_last_name'
+  | 'patient_birth_date'
+  | 'patient_sex'
+  | 'patient_address_line'
+  | 'patient_city'
+  | 'patient_state'
+  | 'patient_postal_code'
+>;
+
+const patientSnapshot = (tx: Kysely<Database>, runId: string, patientId: string) =>
+  tx
+    .selectFrom('patients')
+    .select([
+      'first_name as patient_first_name',
+      'last_name as patient_last_name',
+      'birth_date as patient_birth_date',
+      'gender as patient_sex',
+      'address_line as patient_address_line',
+      'city as patient_city',
+      'state as patient_state',
+      'postal_code as patient_postal_code'
+    ])
+    .where('agency_id', '=', runAgency(tx, runId))
+    .where('id', '=', patientId)
+    .executeTakeFirst();
+
+const claimColumns = (c: ClaimInput, patient: PatientSnapshot) => ({
+  ...patient,
+  pickup_name: c.pickup.name,
+  pickup_address_line: c.pickup.line,
+  pickup_city: c.pickup.city,
+  pickup_state: c.pickup.state,
+  pickup_postal_code: c.pickup.postalCode,
+  destination_name: c.destination.name,
+  destination_address_line: c.destination.line,
+  destination_city: c.destination.city,
+  destination_state: c.destination.state,
+  destination_postal_code: c.destination.postalCode,
+  prior_authorization: c.priorAuthorization,
+  is_signature_on_file: c.signatureOnFile,
+  note: c.note,
   patient_id: c.patientId,
   classification: c.classification,
   service_date: c.serviceDate,
@@ -71,6 +114,19 @@ export const createClaimStore = (db: Kysely<Database>, boss: RunQueueClient): Cl
         'c.transport_reason',
         'c.condition_codes',
         'c.weight_pounds',
+        'c.pickup_name',
+        'c.pickup_address_line',
+        'c.pickup_city',
+        'c.pickup_state',
+        'c.pickup_postal_code',
+        'c.destination_name',
+        'c.destination_address_line',
+        'c.destination_city',
+        'c.destination_state',
+        'c.destination_postal_code',
+        'c.prior_authorization',
+        'c.is_signature_on_file',
+        'c.note',
         'c.total_cents',
         'c.reasons',
         sql<string[]>`array(${eb
@@ -121,6 +177,23 @@ export const createClaimStore = (db: Kysely<Database>, boss: RunQueueClient): Cl
           transportReason: c.transport_reason,
           conditionCodes: c.condition_codes,
           weightPounds: c.weight_pounds,
+          pickup: {
+            name: c.pickup_name,
+            line: c.pickup_address_line,
+            city: c.pickup_city,
+            state: c.pickup_state,
+            postalCode: c.pickup_postal_code
+          },
+          destination: {
+            name: c.destination_name,
+            line: c.destination_address_line,
+            city: c.destination_city,
+            state: c.destination_state,
+            postalCode: c.destination_postal_code
+          },
+          priorAuthorization: c.prior_authorization,
+          signatureOnFile: c.is_signature_on_file,
+          note: c.note,
           coverages: c.coverages.map((cc) => ({
             payerId: cc.payer_id,
             payerName: cc.payer_name,
@@ -149,16 +222,18 @@ export const createClaimStore = (db: Kysely<Database>, boss: RunQueueClient): Cl
       if (!isUuid(claim.patientId)) throw new Error(`Patient ${claim.patientId} does not exist`);
       const unknown = claim.coverages.find((c) => c.payerId !== null && !isUuid(c.payerId));
       if (unknown) throw new Error(`Payer ${unknown.payerId} does not exist`);
+      const patient = await patientSnapshot(tx, runId, claim.patientId);
+      if (!patient) throw new Error(`Patient ${claim.patientId} does not exist`);
       const saved = await tx
         .insertInto('claims')
         .values({
           agency_id: runAgency(tx, runId),
           encounter_id: claim.encounterId,
-          ...claimColumns(claim)
+          ...claimColumns(claim, patient)
         })
         .onConflict((oc) =>
           oc.columns(['agency_id', 'encounter_id']).doUpdateSet({
-            ...claimColumns(claim),
+            ...claimColumns(claim, patient),
             status: 'needs_review',
             revision: sql`claims.revision + 1`,
             reviewed_by: null,

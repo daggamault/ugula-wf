@@ -2,6 +2,7 @@ import type {
   ClaimStatus,
   Classification,
   InsuredRelationship,
+  Sex,
   TransportReason
 } from '@ugula/billing';
 
@@ -95,10 +96,24 @@ export type ClaimDetail = ClaimSummary & {
   reasons: string[];
   patient_id: string;
   birth_date: string | null;
+  sex: Sex | null;
   address_line: string | null;
   city: string | null;
   state: string | null;
   postal_code: string | null;
+  pickup_name: string | null;
+  pickup_address_line: string | null;
+  pickup_city: string | null;
+  pickup_state: string | null;
+  pickup_postal_code: string | null;
+  destination_name: string | null;
+  destination_address_line: string | null;
+  destination_city: string | null;
+  destination_state: string | null;
+  destination_postal_code: string | null;
+  prior_authorization: string | null;
+  is_signature_on_file: boolean;
+  note: string | null;
   coverages: ClaimCoverage[];
   lines: ClaimLine[];
   diagnoses: string[];

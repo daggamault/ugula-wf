@@ -63,6 +63,20 @@ export const claimDetail: ClaimDetail = {
     }
   ],
   birth_date: '1958-04-12',
+  sex: 'F',
+  pickup_name: null,
+  pickup_address_line: '9 Elm St',
+  pickup_city: 'Springfield',
+  pickup_state: 'IL',
+  pickup_postal_code: '62704',
+  destination_name: 'St. Mary',
+  destination_address_line: '1 Main St',
+  destination_city: 'Springfield',
+  destination_state: 'IL',
+  destination_postal_code: '62701',
+  prior_authorization: null,
+  is_signature_on_file: true,
+  note: null,
   patient_id: 'p1',
   coverages: [
     {

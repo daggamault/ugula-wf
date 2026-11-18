@@ -94,7 +94,13 @@ describe('ClaimDataView', () => {
         'Patient was transported in an emergency situation 06Ambulance service was medically necessary 09'
       ],
       ['Patient Weight', '180 lb'],
+      ['Pickup Location', '9 Elm St, Springfield, IL 62704'],
+      ['Drop-off Location', 'St. Mary, 1 Main St, Springfield, IL 62701'],
+      ['Prior Authorization', '—'],
+      ['Signature on File', 'Yes'],
+      ['Claim Note', '—'],
       ['Patient Born', 'Apr 12, 1958'],
+      ['Patient Sex', 'Female'],
       ['Patient Mailing Address', '1 Main St, Springfield, IL 62704']
     ]);
   });
@@ -114,7 +120,7 @@ describe('ClaimDataView', () => {
     );
   });
 
-  it('shows a dash for each value the claim lacks', () => {
+  it('shows a dash for each value the claim lacks, and the others it has', () => {
     show({
       diagnoses: [],
       birth_date: null,
@@ -124,7 +130,20 @@ describe('ClaimDataView', () => {
       postal_code: null,
       transport_reason: null,
       condition_codes: [],
-      weight_pounds: null
+      weight_pounds: null,
+      pickup_address_line: null,
+      pickup_city: null,
+      pickup_state: null,
+      pickup_postal_code: null,
+      destination_name: null,
+      destination_address_line: null,
+      destination_city: null,
+      destination_state: null,
+      destination_postal_code: null,
+      prior_authorization: 'PA-7',
+      is_signature_on_file: false,
+      note: 'Bed confined',
+      sex: null
     });
     assert.deepEqual(details().slice(1), [
       ['Diagnosis Codes', '—'],
@@ -133,7 +152,13 @@ describe('ClaimDataView', () => {
       ['Transport Reason', '—'],
       ['Condition Codes', '—'],
       ['Patient Weight', '—'],
+      ['Pickup Location', '—'],
+      ['Drop-off Location', '—'],
+      ['Prior Authorization', 'PA-7'],
+      ['Signature on File', 'No'],
+      ['Claim Note', 'Bed confined'],
       ['Patient Born', '—'],
+      ['Patient Sex', '—'],
       ['Patient Mailing Address', '—']
     ]);
     assert.ok(!screen.queryByRole('list'));

@@ -59,7 +59,7 @@ const cityName = (x: unknown) => {
   return name && !/^\d+$/.test(name) ? name : null;
 };
 
-const readAddress = (r: Record<string, unknown>): Address => ({
+export const readAddress = (r: Record<string, unknown>): Address => ({
   addressLine: textOrNull(r.addressLine),
   city: cityName(r.city),
   state: usState(r.state),

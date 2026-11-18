@@ -24,6 +24,17 @@ const CLAIM: ClaimInput = {
   transportReason: 'A',
   conditionCodes: ['06'],
   weightPounds: 180,
+  pickup: { name: null, line: '1 Elm St', city: 'Dayton', state: 'OH', postalCode: '45402' },
+  destination: {
+    name: 'Miami Valley Hospital',
+    line: '1 Wyoming St',
+    city: 'Dayton',
+    state: 'OH',
+    postalCode: '45409'
+  },
+  priorAuthorization: null,
+  signatureOnFile: true,
+  note: null,
   coverages: [
     {
       payerId: PAYER,
@@ -56,6 +67,20 @@ const queue = () => {
 
 const STALE_RUN = '0195f2a4-0000-7000-8000-000000000009';
 
+const PATIENT_ROW = {
+  patient_first_name: 'Ada',
+  patient_last_name: 'Lovelace',
+  patient_birth_date: '1950-12-10',
+  patient_sex: 'F',
+  patient_address_line: '1 Elm St',
+  patient_city: 'Dayton',
+  patient_state: 'OH',
+  patient_postal_code: '45402'
+};
+
+const isPatientRead = (sql: string) =>
+  sql.startsWith('select "first_name" as "patient_first_name"');
+
 describe('createClaimStore', () => {
   it('reads a claim in the run agency with its payers, lines and diagnoses in order', async () => {
     const { db, queries } = createRecordingDb(() => [
@@ -74,6 +99,19 @@ describe('createClaimStore', () => {
         transport_reason: 'A',
         condition_codes: ['06'],
         weight_pounds: 180,
+        pickup_name: null,
+        pickup_address_line: '1 Elm St',
+        pickup_city: 'Dayton',
+        pickup_state: 'OH',
+        pickup_postal_code: '45402',
+        destination_name: 'Miami Valley Hospital',
+        destination_address_line: '1 Wyoming St',
+        destination_city: 'Dayton',
+        destination_state: 'OH',
+        destination_postal_code: '45409',
+        prior_authorization: null,
+        is_signature_on_file: true,
+        note: null,
         total_cents: 80000,
         reasons: ['Emergency response'],
         diagnoses: ['R079'],
@@ -122,7 +160,9 @@ describe('createClaimStore', () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('insert into "claims"')
         ? [{ id: CLAIM_ID, agency_id: 't-1', revision: 1, inserted: true }]
-        : []
+        : isPatientRead(q.sql)
+          ? [PATIENT_ROW]
+          : []
     );
     assert.deepEqual(await createClaimStore(db, queue().boss).saveClaim('r1', CLAIM), {
       id: CLAIM_ID,
@@ -132,6 +172,7 @@ describe('createClaimStore', () => {
     assert.deepEqual(
       queries.map((q) => tables(q.sql)),
       [
+        undefined,
         'insert into claims',
         'delete from claim_lines',
         'delete from claim_coverages',
@@ -143,13 +184,27 @@ describe('createClaimStore', () => {
     );
     assert.match(
       queries[0]?.sql ?? '',
+      /where "agency_id" = \(select "agency_id" from "workflow_runs" where "id" = \$1\) and "id" = \$2$/
+    );
+    assert.ok(queries[1]?.parameters.includes('Lovelace'));
+    assert.ok(queries[1]?.parameters.includes('Miami Valley Hospital'));
+    assert.match(
+      queries[1]?.sql ?? '',
       /on conflict \("agency_id", "encounter_id"\) do update set/
     );
     assert.match(
-      queries[0]?.sql ?? '',
+      queries[1]?.sql ?? '',
       /"status" = \$\d+, "revision" = claims\.revision \+ 1, "reviewed_by" = \$\d+, "reviewed_at" = \$\d+, "review_note" = \$\d+/
     );
-    assert.deepEqual(queries[4]?.parameters, [CLAIM_ID, 1, 'A0427', ['RH'], 1, 80000, 80000]);
+    assert.deepEqual(queries[5]?.parameters, [CLAIM_ID, 1, 'A0427', ['RH'], 1, 80000, 80000]);
+  });
+
+  it('refuses a claim for a patient outside the run agency', async () => {
+    const { db } = createRecordingDb(() => []);
+    await assert.rejects(
+      createClaimStore(db, queue().boss).saveClaim('r1', CLAIM),
+      new RegExp(`Patient ${PATIENT} does not exist`)
+    );
   });
 
   it('cancels the review of the claim it replaces, so no stale review stays in the queue', async () => {
@@ -158,7 +213,9 @@ describe('createClaimStore', () => {
         ? [{ id: CLAIM_ID, agency_id: 't-1', revision: 2, inserted: false }]
         : q.sql.startsWith('select "r"."id" from "workflow_runs"')
           ? [{ id: STALE_RUN }]
-          : []
+          : isPatientRead(q.sql)
+            ? [PATIENT_ROW]
+            : []
     );
     const { boss, jobs } = queue();
     await createClaimStore(db, boss).saveClaim('r1', CLAIM);
@@ -174,7 +231,9 @@ describe('createClaimStore', () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('insert into "claims"')
         ? [{ id: CLAIM_ID, agency_id: 't-1', revision: 1, inserted: true }]
-        : []
+        : isPatientRead(q.sql)
+          ? [PATIENT_ROW]
+          : []
     );
     const { boss, jobs } = queue();
     await createClaimStore(db, boss).saveClaim('r1', CLAIM);
@@ -186,7 +245,9 @@ describe('createClaimStore', () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('insert into "claims"')
         ? [{ id: CLAIM_ID, agency_id: 't-1', revision: 2, inserted: false }]
-        : []
+        : isPatientRead(q.sql)
+          ? [PATIENT_ROW]
+          : []
     );
     const saved = await createClaimStore(db, queue().boss).saveClaim('r1', {
       ...CLAIM,
@@ -196,7 +257,7 @@ describe('createClaimStore', () => {
       totalCents: 0
     });
     assert.deepEqual([saved.outcome, saved.revision], ['replaced', 2]);
-    assert.equal(queries.length, 5);
+    assert.equal(queries.length, 6);
   });
 
   it('records a review only on the revision reviewed while it needs review', async () => {

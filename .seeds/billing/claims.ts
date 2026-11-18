@@ -2,18 +2,22 @@ import {
   CLAIM,
   CLASSIFICATION_LABELS,
   CLASSIFICATIONS,
+  LOCATION,
   ORIGIN_DESTINATION_CODES
 } from '@ugula/billing';
-import type { GraphDef } from '@ugula/graph';
+import type { GraphDef, Model } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import {
+  ADDRESS,
   allOf,
   asStage,
   asWorkflow,
   BILLABLE_KINDS,
+  type Builder,
   breakRecord,
   CODE,
   codes,
+  DESTINATION,
   d,
   ENCOUNTER,
   exit,
@@ -27,7 +31,9 @@ import {
   n,
   not,
   PAYMENT,
+  type Port,
   QUEUE,
+  SCENE,
   stage,
   T,
   TRANSPORT_KINDS
@@ -460,6 +466,38 @@ const settlePlaces = (): GraphDef => {
   return g.def;
 };
 
+const claimLocation = (
+  g: Builder,
+  id: string,
+  label: string,
+  place: Pick<Model, 'key' | 'name'>,
+  from: Port
+) => {
+  breakRecord(
+    g,
+    `${id}Place`,
+    n(label, 'Its name and address, as the report gives them.'),
+    place,
+    from
+  );
+  breakRecord(
+    g,
+    `${id}Address`,
+    n(`${label} Address`, 'The street, city, state and ZIP.'),
+    ADDRESS,
+    `${id}Place.address`
+  );
+  g.add(id, `${LOCATION.key}.make`, {
+    label: `${label} on the Claim`,
+    note: 'The place the claim names, for the ambulance pickup or drop-off location.'
+  });
+  g.wire(`${id}Place.name`, `${id}.name`);
+  for (const pin of ['line', 'city', 'state', 'postalCode']) {
+    g.wire(`${id}Address.${pin}`, `${id}.${pin}`);
+  }
+  return `${id}.${LOCATION.name}` as Port;
+};
+
 const buildClaim = (): GraphDef => {
   const g = stage(
     [d('encounter', T.encounter, 'Encounter', 'The encounter to bill.')],
@@ -581,6 +619,13 @@ const buildClaim = (): GraphDef => {
   for (const pin of ['transportReason', 'conditionCodes', 'weightPounds']) {
     g.wire(`ambulance.${pin}`, `claim.${pin}`);
   }
+  g.wire(claimLocation(g, 'pickup', 'Pickup', SCENE, 'trip.pickup'), 'claim.pickup');
+  g.wire(
+    claimLocation(g, 'dropoff', 'Destination', DESTINATION, 'trip.destination'),
+    'claim.destination'
+  );
+  g.wire('payment.priorAuthorization', 'claim.priorAuthorization');
+  g.wire('checks.signatureOnFile', 'claim.signatureOnFile');
   g.wire('entry.encounter', 'places.encounter', 'payers.encounter');
   g.wire('trip.patient', 'patient.person');
   g.wire('entry.exec', 'settle.exec');

@@ -213,6 +213,12 @@ const claimChecks = (): GraphDef => {
         listOf('string'),
         'Reasons',
         'What a biller should fix or confirm before the claim goes out.'
+      ),
+      d(
+        'signatureOnFile',
+        'boolean',
+        'Signature on File',
+        'Whether a signed release for billing, or the signature exception with a facility signature, authorizes billing (CLM08).'
       )
     ]
   );
@@ -251,13 +257,29 @@ const claimChecks = (): GraphDef => {
     'Each signature by a healthcare provider.',
     'billing.facility-signature'
   );
+  const signed = anyKept(g, 'anySigned', 'Some Release Signed', 'releases');
   const noRelease = not(
     g,
     'noRelease',
     n('No Signed Release', 'Nobody signed the release for billing.'),
-    anyKept(g, 'anySigned', 'Some Release Signed', 'releases')
+    signed
   );
   const unable = anyKept(g, 'anyUnable', 'Patient Unable to Sign', 'unable');
+  const facilitySigned = anyKept(g, 'anyFacility', 'Some Facility Signature', 'facility');
+  const signatureOnFile = anyOf(
+    g,
+    'signatureOnFile',
+    n('Signature on File', 'A signed release, or the exception with a facility signature.'),
+    [
+      signed,
+      allOf(
+        g,
+        'signatureException',
+        n('Signature Exception', 'The patient could not sign and a facility signed.'),
+        [unable, facilitySigned]
+      )
+    ]
+  );
   const nonEmergencyTransport = allOf(
     g,
     'nonEmergency',
@@ -433,7 +455,7 @@ const claimChecks = (): GraphDef => {
             g,
             'noFacility',
             n('No Facility Signature', 'None by a healthcare provider.'),
-            anyKept(g, 'anyFacility', 'Some Facility Signature', 'facility')
+            facilitySigned
           )
         ]
       )
@@ -538,6 +560,7 @@ const claimChecks = (): GraphDef => {
     reasonsOf(g, 'reasons', n('Claim Check Reasons', 'What to fix or confirm.'), criteria),
     'return.reasons'
   );
+  g.wire(signatureOnFile, 'return.signatureOnFile');
   return g.def;
 };
 

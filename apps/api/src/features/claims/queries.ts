@@ -34,8 +34,8 @@ const claimRows = (db: Db, agencyId: string) =>
       'c.service_date',
       'c.status',
       'c.created_at',
-      'p.first_name',
-      'p.last_name',
+      'c.patient_first_name as first_name',
+      'c.patient_last_name as last_name',
       sql<string[]>`array(${eb
         .selectFrom('claim_coverages as cc')
         .leftJoin('payers as dp', 'dp.id', 'cc.payer_id')
@@ -139,11 +139,25 @@ export const findClaim = (db: Db, agencyId: string, id: string) =>
       'c.weight_pounds',
       'c.reasons',
       'c.patient_id',
-      'p.birth_date',
-      'p.address_line',
-      'p.city',
-      'p.state',
-      'p.postal_code',
+      'c.patient_birth_date as birth_date',
+      'c.patient_sex as sex',
+      'c.patient_address_line as address_line',
+      'c.patient_city as city',
+      'c.patient_state as state',
+      'c.patient_postal_code as postal_code',
+      'c.pickup_name',
+      'c.pickup_address_line',
+      'c.pickup_city',
+      'c.pickup_state',
+      'c.pickup_postal_code',
+      'c.destination_name',
+      'c.destination_address_line',
+      'c.destination_city',
+      'c.destination_state',
+      'c.destination_postal_code',
+      'c.prior_authorization',
+      'c.is_signature_on_file',
+      'c.note',
       jsonArrayFrom(
         eb
           .selectFrom('claim_coverages as cc')

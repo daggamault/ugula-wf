@@ -2,6 +2,7 @@ import {
   AMBULANCE_CONDITIONS,
   type CodeDescriptions,
   ORIGIN_DESTINATION_CODES,
+  SEX_LABELS,
   TRANSPORT_REASONS
 } from '@ugula/billing';
 import { formatDate } from '../format.ts';
@@ -36,6 +37,15 @@ const pairOf = (code: string) => {
 };
 
 export const modifierCode = (code: string) => coded(placeOf(code) ?? pairOf(code), code);
+
+export const claimPlace = (c: ClaimDetail, place: 'pickup' | 'destination') =>
+  addressText({
+    name: c[`${place}_name`],
+    addressLine: c[`${place}_address_line`],
+    city: c[`${place}_city`],
+    state: c[`${place}_state`],
+    postalCode: c[`${place}_postal_code`]
+  });
 
 const conditionCode = (code: string) =>
   coded(
@@ -97,7 +107,13 @@ export const ClaimDataView = ({
       <Detail label="Patient Weight">
         {c.weight_pounds === null ? emptyValue : `${c.weight_pounds} lb`}
       </Detail>
+      <Detail label="Pickup Location">{claimPlace(c, 'pickup') ?? emptyValue}</Detail>
+      <Detail label="Drop-off Location">{claimPlace(c, 'destination') ?? emptyValue}</Detail>
+      <Detail label="Prior Authorization">{c.prior_authorization ?? emptyValue}</Detail>
+      <Detail label="Signature on File">{c.is_signature_on_file ? 'Yes' : 'No'}</Detail>
+      <Detail label="Claim Note">{c.note ?? emptyValue}</Detail>
       <Detail label="Patient Born">{formatDate(c.birth_date)}</Detail>
+      <Detail label="Patient Sex">{c.sex ? SEX_LABELS[c.sex] : emptyValue}</Detail>
       <Detail label="Patient Mailing Address">
         {addressText({
           addressLine: c.address_line,
