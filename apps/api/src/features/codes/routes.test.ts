@@ -13,6 +13,10 @@ const setup = () => {
     find: async (query: unknown) => {
       calls.push(query);
       return ok({ codes });
+    },
+    describeKind: async (query: unknown) => {
+      calls.push(query);
+      return ok({ codes });
     }
   } as unknown as CodeService;
   return { calls, request: withSession(createCodeRoutes(service)) };
@@ -31,6 +35,13 @@ describe('code routes', () => {
     const { calls, request } = setup();
     assert.equal((await request('/?set=rxnorm&codes=1191,7052')).status, 200);
     assert.deepEqual(calls, [{ set: 'rxnorm', codes: ['1191', '7052'] }]);
+  });
+
+  it('describes codes of a kind, and refuses a kind that is not a name', async () => {
+    const { calls, request } = setup();
+    assert.equal((await request('/kind?kind=incidentDisposition&codes=4212007')).status, 200);
+    assert.deepEqual(calls, [{ kind: 'incidentDisposition', codes: ['4212007'] }]);
+    assert.equal((await request('/kind?kind=Bad-Kind&codes=1')).status, 400);
   });
 
   it('rejects an unknown set before searching', async () => {

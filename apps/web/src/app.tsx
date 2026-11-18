@@ -16,6 +16,7 @@ import {
   useAccess,
   useCan
 } from './shared/access.tsx';
+import { CodeMeaningsContext, createCodeMeanings } from './shared/graph/code-meanings.ts';
 import { ValueKindsContext, WorkflowEventsContext } from './shared/graph/pins.ts';
 import { createLive, useLiveStatus } from './shared/live.ts';
 import { agencyPath, navigate, useLocation } from './shared/router.tsx';
@@ -58,6 +59,10 @@ export const Workspace = ({
     [sseUrl, access.agencyId]
   );
   const liveStatus = useLiveStatus(live);
+  const meanings = useMemo(
+    () => createCodeMeanings((kind, codes) => clients.codes.describeKind(kind, codes)),
+    [clients]
+  );
   const openTasks = useWorkAlerts(clients.tasks, live, useToast(), path.startsWith('/tasks/'));
   const page = resolveRoute(path, query, { ...clients, nodes, live, email });
   const missing = page === null;
@@ -93,11 +98,13 @@ export const Workspace = ({
       }
       onSignOut={onSignOut}
     >
-      <PageBoundary key={path}>
-        <Suspense fallback={<PageLoading />}>
-          {page ?? (home ? null : <PageFailure message={NO_SECTIONS} />)}
-        </Suspense>
-      </PageBoundary>
+      <CodeMeaningsContext.Provider value={meanings}>
+        <PageBoundary key={path}>
+          <Suspense fallback={<PageLoading />}>
+            {page ?? (home ? null : <PageFailure message={NO_SECTIONS} />)}
+          </Suspense>
+        </PageBoundary>
+      </CodeMeaningsContext.Provider>
       {can('imports:create') ? <ImportDrop client={clients.imports} /> : null}
       <UnsavedChangesDialog />
     </Shell>

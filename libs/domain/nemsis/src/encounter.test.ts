@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import { modelType } from '@ugula/graph';
 import {
   attachmentsOf,
+  codeKindElements,
   ENCOUNTER,
   ENCOUNTER_TYPE,
   encounterModels,
@@ -375,5 +376,20 @@ describe('encounter models', () => {
       label: 'Primary Impression',
       description: 'NEMSIS eSituation.11, as the report gives it.'
     });
+  });
+});
+
+describe('codeKindElements', () => {
+  it('names the NEMSIS element each code kind of the Encounter comes from', () => {
+    assert.deepEqual(
+      [
+        codeKindElements.incidentDisposition,
+        codeKindElements.medicationRoute,
+        codeKindElements.signatureStatus,
+        codeKindElements.destinationType,
+        codeKindElements.icd10
+      ],
+      ['eDisposition.12', 'eMedications.04', 'eOther.15', 'eDisposition.21', undefined]
+    );
   });
 });

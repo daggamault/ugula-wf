@@ -26,3 +26,10 @@ export const searchCodesQuery = v.object({
 });
 
 export type CodesQuery = v.InferOutput<typeof searchCodesQuery>;
+
+export const describeKindQuery = v.object({
+  kind: v.pipe(v.string(), v.regex(/^[a-z][A-Za-z0-9]*$/, 'Kinds are camelCase names')),
+  codes: codeList
+});
+
+export type DescribeKindQuery = v.InferOutput<typeof describeKindQuery>;

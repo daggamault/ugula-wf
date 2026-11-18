@@ -3,8 +3,9 @@ import { describe, it } from 'node:test';
 import { ReactFlowProvider } from '@xyflow/react';
 import { createElement } from 'react';
 import { render, screen, userEvent, within } from '../testing-dom.ts';
+import { CodeMeaningsContext } from './code-meanings.ts';
 import type { GraphNodeData } from './flow.ts';
-import { fieldMatches, GraphNode, NodeActions, pinTitle } from './graph-node.tsx';
+import { codedValuesOf, fieldMatches, GraphNode, NodeActions, pinTitle } from './graph-node.tsx';
 
 const props = {
   id: 'n',
@@ -453,5 +454,69 @@ describe('GraphNode reroute', () => {
     assert.equal(hasClass(knot, 'bg-pin-number'), true);
     assert.equal(knot.querySelectorAll('[data-handleid="value"]').length, 2);
     assert.ok(!screen.queryByRole('article'));
+  });
+});
+
+describe('GraphNode codes', () => {
+  it('shows each code of a constant with its meaning', async () => {
+    render(
+      createElement(CodeMeaningsContext, {
+        value: async () => new Map([['4212007', 'Canceled (Prior to Arrival At Scene)']]),
+        children: createElement(ReactFlowProvider, {
+          children: createElement(GraphNode, {
+            ...props,
+            data: {
+              ...base,
+              instance: {
+                id: 'c',
+                type: 'std.value',
+                version: 1,
+                config: { type: { list: { code: 'incidentDisposition' } }, value: ['4212007'] }
+              }
+            },
+            selected: false
+          })
+        })
+      })
+    );
+    const codes = within(card()).getByRole('list', { name: 'Codes' });
+    assert.equal(
+      (await within(codes).findByText('Canceled (Prior to Arrival At Scene)')).textContent,
+      'Canceled (Prior to Arrival At Scene)'
+    );
+    assert.ok(within(codes).getByText('4212007'));
+  });
+});
+
+describe('codedValuesOf', () => {
+  it('finds the codes a constant holds and the code a comparison tests', () => {
+    assert.deepEqual(
+      codedValuesOf({
+        id: 'c',
+        type: 'std.value',
+        version: 1,
+        config: { type: { list: { code: 'incidentDisposition' } }, value: ['4212007', '4212009'] }
+      }),
+      { kind: 'incidentDisposition', codes: ['4212007', '4212009'] }
+    );
+    assert.deepEqual(
+      codedValuesOf({
+        id: 'e',
+        type: 'std.logic.equal',
+        version: 1,
+        config: { type: { code: 'yesNo' } },
+        inputs: { b: { value: '9923003' } }
+      }),
+      { kind: 'yesNo', codes: ['9923003'] }
+    );
+    assert.equal(
+      codedValuesOf({
+        id: 'n',
+        type: 'std.value',
+        version: 1,
+        config: { type: 'number', value: 3 }
+      }),
+      null
+    );
   });
 });

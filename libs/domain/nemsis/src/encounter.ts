@@ -638,6 +638,50 @@ export const ENCOUNTER: Model = {
 
 export const ENCOUNTER_TYPE = modelType(ENCOUNTER);
 
+const codeKindOf = ({ type }: Element) =>
+  typeof type === 'object' && 'code' in type
+    ? type.code
+    : typeof type === 'object' &&
+        'list' in type &&
+        typeof type.list === 'object' &&
+        'code' in type.list
+      ? type.list.code
+      : null;
+
+const SCENE_AND_DESTINATION_CODES: Readonly<Record<string, string>> = {
+  destinationType: 'eDisposition.21',
+  hospitalDepartment: 'eDisposition.22',
+  hospitalCapability: 'eDisposition.23'
+};
+
+export const codeKindElements: Readonly<Record<string, string>> = {
+  ...Object.fromEntries(
+    [
+      ...PERSON_ELEMENTS,
+      ...[
+        TIMES,
+        ODOMETER,
+        PAYMENT,
+        MEDICATION,
+        PROCEDURE,
+        VITAL,
+        SIGNATURE,
+        CREW_MEMBER,
+        SUPPLY
+      ].flatMap((p) => p.elements),
+      ...INSURANCE_ELEMENTS,
+      ...RELATIVE_ELEMENTS,
+      ...ATTACHMENT_ELEMENTS,
+      ...TRIP_ELEMENTS,
+      ...CLINICAL_ELEMENTS
+    ].flatMap((e) => {
+      const kind = codeKindOf(e);
+      return kind && kind !== 'icd10' ? [[kind, e.element]] : [];
+    })
+  ),
+  ...SCENE_AND_DESTINATION_CODES
+};
+
 export const encounterModels: Model[] = [
   ENCOUNTER,
   partModel(TIMES),

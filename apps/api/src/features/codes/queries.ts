@@ -53,3 +53,14 @@ export const searchCodes = async (db: Db, { set, q, list, codes }: CodesQuery) =
   }
   return query.orderBy('c.code').limit(CODE_LIMIT).execute();
 };
+
+export const describeNemsisCodes = (db: Db, element: string, codes: readonly string[]) =>
+  codes.length
+    ? db
+        .selectFrom('nemsis_codes')
+        .select(['code', 'description'])
+        .where('list', '=', element)
+        .where('code', 'in', codes)
+        .orderBy('code')
+        .execute()
+    : Promise.resolve([]);

@@ -1,4 +1,9 @@
-import { CLAIM, CLASSIFICATION_LABELS, CLASSIFICATIONS } from '@ugula/billing';
+import {
+  CLAIM,
+  CLASSIFICATION_LABELS,
+  CLASSIFICATIONS,
+  ORIGIN_DESTINATION_CODES
+} from '@ugula/billing';
 import type { GraphDef } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import {
@@ -328,19 +333,10 @@ const settleMiles = (): GraphDef => {
   return g.def;
 };
 
-const PLACES = [
-  { value: 'D', label: 'Diagnostic or Therapeutic Site (D)' },
-  { value: 'E', label: 'Residential, Domiciliary or Custodial Facility (E)' },
-  { value: 'G', label: 'Hospital-Based Dialysis Facility (G)' },
-  { value: 'H', label: 'Hospital (H)' },
-  { value: 'I', label: 'Transfer Between Ambulances (I)' },
-  { value: 'J', label: 'Freestanding Dialysis Facility (J)' },
-  { value: 'N', label: 'Skilled Nursing Facility (N)' },
-  { value: 'P', label: "Physician's Office (P)" },
-  { value: 'R', label: 'Residence (R)' },
-  { value: 'S', label: 'Scene of an Accident or Acute Event (S)' },
-  { value: 'X', label: 'Stop at a Physician on the Way to a Hospital (X)' }
-];
+const PLACES = Object.entries(ORIGIN_DESTINATION_CODES).map(([value, description]) => ({
+  value,
+  label: `${description} (${value})`
+}));
 
 const settlePlaces = (): GraphDef => {
   const g = stage(

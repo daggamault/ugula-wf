@@ -49,6 +49,18 @@ describe('createCodesClient', () => {
     );
   });
 
+  it('describes codes of a kind in one request, and none without one', async () => {
+    const { calls, client } = fakeCodes();
+    assert.deepEqual(await client.describeKind('incidentDisposition', ['4212007', '4212009']), [
+      chestPain
+    ]);
+    assert.deepEqual(await client.describeKind('yesNo', []), []);
+    assert.deepEqual(
+      calls.map((c) => c.url),
+      ['/api/codes/kind?kind=incidentDisposition&codes=4212007%2C4212009']
+    );
+  });
+
   it('describes an empty list without a request', async () => {
     const { calls, client } = fakeCodes();
     assert.deepEqual(await client.describe('icd10cm', []), []);

@@ -1,12 +1,21 @@
-import type { ExitDoc, InputBinding, PinSpec, ValueKinds } from '@ugula/graph';
+import {
+  type ExitDoc,
+  type InputBinding,
+  isRecord,
+  type NodeInstance,
+  type PinSpec,
+  type ValueKinds
+} from '@ugula/graph';
 import { Handle, type NodeProps, Position } from '@xyflow/react';
 import { PlusIcon } from 'lucide-react';
 import { createContext, useContext, useEffect, useId, useRef, useState } from 'react';
+import { CodeLabel, coded } from '../claims/code-text.tsx';
 import { classNamesOf } from '../class-names.ts';
 import { labelFromName } from '../format.ts';
 import { Badge } from '../ui/badge.tsx';
 import { interactiveClasses } from '../ui/interactive.ts';
 import { type NodeKind, OPENS_LABELS } from './catalog.ts';
+import { useCodeMeanings } from './code-meanings.ts';
 import { type GraphFlowNode, type NodeStatus, REROUTE } from './flow.ts';
 import { describeType, pinLabel, toneOf, ValueKindsContext } from './pins.ts';
 
@@ -197,6 +206,47 @@ const AddField = ({ node, hidden }: { node: string; hidden: Pin[] }) => {
   );
 };
 
+const kindOf = (type: unknown): string | null =>
+  isRecord(type) ? (typeof type.code === 'string' ? type.code : kindOf(type.list)) : null;
+
+const COMPARES = new Set(['std.logic.equal', 'std.logic.not-equal']);
+
+export const codedValuesOf = (inst: NodeInstance) => {
+  const config = isRecord(inst.config) ? inst.config : {};
+  const kind = kindOf(config.type);
+  if (!kind) return null;
+  const fixed = inst.inputs?.b;
+  const values =
+    inst.type === 'std.value'
+      ? [config.value].flat()
+      : COMPARES.has(inst.type) && fixed && 'value' in fixed
+        ? [fixed.value]
+        : [];
+  const codes = values.filter((c): c is string => typeof c === 'string' && c !== '');
+  return codes.length ? { kind, codes } : null;
+};
+
+const SHOWN_CODES = 6;
+
+const CodeList = ({ kind, codes }: { kind: string; codes: string[] }) => {
+  const meanings = useCodeMeanings(kind, codes);
+  return (
+    <ul
+      aria-label="Codes"
+      className="border-border flex flex-col gap-0.5 border-b px-3 py-1.5 text-xs contain-inline-size"
+    >
+      {codes.slice(0, SHOWN_CODES).map((code) => (
+        <li key={code} className="truncate">
+          <CodeLabel value={coded(meanings.get(code) ?? null, code)} isInline />
+        </li>
+      ))}
+      {codes.length > SHOWN_CODES ? (
+        <li className="text-surface-fg-muted">{`+${codes.length - SHOWN_CODES} more`}</li>
+      ) : null}
+    </ul>
+  );
+};
+
 const CHANGE_TITLES = {
   added: 'Added in this copy',
   changed: 'Changed from the Base',
@@ -247,6 +297,8 @@ export const GraphNode = (props: NodeProps<GraphFlowNode>) => {
       )
     : [];
   const pure = kind === 'pure';
+  const codedValues = codedValuesOf(instance);
+  const shownSummary = codedValues && instance.type === 'std.value' ? null : summary;
   return (
     <article
       aria-label={ghost ? `${title} (removed)` : title}
@@ -279,9 +331,9 @@ export const GraphNode = (props: NodeProps<GraphFlowNode>) => {
             ) : null}
           </span>
         </span>
-        {summary ? (
+        {shownSummary ? (
           <span className="text-surface-fg-muted truncate text-xs contain-inline-size">
-            {summary}
+            {shownSummary}
           </span>
         ) : description && !pure ? (
           <span className="text-surface-fg-muted line-clamp-2 text-xs contain-inline-size">
@@ -289,6 +341,7 @@ export const GraphNode = (props: NodeProps<GraphFlowNode>) => {
           </span>
         ) : null}
       </header>
+      {codedValues ? <CodeList {...codedValues} /> : null}
       {instance.note ? (
         <p className="border-border bg-surface-fg/6 text-surface-fg line-clamp-3 border-b px-3 py-1.5 text-xs whitespace-pre-line contain-inline-size">
           {instance.note}

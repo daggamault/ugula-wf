@@ -15,7 +15,15 @@ export const createCodesClient = (api: Api) => {
     search: (set: CodeSet, q: string, list: string | null, signal?: AbortSignal) =>
       find(set, { q, ...(list ? { list } : {}) }, signal),
     describe: async (set: CodeSet, codes: readonly string[], signal?: AbortSignal) =>
-      codes.length ? find(set, { codes: codes.join(',') }, signal) : []
+      codes.length ? find(set, { codes: codes.join(',') }, signal) : [],
+    describeKind: async (kind: string, codes: readonly string[]) =>
+      codes.length
+        ? (
+            await api.get<{ codes: { code: string; description: string }[] }>(
+              `/api/codes/kind?${new URLSearchParams({ kind, codes: codes.join(',') })}`
+            )
+          ).codes
+        : []
   };
 };
 

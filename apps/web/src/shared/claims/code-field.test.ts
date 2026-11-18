@@ -93,7 +93,8 @@ const fakeCodes = () => {
     describe: async (set, wanted) => {
       described.push([set, [...wanted]]);
       return KNOWN.filter((c) => wanted.includes(c.code));
-    }
+    },
+    describeKind: async () => []
   };
   return { codes, searches, described };
 };

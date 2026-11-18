@@ -4,7 +4,7 @@ export {
   type ReportTerms,
   reportTerms
 } from './dictionary.ts';
-export { encounterModels, toEncounter } from './encounter.ts';
+export { codeKindElements, encounterModels, toEncounter } from './encounter.ts';
 export { NEMSIS_EVENTS, nemsisEvents } from './events.ts';
 export { nemsisKinds } from './kinds.ts';
 export { createNemsisNodes, type NemsisStores } from './nodes.ts';

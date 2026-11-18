@@ -447,7 +447,9 @@ describe('TaskView codes', () => {
   });
 
   it('offers a code search for a field that picks from a code set', () => {
-    showView(codeTask, { codes: { search: async () => [], describe: async () => [] } });
+    showView(codeTask, {
+      codes: { search: async () => [], describe: async () => [], describeKind: async () => [] }
+    });
     assert.equal(screen.getAllByRole('combobox').length, 1);
     assert.ok(!screen.queryByText('One per line.'));
   });
@@ -551,7 +553,7 @@ describe('TaskPage', () => {
           find: () => new Promise(() => undefined),
           queues: async () => []
         } as unknown as TasksClient,
-        codes: { search: async () => [], describe: async () => [] },
+        codes: { search: async () => [], describe: async () => [], describeKind: async () => [] },
         live: idleLive,
         taskId: 't1',
         back: null
@@ -609,7 +611,7 @@ const openTask = async (
       { onNotify: (t) => toasts.push(t) },
       createElement(TaskPage, {
         client,
-        codes: { search: async () => [], describe: async () => [] },
+        codes: { search: async () => [], describe: async () => [], describeKind: async () => [] },
         live,
         taskId: 't1',
         back
