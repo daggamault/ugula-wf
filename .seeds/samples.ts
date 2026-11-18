@@ -268,7 +268,9 @@ export const sampleProblems = async (
       classification: trip.classification ?? null,
       emergency: service.emergency ?? null,
       serviceDate: service.serviceDate ?? null,
-      diagnoses: dx.diagnoses ?? []
+      diagnoses: dx.diagnoses ?? [],
+      originCode: places.originCode ?? null,
+      destinationCode: places.destinationCode ?? null
     });
     const payers = (order.insurances as Json[]).map((i) => String(field(i, 'companyName')));
     return {

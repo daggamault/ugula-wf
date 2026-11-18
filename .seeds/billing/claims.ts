@@ -512,6 +512,8 @@ const buildClaim = (): GraphDef => {
   g.wire('entry.encounter', 'checks.encounter');
   g.wire('service.serviceDate', 'checks.serviceDate');
   g.wire('service.emergency', 'checks.emergency');
+  g.wire('setPlaces.originCode', 'checks.originCode');
+  g.wire('setPlaces.destinationCode', 'checks.destinationCode');
   g.wire('dx.diagnoses', 'checks.diagnoses');
   g.wire('entry.encounter', 'dx.encounter');
   g.wire('diagnoses.diagnoses', 'dx.reported');
