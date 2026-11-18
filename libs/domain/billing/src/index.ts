@@ -109,3 +109,11 @@ export type {
   PatientStore,
   PayerStore
 } from './stores.ts';
+export {
+  type ClaimSubmission,
+  isSelfPay,
+  type SubmissionCoverage,
+  submissionIssues,
+  x837ClaimOf
+} from './submission.ts';
+export { build837, type Submitter } from './x837.ts';

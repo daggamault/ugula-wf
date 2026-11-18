@@ -40,12 +40,14 @@ export const CLAIM_TABS: readonly { value: ClaimTab; label: string }[] = [
 export const ClaimView = ({
   claim,
   codes,
+  issues = [],
   tab = 'overview',
   back = '/claims',
   error = ''
 }: {
   claim: ClaimDetail;
   codes: CodeDescriptions;
+  issues?: readonly string[];
   tab?: ClaimTab;
   back?: string;
   error?: string;
@@ -71,6 +73,16 @@ export const ClaimView = ({
       }
     >
       {error ? <Alert>{error}</Alert> : null}
+      {issues.length ? (
+        <Alert intent="warning">
+          <p className="font-medium">Not ready to send</p>
+          <ul className="mt-1 list-disc pl-5">
+            {issues.map((i) => (
+              <li key={i}>{i}</li>
+            ))}
+          </ul>
+        </Alert>
+      ) : null}
       <Tabs
         label="Claim Sections"
         tabs={CLAIM_TABS.map((t) => ({
@@ -120,6 +132,7 @@ export const ClaimPage = ({
       error={refreshFailure(detail)}
       claim={detail.data.claim}
       codes={detail.data.codes}
+      issues={detail.data.issues}
     />
   );
 };

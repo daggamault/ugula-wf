@@ -348,11 +348,40 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
       }
     }),
     branchNode({
+      type: 'claim.check',
+      title: 'Check Claim',
+      category: 'Claim',
+      description:
+        'Checks a saved claim has everything the 837P needs to send it to the clearinghouse: the billing profile, date of service, diagnoses, priced lines, a first payer in the payer directory with its member ID, and the patient, pickup and destination addresses. A claim the patient pays needs only the patient address.',
+      level: 'basic',
+      keywords: ['claim', 'ready', 'validate', '837', 'clearinghouse', 'missing'],
+      inputs: [pin('claimId', CLAIM_ID, { label: 'Claim', description: 'The claim to check.' })],
+      outputs: [
+        pin(
+          'issues',
+          { list: 'string' },
+          { description: 'What the claim lacks to be sent, empty when it is ready.' }
+        )
+      ],
+      exits: {
+        ready: { label: 'Ready', description: 'The claim can be sent as it is.' },
+        notReady: {
+          label: 'Not Ready',
+          description: 'The claim lacks something the 837P needs; the issues say what.'
+        }
+      },
+      compute: async ({ claimId }, _, ctx) => {
+        const issues = await storesOf().claims.checkClaim(ctx.runId, claimId);
+        if (issues === null) throw new Error(`Claim ${claimId} was not found`);
+        return { exit: issues.length ? 'notReady' : 'ready', outputs: { issues } };
+      }
+    }),
+    branchNode({
       type: 'claim.review',
       title: 'Record Claim Review',
       category: 'Claim',
       description:
-        'Records the decision of the biller who reviewed a claim: Approved, ready for the clearinghouse, or On Hold with a note. Only the revision the biller saw is decided; a claim revised since then needs a review of its own.',
+        'Records the decision of the biller who reviewed a claim: Approved, ready for the clearinghouse, or On Hold with a note. Only the revision the biller saw is decided; a claim revised since then needs a review of its own, and a claim that lacks something the 837P needs is not approved.',
       level: 'basic',
       keywords: ['claim', 'review', 'approve', 'hold', 'biller', 'clearinghouse'],
       effect: true,
@@ -382,6 +411,11 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
           label: 'Superseded',
           description:
             'The claim was revised after the review began; its new revision has its own review.'
+        },
+        notReady: {
+          label: 'Not Ready',
+          description:
+            'The claim lacks something the 837P needs, so it was not approved; Check Claim says what.'
         }
       },
       compute: async (inputs, _, ctx) => ({

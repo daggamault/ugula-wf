@@ -32,7 +32,34 @@ describe('claim service', () => {
     assert.ok(res.ok);
     assert.deepEqual(res.value.claim, claim);
     assert.deepEqual(res.value.codes, { hcpcs: { A0427: 'ALS1 emergency' } });
+    assert.equal(res.value.issues[0], 'Add a billing profile in Settings');
     assert.deepEqual(queries[0]?.parameters.slice(-2), ['t-1', 'c1']);
+  });
+
+  it('says what the claim lacks to be sent', async () => {
+    const { db } = createRecordingDb((q: CompiledQuery) =>
+      q.sql.includes('from "claims" as "c"')
+        ? [
+            {
+              ...claim,
+              number: '20261001-0012',
+              revision: 1,
+              condition_codes: [],
+              patient_first_name: 'Ada',
+              patient_last_name: 'Lovelace',
+              patient_birth_date: '1950-12-10',
+              coverages: [],
+              lines: [],
+              diagnoses: []
+            }
+          ]
+        : []
+    );
+    const res = await createClaimService({ db }).find('t-1', 'c1');
+    assert.ok(res.ok);
+    assert.deepEqual(res.value.issues, [
+      'The patient address has no street, city, state or ZIP code'
+    ]);
   });
 
   it('reports a claim outside the agency as missing', async () => {

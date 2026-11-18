@@ -31,7 +31,11 @@ type SavedClaim = { id: string; revision: number; outcome: 'created' | 'replaced
 export type ClaimStore = {
   findClaim: (runId: string, claimId: string) => Promise<StoredClaim | null>;
   saveClaim: (runId: string, claim: ClaimInput) => Promise<SavedClaim>;
-  reviewClaim: (runId: string, review: ClaimReview) => Promise<'recorded' | 'superseded'>;
+  checkClaim: (runId: string, claimId: string) => Promise<string[] | null>;
+  reviewClaim: (
+    runId: string,
+    review: ClaimReview
+  ) => Promise<'recorded' | 'superseded' | 'notReady'>;
 };
 
 type Diagnosis = { code: string; description: string };

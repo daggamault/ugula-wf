@@ -92,8 +92,11 @@ const fakeStores = () => {
           outcome: saved.length > 1 ? 'replaced' : 'created'
         };
       },
+      checkClaim: async (_, id) =>
+        id === 'c-1' ? (saved.at(-1)?.coverages.length ? [] : ['The claim has no payer']) : null,
       reviewClaim: async (_, review) => {
         reviews.push(review);
+        if (review.decision === 'approved' && !saved.at(-1)?.coverages.length) return 'notReady';
         return review.revision === saved.length ? 'recorded' : 'superseded';
       }
     },
@@ -241,8 +244,25 @@ const CLAIM = {
   classification: 'emergency',
   level: 'BLS',
   emergency: true,
+  coverages: [{ payerName: 'Medicare', relationship: '18' }],
   lines: [{ code: 'A0429', units: 1, unitCents: 50000, totalCents: 50000 }]
 };
+
+describe('Check Claim', () => {
+  it('says whether a saved claim can be sent, and what it lacks', async () => {
+    const { stores } = fakeStores();
+    await run(stores, 'claim.save', { claim: CLAIM });
+    const ready = await run(stores, 'claim.check', { claimId: 'c-1' });
+    assert.deepEqual([ready.pin, ready.outputs.issues], ['ready', []]);
+    await run(stores, 'claim.save', { claim: { ...CLAIM, coverages: [] } });
+    const lacking = await run(stores, 'claim.check', { claimId: 'c-1' });
+    assert.deepEqual(
+      [lacking.pin, lacking.outputs.issues],
+      ['notReady', ['The claim has no payer']]
+    );
+    await assert.rejects(run(stores, 'claim.check', { claimId: 'c-9' }), /Claim c-9 was not found/);
+  });
+});
 
 describe('Record Claim Review', () => {
   const review = { claimId: 'c-1', decision: 'approved', reviewedBy: 'u-1' };
@@ -258,6 +278,12 @@ describe('Record Claim Review', () => {
       { ...review, revision: 1, note: null },
       { ...held, note: 'Need the PCS' }
     ]);
+  });
+
+  it('does not approve a claim that lacks something the 837P needs', async () => {
+    const { stores } = fakeStores();
+    await run(stores, 'claim.save', { claim: { ...CLAIM, coverages: [] } });
+    assert.equal((await run(stores, 'claim.review', { ...review, revision: 1 })).pin, 'notReady');
   });
 
   it('refuses a hold without a note and a review without a biller', async () => {

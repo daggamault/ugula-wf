@@ -12,10 +12,11 @@ const REVIEW: ClaimReview = {
   note: null
 };
 
-const announcing = (reviewOutcome: 'recorded' | 'superseded') => {
+const announcing = (reviewOutcome: 'recorded' | 'superseded' | 'notReady') => {
   const announced: LiveEvent[] = [];
   const inner: ClaimStore = {
     findClaim: async () => null,
+    checkClaim: async () => null,
     saveClaim: async () => ({ id: 'c1', revision: 1, outcome: 'created' }),
     reviewClaim: async () => reviewOutcome
   };
@@ -36,12 +37,15 @@ describe('announceClaims', () => {
     assert.deepEqual(announced, [{ kind: 'claim', id: 'c1' }]);
   });
 
-  it('announces a recorded review, and not a superseded one', async () => {
+  it('announces a recorded review, and not a superseded or refused one', async () => {
     const recorded = announcing('recorded');
     assert.equal(await recorded.store.reviewClaim('r1', REVIEW), 'recorded');
     assert.deepEqual(recorded.announced, [{ kind: 'claim', id: 'c1' }]);
     const superseded = announcing('superseded');
     assert.equal(await superseded.store.reviewClaim('r1', REVIEW), 'superseded');
     assert.deepEqual(superseded.announced, []);
+    const refused = announcing('notReady');
+    assert.equal(await refused.store.reviewClaim('r1', REVIEW), 'notReady');
+    assert.deepEqual(refused.announced, []);
   });
 });

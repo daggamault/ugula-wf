@@ -1,5 +1,5 @@
 import { claimCodeRefs } from '@ugula/billing';
-import { type Db, describeCodes } from '@ugula/db';
+import { checkClaim, type Db, describeCodes } from '@ugula/db';
 import { fail, ok } from '../../shared/result.ts';
 import { type ClaimFilters, findClaim, searchClaims } from './queries.ts';
 
@@ -12,9 +12,16 @@ export const createClaimService = ({ db }: ClaimServiceDeps) => ({
     ok(await searchClaims(db, agencyId, filters)),
 
   find: async (agencyId: string, id: string) => {
-    const claim = await findClaim(db, agencyId, id);
+    const [claim, check] = await Promise.all([
+      findClaim(db, agencyId, id),
+      checkClaim(db, agencyId, id)
+    ]);
     if (!claim) return notFound;
-    return ok({ claim, codes: await describeCodes(db, claimCodeRefs(claim)) });
+    return ok({
+      claim,
+      codes: await describeCodes(db, claimCodeRefs(claim)),
+      issues: check?.issues ?? []
+    });
   }
 });
 

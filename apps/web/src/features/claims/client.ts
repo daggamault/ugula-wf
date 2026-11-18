@@ -32,7 +32,10 @@ export const createClaimsClient = (api: Api) => ({
   list: (query: ClaimQuery, page: string, signal?: AbortSignal) =>
     api.get<Page<ClaimSummary>>(`/api/claims?${listQuery(query, page)}`, signal),
   find: (id: string, signal?: AbortSignal) =>
-    api.get<{ claim: ClaimDetail; codes: CodeDescriptions }>(claimPath(id), signal)
+    api.get<{ claim: ClaimDetail; codes: CodeDescriptions; issues: string[] }>(
+      claimPath(id),
+      signal
+    )
 });
 
 export type ClaimsClient = ReturnType<typeof createClaimsClient>;

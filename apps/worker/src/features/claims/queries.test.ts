@@ -295,6 +295,47 @@ describe('createClaimStore', () => {
     );
   });
 
+  it('checks a claim of the run agency, and approves none that lacks what the 837P needs', async () => {
+    const USER = '0195f2a4-0000-7000-8000-000000000005';
+    const unaddressed = {
+      id: CLAIM_ID,
+      number: '20261001-0012',
+      revision: 1,
+      status: 'needs_review',
+      ...Object.fromEntries(Object.keys(PATIENT_ROW).map((k) => [k, null])),
+      patient_first_name: 'Ada',
+      patient_last_name: 'Lovelace',
+      patient_birth_date: '1950-12-10',
+      condition_codes: [],
+      is_signature_on_file: false,
+      diagnoses: [],
+      coverages: [],
+      lines: []
+    };
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.startsWith('select "agency_id" from "workflow_runs"')
+        ? [{ agency_id: 't-1' }]
+        : q.sql.includes('from "claims" as "c"')
+          ? [unaddressed]
+          : []
+    );
+    const store = createClaimStore(db, queue().boss);
+    assert.deepEqual(await store.checkClaim('r1', CLAIM_ID), [
+      'The patient address has no street, city, state or ZIP code'
+    ]);
+    assert.equal(await store.checkClaim('r1', 'c-1'), null);
+    const review = {
+      claimId: CLAIM_ID,
+      revision: 1,
+      decision: 'approved' as const,
+      reviewedBy: USER,
+      note: null
+    };
+    queries.length = 0;
+    assert.equal(await store.reviewClaim('r1', review), 'notReady');
+    assert.ok(!queries.some((q) => q.sql.startsWith('update')));
+  });
+
   it('refuses ids that are not ids before touching the database', async () => {
     const { db, queries } = createRecordingDb();
     await assert.rejects(

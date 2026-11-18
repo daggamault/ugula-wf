@@ -1,5 +1,5 @@
 import type { ClaimInput, ClaimStore, InsuredRelationship } from '@ugula/billing';
-import { type Database, sqlExecutor } from '@ugula/db';
+import { checkClaim, type Database, sqlExecutor } from '@ugula/db';
 import { cancel, enqueueRuns, type RunQueueClient } from '@ugula/run-queue';
 import { type Kysely, type Selectable, sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
@@ -93,6 +93,12 @@ const supersededReviews = (
     .execute();
 
 const numberOrNull = (x: string | number | null) => (x === null ? null : Number(x));
+
+const issuesOf = async (db: Kysely<Database>, runId: string, claimId: string) => {
+  if (!isUuid(claimId)) return null;
+  const run = await runAgency(db, runId).executeTakeFirst();
+  return run ? ((await checkClaim(db, run.agency_id, claimId))?.issues ?? null) : null;
+};
 
 export const createClaimStore = (db: Kysely<Database>, boss: RunQueueClient): ClaimStore => ({
   findClaim: async (runId, claimId) => {
@@ -302,9 +308,13 @@ export const createClaimStore = (db: Kysely<Database>, boss: RunQueueClient): Cl
         outcome: saved.inserted ? 'created' : 'replaced'
       };
     }),
+  checkClaim: (runId, claimId) => issuesOf(db, runId, claimId),
   reviewClaim: async (runId, review) => {
     if (!isUuid(review.claimId)) throw new Error(`Claim ${review.claimId} does not exist`);
     if (!isUuid(review.reviewedBy)) throw new Error(`User ${review.reviewedBy} does not exist`);
+    if (review.decision === 'approved' && (await issuesOf(db, runId, review.claimId))?.length) {
+      return 'notReady';
+    }
     const decided = await db
       .updateTable('claims')
       .set({

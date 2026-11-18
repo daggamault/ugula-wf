@@ -1,4 +1,5 @@
 export * from './access.ts';
+export * from './claims.ts';
 export { createDb, type SqlExecutor, sqlExecutor } from './client.ts';
 export * from './codes.ts';
 export * from './data-tables.ts';

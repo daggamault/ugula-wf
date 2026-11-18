@@ -31,6 +31,19 @@ describe('ClaimView', () => {
     assert.ok(html.includes('href="/claims/c1?tab=data"'));
   });
 
+  it('lists what the claim lacks to be sent, and nothing when it is ready', () => {
+    const html = renderToStaticMarkup(
+      createElement(ClaimView, {
+        claim,
+        codes: {},
+        issues: ['The first payer, Medicare, has no member ID']
+      })
+    );
+    assert.ok(html.includes('Not ready to send'));
+    assert.ok(html.includes('<li>The first payer, Medicare, has no member ID</li>'));
+    assert.ok(!renderView().includes('Not ready to send'));
+  });
+
   it('leaves out a patient number the patient does not have', () => {
     const html = renderView({ patient_number: null });
     assert.ok(!html.includes('Patient 2'));
@@ -57,7 +70,7 @@ describe('ClaimPage', () => {
   it('loads the claim and says why it could not', async () => {
     render(
       createElement(ClaimPage, {
-        client: fakeClaims(async () => ({ claim, codes: {} })),
+        client: fakeClaims(async () => ({ claim, codes: {}, issues: [] })),
         live: idleLive,
         claimId: 'c1'
       })
@@ -93,7 +106,7 @@ describe('ClaimPage', () => {
       createElement(ClaimPage, {
         client: fakeClaims(async () => {
           finds += 1;
-          return { claim, codes: {} };
+          return { claim, codes: {}, issues: [] };
         }),
         live,
         claimId: 'c1'

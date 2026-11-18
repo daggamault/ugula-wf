@@ -86,6 +86,17 @@ const reviewClaim = (): GraphDef => {
     [],
     REVIEW_OUTCOMES
   );
+  g.add('check', 'claim.check', {
+    label: 'Check Claim',
+    note: 'What the claim lacks to be sent, shown to the biller first.'
+  });
+  const context = joinLists(
+    g,
+    'context',
+    n('What to Review', 'What the claim lacks, then why it was built this way.'),
+    'string',
+    ['check.issues', 'entry.reasons']
+  );
   g.add('review', 'std.human.task', {
     label: 'Review the Claim',
     note: 'A biller must approve every claim before it goes out.',
@@ -94,7 +105,7 @@ const reviewClaim = (): GraphDef => {
       queue: QUEUE,
       permission: 'claims:approve',
       instructions:
-        'A biller must review every claim before it goes to the clearinghouse. Check the claim, the encounter and every reason, especially what the checks flagged. Approve it when it is ready to send, or put it on hold and say why.',
+        'A biller must review every claim before it goes to the clearinghouse. Check the claim, the encounter and every reason, especially what the checks flagged. Anything the claim lacks to be sent is listed first: fix it on the claim, in the payer directory or in the billing profile, since a claim is not approved until nothing is missing. Approve it when it is ready to send, or put it on hold and say why.',
       fields: [
         {
           name: 'note',
@@ -122,14 +133,18 @@ const reviewClaim = (): GraphDef => {
     g.wire('review.note', `${id}.note`);
     g.wire(`${id}.superseded`, 'superseded.exec');
   };
+  g.wire('approve.notReady', 'check.exec');
   record('approve', 'Record the Approval', 'approved');
   record('hold', 'Record the Hold', 'on_hold');
   g.ret('approved', 'approved');
   g.ret('held', 'held');
   g.ret('superseded', 'superseded');
-  g.wire('entry.exec', 'review.exec');
+  g.wire('entry.exec', 'check.exec');
+  g.wire('entry.claimId', 'check.claimId');
+  g.wire('check.ready', 'review.exec');
+  g.wire('check.notReady', 'review.exec');
   g.wire('entry.subject', 'review.subject');
-  g.wire('entry.reasons', 'review.context');
+  g.wire(context, 'review.context');
   g.wire('review.approve', 'approve.exec');
   g.wire('review.hold', 'hold.exec');
   g.wire('approve.recorded', 'approved.exec');
