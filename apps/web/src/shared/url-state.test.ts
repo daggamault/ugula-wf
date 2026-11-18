@@ -170,6 +170,26 @@ describe('table filters', () => {
   });
 });
 
+describe('table filter defaults', () => {
+  const defaulted = { ...spec, filters: ['status'], defaults: { status: ['open'] } } as const;
+  const of = (search: string) => tableStateOf('/claims', new URLSearchParams(search), defaulted);
+
+  it('applies a default until the filter is set, even to nothing', () => {
+    assert.deepEqual(of('').filters, { status: ['open'] });
+    assert.equal(of('').apiQuery, 'page=1&pageSize=25&sort=created&dir=desc&status=open');
+    assert.deepEqual(of('status=').filters, { status: [] });
+    assert.equal(of('status=').isFiltered, false);
+    assert.deepEqual(of('status=paid').filters, { status: ['paid'] });
+  });
+
+  it('leaves the default out of links and keeps a cleared filter in them', () => {
+    const s = of('status=paid&page=2');
+    assert.equal(s.filterHref('status', ['open']), '/claims');
+    assert.equal(s.filterHref('status', []), '/claims?status=');
+    assert.equal(s.clearFiltersHref, '/claims?status=');
+  });
+});
+
 describe('searchStateOf', () => {
   it('adds the trimmed search text to the table state and API query', () => {
     const s = searchStateOf('/payers', new URLSearchParams('q=+blue+cross+&page=2'), spec);

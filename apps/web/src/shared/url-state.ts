@@ -11,6 +11,7 @@ type TableSpec<K extends string, F extends string> = {
   sorts: Readonly<Record<K, SortDir>>;
   sort: NoInfer<K>;
   filters?: readonly F[];
+  defaults?: Readonly<Partial<Record<F, readonly string[]>>>;
 };
 
 export type FilterValues<F extends string = string> = Readonly<Record<F, readonly string[]>>;
@@ -64,7 +65,7 @@ const valuesOf = (raw: string | null) => [...new Set((raw ?? '').split(',').filt
 export const tableStateOf = <K extends string, F extends string = never>(
   path: string,
   query: URLSearchParams,
-  { prefix, sorts, sort: defaultSort, filters: keys = [] }: TableSpec<K, F>
+  { prefix, sorts, sort: defaultSort, filters: keys = [], defaults }: TableSpec<K, F>
 ): TableState<K, F> => {
   const p = (name: string) => paramOf(prefix, name);
   const rawSort = query.get(p('sort'));
@@ -74,10 +75,16 @@ export const tableStateOf = <K extends string, F extends string = never>(
   const page = positive(query.get(p('page'))) ?? 1;
   const size = positive(query.get(p('pageSize')));
   const pageSize = PAGE_SIZES.find((s) => s === size) ?? DEFAULT_PAGE_SIZE;
-  const filters = Object.fromEntries(keys.map((k) => [k, valuesOf(query.get(p(k)))])) as Record<
-    F,
-    string[]
-  >;
+  const fallbackOf = (k: F): readonly string[] => defaults?.[k] ?? [];
+  const filters = Object.fromEntries(
+    keys.map((k) => [k, query.has(p(k)) ? valuesOf(query.get(p(k))) : [...fallbackOf(k)]])
+  ) as Record<F, string[]>;
+  const filterParam = (k: F, values: readonly string[]) => {
+    const fallback = fallbackOf(k);
+    const isDefault =
+      values.length === fallback.length && values.every((v) => fallback.includes(v));
+    return isDefault ? null : values.join(',');
+  };
   const chosen = keys.filter((k) => filters[k].length);
   const href = (patch: Record<string, string | null>) =>
     hrefWith(path, query, Object.fromEntries(Object.entries(patch).map(([k, v]) => [p(k), v])));
@@ -96,9 +103,11 @@ export const tableStateOf = <K extends string, F extends string = never>(
     sortTo,
     pageHref: (n) => href({ page: n > 1 ? String(n) : null }),
     sizeHref: (n) => href({ pageSize: n === DEFAULT_PAGE_SIZE ? null : String(n), page: null }),
-    filterHref: (key, values) =>
-      href({ [key]: values.length ? values.join(',') : null, page: null }),
-    clearFiltersHref: href({ ...Object.fromEntries(keys.map((k) => [k, null])), page: null }),
+    filterHref: (key, values) => href({ [key]: filterParam(key, values), page: null }),
+    clearFiltersHref: href({
+      ...Object.fromEntries(keys.map((k) => [k, filterParam(k, [])])),
+      page: null
+    }),
     href: hrefWith(path, query, {}),
     apiQuery: new URLSearchParams([
       ['page', String(page)],

@@ -31,7 +31,8 @@ export const CUSTOMIZED_PATH = `${WORKFLOWS_PATH}/customized`;
 export const GRAPH_TABLE = {
   sorts: { name: 'asc', kind: 'desc', updated: 'desc' },
   sort: 'name',
-  filters: ['kind', 'scope']
+  filters: ['kind', 'scope'],
+  defaults: { kind: ['workflow'] }
 } as const;
 
 export const newKindOf = (filters: FilterValues): GraphKind => {

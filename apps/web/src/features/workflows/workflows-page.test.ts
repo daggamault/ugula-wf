@@ -203,7 +203,7 @@ describe('WorkflowsPage', () => {
     showPage(client);
     await screen.findByRole('table');
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Kind' }));
+    await user.click(screen.getByRole('button', { name: /^Kind/ }));
     const panel = screen.getByRole('dialog', { name: 'Filter by Kind' });
     assert.deepEqual(
       within(panel)
@@ -211,7 +211,10 @@ describe('WorkflowsPage', () => {
         .map((c) => c.closest('label')?.textContent),
       ['Subworkflow9', 'Workflow4']
     );
+    assert.ok(within(panel).getByRole<HTMLInputElement>('checkbox', { name: /^Workflow/ }).checked);
     await user.click(within(panel).getByRole('checkbox', { name: /Subworkflow/ }));
+    assert.equal(window.location.search, '?kind=workflow%2Cnode');
+    await user.click(within(panel).getByRole('checkbox', { name: /^Workflow/ }));
     assert.equal(window.location.search, '?kind=node');
     await screen.findByRole('table');
     assert.ok(screen.getByRole('button', { name: 'New Subworkflow' }));
@@ -302,13 +305,20 @@ describe('WorkflowsPage', () => {
     await screen.findByRole('heading', { name: 'No Matching Workflows' });
     assert.equal(
       screen.getByRole('link', { name: 'Clear Filters' }).getAttribute('href'),
-      '/workflows'
+      '/workflows?kind='
     );
+  });
+
+  it('shows only workflows until the kind filter changes', async () => {
+    const { client, queries } = fakeClient();
+    showPage(client);
+    await screen.findByRole('table');
+    assert.deepEqual(queries, ['page=1&pageSize=25&sort=name&dir=asc&kind=workflow']);
   });
 
   it('says when there are no workflows at all', async () => {
     const { client } = fakeClient([]);
-    showPage(client);
+    showPage(client, 'kind=');
     assert.ok(await screen.findByRole('heading', { name: 'No Workflows Yet' }));
     assert.ok(!screen.queryByRole('table'));
   });
