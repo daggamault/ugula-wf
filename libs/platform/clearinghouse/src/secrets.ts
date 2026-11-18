@@ -14,7 +14,7 @@ const VERSION = 'v1';
 
 type SecretKey = { id: string; bytes: Buffer };
 
-export type SecretKeyring = { current: SecretKey; keys: ReadonlyMap<string, SecretKey> };
+type SecretKeyring = { current: SecretKey; keys: ReadonlyMap<string, SecretKey> };
 
 const parseSecretKey = (base64: string): SecretKey => {
   const bytes = Buffer.from(base64, 'base64');
@@ -63,13 +63,4 @@ export const openSecret = (ring: SecretKeyring, sealed: string, context: string)
   return Buffer.concat([decipher.update(Buffer.from(body, 'base64')), decipher.final()]).toString(
     'utf8'
   );
-};
-
-export const needsReseal = (ring: SecretKeyring, sealed: string) => {
-  try {
-    const { keyId } = partsOf(sealed);
-    return keyId !== ring.current.id && ring.keys.has(keyId);
-  } catch {
-    return false;
-  }
 };

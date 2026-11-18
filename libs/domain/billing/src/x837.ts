@@ -73,15 +73,6 @@ export type BatchClaim = {
   lines: PricedLine[];
 };
 
-export type PendingSubmission = {
-  id: string;
-  claim: BatchClaim;
-  coverageId: string;
-  pcrNumber: string | null;
-  resubmission: boolean;
-  totalCents: number;
-};
-
 const AMBULANCE_TAXONOMY = '3416L0300X';
 
 const RESPONSIBILITY = 'PSTABCDEFGH';

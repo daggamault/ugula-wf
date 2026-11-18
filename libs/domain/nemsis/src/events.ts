@@ -1,12 +1,11 @@
 import type { EventDef, PinSpec } from '@ugula/graph';
+import { BLOB } from './reports.ts';
 
 export const NEMSIS_EVENTS = {
   pcrFileReceived: 'pcr_file.received',
   encounterCreated: 'encounter.created',
   encounterRevised: 'encounter.revised'
 } as const;
-
-const BLOB = { object: { bucket: 'string', key: 'string' } } as const;
 
 const p = (name: string, type: PinSpec['type'], label: string, description: string): PinSpec => ({
   name,

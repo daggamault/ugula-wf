@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { render } from '../testing-dom.ts';
-import { CodeLabel, CodeText, coded, codedText, codeOf, shownCode } from './code-text.tsx';
+import { CodeLabel, CodeText, coded, codeOf, shownCode } from './code-text.tsx';
 
 describe('coded', () => {
   it('keeps the description and the code apart', () => {
@@ -12,16 +12,6 @@ describe('coded', () => {
   it('shows the bare code without a description', () => {
     assert.deepEqual(coded(null, '41'), { text: '41', code: null });
     assert.deepEqual(coded('', '41'), { text: '41', code: null });
-  });
-});
-
-describe('codedText', () => {
-  it('writes the code after its description for plain text', () => {
-    assert.equal(
-      codedText({ text: 'Emergent (Immediate Response)', code: '2223001' }),
-      'Emergent (Immediate Response) (2223001)'
-    );
-    assert.equal(codedText({ text: '41', code: null }), '41');
   });
 });
 

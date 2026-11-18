@@ -1,29 +1,34 @@
-import type { GraphDef, Json } from '@ugula/graph';
+import type { GraphDef } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import {
   asRule,
   asStage,
   breakRecord,
+  choiceRule,
+  choicesFor,
   codeTable,
   d,
   ENCOUNTER,
   exit,
   firstSet,
+  fixed,
+  ID,
   INSURANCE,
   joinLists,
   keepWhere,
   listOf,
   lookup,
+  QUEUE,
   rule,
   stage,
   T
 } from './shared.ts';
 
-const PAYER_ID = { id: 'payer' } as const;
-
-const PRIMARY = '2611003';
-const SECONDARY = '2611005';
-const TERTIARY = '2611007';
+const PRIORITIES = {
+  primary: ['Primary Insurance', '2611003'],
+  secondary: ['Secondary Insurance', '2611005'],
+  tertiary: ['Tertiary Insurance', '2611007']
+} as const;
 
 const billingOrder = (): GraphDef => {
   const g = rule(
@@ -39,18 +44,13 @@ const billingOrder = (): GraphDef => {
       )
     ]
   );
-  const ranks = [
-    ['primary', 'Primary Insurance', PRIMARY],
-    ['secondary', 'Secondary Insurance', SECONDARY],
-    ['tertiary', 'Tertiary Insurance', TERTIARY]
-  ] as const;
-  for (const [id, label, code] of ranks) {
+  for (const [id, [label, code]] of Object.entries(PRIORITIES)) {
     keepWhere(g, id, label, 'entry.insurances', { field: 'priority', op: 'is', value: code });
   }
   keepWhere(g, 'others', 'Other Insurances', 'entry.insurances', {
     field: 'priority',
     op: 'notOneOf',
-    value: [PRIMARY, SECONDARY, TERTIARY]
+    value: Object.values(PRIORITIES).map(([, code]) => code)
   });
   g.ret('return');
   g.wire(
@@ -84,44 +84,7 @@ const RELATIONSHIPS = codeTable(
   '18'
 );
 
-const CANDIDATE = {
-  object: { payerId: PAYER_ID, payerName: 'string', similarity: 'number' }
-} as const;
-
-const CHOICE = { object: { value: 'string', label: 'string' } } as const;
-
-const payerChoice = (): GraphDef => {
-  const g = rule(
-    [d('candidate', CANDIDATE, 'Candidate', 'A directory payer with a similar name.')],
-    [d('choice', CHOICE, 'Choice', 'The payer as a choice in a form: the ID and its name.')]
-  );
-  g.add('parts', 'std.object.break', {
-    label: 'Candidate',
-    config: {
-      fields: [
-        { name: 'payerId', type: PAYER_ID },
-        { name: 'payerName', type: 'string' }
-      ]
-    } as Json
-  });
-  g.add('choice', 'std.object.make', {
-    label: 'Choice',
-    config: {
-      fields: [
-        { name: 'value', type: 'string' },
-        { name: 'label', type: 'string' }
-      ]
-    } as Json
-  });
-  g.wire('entry.candidate', 'parts.object');
-  g.wire('parts.payerId', 'choice.value');
-  g.wire('parts.payerName', 'choice.label');
-  g.ret('return');
-  g.wire('choice.object', 'return.choice');
-  return g.def;
-};
-
-const insuranceCoverage = (): GraphDef => {
+const resolveCoverage = (): GraphDef => {
   const g = stage(
     [d('insurance', T.insurance, 'Insurance', 'One insurance as the report gives it.')],
     [d('coverage', T.coverage, 'Coverage', 'The payer to bill and who holds the policy.')],
@@ -131,35 +94,35 @@ const insuranceCoverage = (): GraphDef => {
         'The insurance is a coverage, with a directory payer if one matched.'
       )
     },
-    [{ name: 'payerId', type: PAYER_ID, default: null }]
+    [{ name: 'payerId', type: ID.payer, default: null }]
   );
   breakRecord(g, 'insurance', 'Insurance', INSURANCE, 'entry.insurance');
   const name = firstSet(g, 'name', 'Insurance Name', 'string', [
     'insurance.companyName',
     'insurance.companyId',
-    { value: 'Unnamed insurance' }
+    fixed('Unnamed insurance')
   ]);
   lookup(g, 'relationship', 'Relationship as an X12 Code', RELATIONSHIPS, 'insurance.relationship');
-  g.add('find', 'payer.find', { label: 'Find the Payer' });
-  g.add('choices', 'std.list.map-rule', {
-    label: 'Choices of Similar Payers',
-    config: { rule: 'billing.payer-choice', version: 1, item: 'candidate' }
-  });
-  g.add('options', 'std.object.make', {
-    label: 'Payer Choices',
-    config: { fields: [{ name: 'payerId', type: listOf(CHOICE) }] } as Json
-  });
+  g.add('find', 'payer.find', { label: 'Find Payer' });
+  const options = choicesFor(
+    g,
+    'options',
+    'Similar Payers',
+    'billing.payer-choice',
+    'payerId',
+    'find.candidates'
+  );
   g.add('match', 'std.human.task', {
     label: 'Match the Payer',
     config: {
       title: 'Match the Payer',
-      queue: 'billing',
+      queue: QUEUE,
       instructions:
         'The reported insurance is not in the payer directory by name, but some payers are close. Choose the one it is, or bill it by the reported name.',
-      fields: [{ name: 'payerId', type: PAYER_ID, label: 'Payer', required: ['match'] }],
+      fields: [{ name: 'payerId', type: ID.payer, label: 'Payer', required: ['match'] }],
       outcomes: ['match', 'none'],
       hints: { match: 'Bill the payer chosen.', none: 'Bill it by the reported name.' }
-    } as Json
+    }
   });
   g.add('rememberFound', 'std.var.set', {
     label: 'Remember the Payer Found',
@@ -172,27 +135,26 @@ const insuranceCoverage = (): GraphDef => {
   g.add('payer', 'std.var.get', { label: 'Payer', config: { name: 'payerId' } });
   g.add('coverage', 'coverage.make', { label: 'Coverage' });
   g.wire('payer.value', 'coverage.payerId');
-  g.wire(name, 'coverage.payerName');
+  g.wire(name, 'coverage.payerName', 'find.name', 'match.subject');
   g.wire('relationship.value', 'coverage.relationship');
   for (const field of ['memberId', 'groupId', 'insuredFirstName', 'insuredLastName']) {
     g.wire(`insurance.${field}`, `coverage.${field}`);
   }
-  for (const id of ['found', 'matched', 'reported']) g.ret(id, 'covered');
+  for (const id of ['found', 'matched', 'reported']) {
+    g.ret(id, 'covered');
+    g.wire('coverage.coverage', `${id}.coverage`);
+  }
   g.wire('entry.exec', 'find.exec');
-  g.wire(name, 'find.name', 'match.subject');
   g.wire('find.found', 'rememberFound.exec');
   g.wire('find.payerId', 'rememberFound.value');
   g.wire('rememberFound.then', 'found.exec');
   g.wire('find.similar', 'match.exec');
-  g.wire('find.candidates', 'choices.list');
-  g.wire('choices.choice', 'options.payerId');
-  g.wire('options.object', 'match.options');
+  g.wire(options, 'match.options');
   g.wire('match.match', 'rememberChosen.exec');
   g.wire('match.payerId', 'rememberChosen.value');
   g.wire('rememberChosen.then', 'matched.exec');
   g.wire('match.none', 'reported.exec');
   g.wire('find.notFound', 'reported.exec');
-  for (const id of ['found', 'matched', 'reported']) g.wire('coverage.coverage', `${id}.coverage`);
   return g.def;
 };
 
@@ -213,7 +175,7 @@ const determinePayers = (): GraphDef => {
   breakRecord(g, 'trip', 'Encounter', ENCOUNTER, 'entry.encounter');
   g.add('order', 'billing.billing-order', { label: 'Billing Order' });
   g.add('each', 'std.flow.for-each', { label: 'Each Insurance' });
-  g.add('coverage', 'billing.insurance-coverage', { label: 'Insurance Coverage' });
+  g.add('coverage', 'billing.resolve-coverage', { label: 'Resolve Coverage' });
   g.add('keep', 'std.var.append', { label: 'Keep the Coverage', config: { name: 'coverages' } });
   g.add('kept', 'std.var.get', { label: 'Coverages', config: { name: 'coverages' } });
   g.ret('return', 'determined');
@@ -240,13 +202,20 @@ export const payerGraphs: SeedGraph[] = [
     'billing.payer-choice',
     'Payer Choice',
     'One directory payer with a name like the reported one, as a choice in a form.',
-    payerChoice()
+    choiceRule(
+      {
+        description: 'A directory payer with a similar name.',
+        fields: { payerId: ID.payer, payerName: 'string' },
+        value: 'payerId'
+      },
+      { template: '{payerName}', description: 'The payer as a choice in a form: its ID and name.' }
+    )
   ),
   asStage(
-    'billing.insurance-coverage',
-    'Insurance Coverage',
+    'billing.resolve-coverage',
+    'Resolve Coverage',
     'Turns one reported insurance into a coverage: finds its payer in the directory, or has a biller choose among payers with a similar name, and codes the relationship to the insured.',
-    insuranceCoverage()
+    resolveCoverage()
   ),
   asStage(
     'billing.determine-payers',

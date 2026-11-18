@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { needsReseal, openSecret, parseKeyring, sealSecret } from './secrets.ts';
+import { openSecret, parseKeyring, sealSecret } from './secrets.ts';
 
 const keyOf = (fill: number) => Buffer.alloc(32, fill).toString('base64');
 
@@ -74,24 +74,5 @@ describe('sealSecret and openSecret', () => {
     ]) {
       assert.throws(() => openSecret(ring, text, 'agency-1'), /Not a sealed secret/, text);
     }
-  });
-});
-
-describe('needsReseal', () => {
-  it('flags secrets sealed with a configured previous key, and opens them', () => {
-    const sealed = sealSecret(parseKeyring(keyOf(1)), 'secret', 'agency-1');
-    const rotated = parseKeyring(keyOf(2), [keyOf(3), keyOf(1)]);
-    assert.equal(openSecret(rotated, sealed, 'agency-1'), 'secret');
-    assert.equal(needsReseal(rotated, sealed), true);
-  });
-
-  it('leaves secrets sealed with the current key, an unknown key, or not sealed at all', () => {
-    const rotated = parseKeyring(keyOf(2), [keyOf(1)]);
-    assert.equal(needsReseal(rotated, sealSecret(rotated, 'secret', 'agency-1')), false);
-    assert.equal(
-      needsReseal(rotated, sealSecret(parseKeyring(keyOf(3)), 'secret', 'agency-1')),
-      false
-    );
-    assert.equal(needsReseal(rotated, 'plain'), false);
   });
 });

@@ -34,9 +34,6 @@ export const createClearinghouseConnectionsTable = (db: Kysely<Database>) =>
     .addColumn('claim_status_extension', 'text', (col) => col.notNull())
     .addColumn('after_download', 'text', (col) => col.notNull())
     .addColumn('realtime_url', 'text')
-    .addColumn('last_polled_at', 'timestamptz')
-    .addColumn('last_error', 'text')
-    .addColumn('last_error_at', 'timestamptz')
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addCheckConstraint(
       'clearinghouse_connections_vendor_check',
@@ -65,10 +62,6 @@ export const createClearinghouseConnectionsTable = (db: Kysely<Database>) =>
     .addCheckConstraint(
       'clearinghouse_connections_after_download_check',
       sql`after_download in (${list(AFTER_DOWNLOAD)})`
-    )
-    .addCheckConstraint(
-      'clearinghouse_connections_last_error_check',
-      sql`(last_error is null) = (last_error_at is null) and last_error <> ''`
     )
     .addCheckConstraint(
       'clearinghouse_connections_realtime_url_check',

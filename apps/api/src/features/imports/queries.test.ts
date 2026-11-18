@@ -14,13 +14,13 @@ import {
 const IMPORT_COLUMNS =
   'select "i"."id", "i"."file_name", "i"."source", "i"."report_count", "i"."created_at", "i"."run_id", "r"."status" as "run_status", "u"."email" as "uploaded_by_email", "reports"."created", "reports"."revised", "reports"."unchanged", "claimed"."claims", "claimed"."charges_cents"';
 const IMPORT_FROM =
-  'from "imports" as "i" left join "workflow_runs" as "r" on "r"."id" = "i"."run_id" left join "users" as "u" on "u"."id" = "i"."uploaded_by_id" left join lateral (select (count(*) filter (where ir.outcome = $1))::int as "created", (count(*) filter (where ir.outcome = $2))::int as "revised", (count(*) filter (where ir.outcome = $3))::int as "unchanged" from "import_reports" as "ir" where "ir"."import_id" = "i"."id") as "reports" on true left join lateral (select count(*)::int as "claims", coalesce(sum(c.total_cents), 0)::float8 as "charges_cents" from "claims" as "c" where "c"."encounter_id" in (select "ir"."encounter_id" from "import_reports" as "ir" where "ir"."import_id" = "i"."id" and "ir"."encounter_id" is not null)) as "claimed" on true where "i"."agency_id" = $4';
+  'from "imports" as "i" left join "workflow_runs" as "r" on "r"."id" = "i"."run_id" left join "users" as "u" on "u"."id" = "i"."uploaded_by_id" left join lateral (select (count(*) filter (where ir.outcome = $1))::int as "created", (count(*) filter (where ir.outcome = $2))::int as "revised", (count(*) filter (where ir.outcome = $3))::int as "unchanged" from "import_reports" as "ir" where "ir"."import_id" = "i"."id") as "reports" on true left join lateral (select count(*)::int as "claims", coalesce(sum(c.total_cents), 0)::float8 as "charges_cents" from "claims" as "c" where "c"."agency_id" = "i"."agency_id" and "c"."encounter_id" in (select "ir"."encounter_id" from "import_reports" as "ir" where "ir"."import_id" = "i"."id" and "ir"."encounter_id" is not null)) as "claimed" on true where "i"."agency_id" = $4';
 const OUTCOMES = ['created', 'revised', 'unchanged'];
 
 const REPORT_COLUMNS =
-  'select "ir"."id", "ir"."position", "ir"."number", "ir"."pcr_number", "ir"."outcome", "e"."number" as "encounter_number", "e"."revision" as "encounter_revision", "c"."id" as "claim_id", "c"."status" as "claim_status", "c"."total_cents", "p"."first_name", "p"."last_name"';
+  'select "ir"."id", "ir"."position", "ir"."pcr_number", "ir"."outcome", "e"."number" as "encounter_number", "c"."id" as "claim_id", "c"."status" as "claim_status", "c"."total_cents", "p"."first_name", "p"."last_name"';
 const REPORT_FROM =
-  'from "import_reports" as "ir" left join "encounters" as "e" on "e"."id" = "ir"."encounter_id" left join "claims" as "c" on "c"."encounter_id" = "ir"."encounter_id" left join "patients" as "p" on "p"."id" = "c"."patient_id" where "ir"."agency_id" = $1 and "ir"."import_id" = $2';
+  'from "import_reports" as "ir" left join "encounters" as "e" on "e"."id" = "ir"."encounter_id" left join "claims" as "c" on "c"."agency_id" = "ir"."agency_id" and "c"."encounter_id" = "ir"."encounter_id" left join "patients" as "p" on "p"."id" = "c"."patient_id" where "ir"."agency_id" = $1 and "ir"."import_id" = $2';
 
 describe('findSftpAgency', () => {
   it('finds the password hash of an active agency by SFTP username', async () => {

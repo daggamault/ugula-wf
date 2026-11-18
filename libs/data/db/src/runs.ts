@@ -1,5 +1,5 @@
-import { advance, enqueueRuns, type RunQueueClient, resume, start } from '@ugula/run-queue';
-import { type Kysely, sql } from 'kysely';
+import { advance, enqueueRuns, type RunQueueClient, start } from '@ugula/run-queue';
+import type { Kysely } from 'kysely';
 import { sqlExecutor } from './client.ts';
 import { pinRunGraphs } from './graph-versions.ts';
 import type { Database } from './schema.ts';
@@ -29,41 +29,4 @@ export const startRun = async (tx: Kysely<Database>, boss: RunQueueClient, run: 
   await pinRunGraphs(tx, { id, agencyId: run.agencyId, versionId: run.versionId });
   await enqueueRuns(boss, sqlExecutor(tx), [run.interactive ? start(id) : advance(id)]);
   return id;
-};
-
-const findRunWaits = (db: Kysely<Database>, agencyId: string, waitKeys: readonly string[]) =>
-  db
-    .selectFrom('workflow_runs')
-    .select(['id', sql<string>`state -> 'suspension' ->> 'id'`.as('wait_id')])
-    .where('agency_id', '=', agencyId)
-    .where('wait_key', 'in', waitKeys)
-    .where('status', '=', 'suspended')
-    .execute();
-
-const countSignals = (db: Kysely<Database>, agencyId: string, waitKeys: readonly string[]) =>
-  db
-    .insertInto('signals')
-    .values(waitKeys.map((key) => ({ agency_id: agencyId, key, received: 1 })))
-    .onConflict((oc) =>
-      oc.columns(['agency_id', 'key']).doUpdateSet({
-        received: sql`signals.received + 1`,
-        updated_at: sql`now()`
-      })
-    );
-
-export const signalRuns = async (
-  tx: Kysely<Database>,
-  boss: RunQueueClient,
-  signal: { agencyId: string; name: string; keys: readonly string[]; payload: unknown }
-) => {
-  const waitKeys = [...new Set(signal.keys)].map((key) => `${signal.name}:${key}`);
-  if (!waitKeys.length) return 0;
-  await countSignals(tx, signal.agencyId, waitKeys).execute();
-  const waiting = await findRunWaits(tx, signal.agencyId, waitKeys);
-  await enqueueRuns(
-    boss,
-    sqlExecutor(tx),
-    waiting.map((r) => resume(r.id, r.wait_id, { payload: signal.payload }))
-  );
-  return waiting.length;
 };

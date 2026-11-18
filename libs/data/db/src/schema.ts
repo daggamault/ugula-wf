@@ -15,7 +15,7 @@ import type {
   Sex
 } from '@ugula/billing';
 import type { StepEvent } from '@ugula/graph';
-import type { PickList } from '@ugula/nemsis';
+import type { EncounterOutcome, PickList } from '@ugula/nemsis';
 import type { ColumnType, Generated, GeneratedAlways, Kysely } from 'kysely';
 
 type Timestamp = ColumnType<Date, Date | string | undefined, Date | string>;
@@ -549,19 +549,12 @@ type ClearinghouseConnectionsTable = {
   claim_status_extension: string;
   after_download: AfterDownload;
   realtime_url: string | null;
-  last_polled_at: NullableTimestamp;
-  last_error: string | null;
-  last_error_at: NullableTimestamp;
   updated_at: Timestamp;
 };
 
 export const IMPORT_SOURCES = ['upload', 'sftp', 'manual'] as const;
 
 export type ImportSource = (typeof IMPORT_SOURCES)[number];
-
-export const REPORT_OUTCOMES = ['created', 'revised', 'unchanged'] as const;
-
-export type ReportOutcome = (typeof REPORT_OUTCOMES)[number];
 
 type ImportsTable = {
   id: Generated<string>;
@@ -585,7 +578,7 @@ type ImportReportsTable = {
   report: JsonColumn;
   report_key: string;
   encounter_id: string | null;
-  outcome: ReportOutcome | null;
+  outcome: EncounterOutcome | null;
   created_at: Timestamp;
 };
 
@@ -604,7 +597,6 @@ type BillingProfilesTable = {
   receiver_name: string | null;
   time_zone: string;
   is_production: Generated<boolean>;
-  next_control_number: Generated<number>;
   updated_at: Timestamp;
 };
 

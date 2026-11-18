@@ -10,11 +10,9 @@ import { ImportPage, ReportsTable, reportOutcome } from './import-page.tsx';
 const report = (over: Partial<ImportReport> = {}): ImportReport => ({
   id: 'r1',
   position: 0,
-  number: '20261105-0001',
   pcr_number: 'PCR-1',
   outcome: 'created',
   encounter_number: '20261105-0011',
-  encounter_revision: 1,
   claim_id: null,
   claim_status: null,
   total_cents: null,
@@ -51,11 +49,14 @@ describe('ReportsTable', () => {
             first_name: 'Jane'
           }),
           report({ id: 'r2', position: 1, pcr_number: null, outcome: null, encounter_number: null })
-        ]
+        ],
+        back: '/imports/i1'
       })
     );
     assert.ok(html.includes('<span class="sr-only">Actions</span>'));
-    assert.ok(html.includes('href="/claims/c1" aria-label="Open claim for PCR-1"'));
+    assert.ok(
+      html.includes('href="/claims/c1?back=%2Fimports%2Fi1" aria-label="Open claim for PCR-1"')
+    );
     assert.equal(html.split('href="/claims/').length, 2);
     assert.ok(html.includes('>Doe, Jane<') && html.includes('$950.00'));
     assert.ok(html.includes('>Needs Review<') && html.includes('>No claim<'));
@@ -90,7 +91,7 @@ describe('ImportPage', () => {
         return {
           items: [
             report({ claim_id: 'c1', total_cents: 95_000, last_name: 'Doe', first_name: 'Jane' }),
-            report({ id: 'r2', position: 1, number: '20261105-0002', outcome: 'revised' })
+            report({ id: 'r2', position: 1, outcome: 'revised' })
           ],
           total: 2,
           page: 1,

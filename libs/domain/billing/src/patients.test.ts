@@ -1,12 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
-  isCompleteAddress,
   isSamePerson,
   matchPatient,
   type Patient,
   readDemographics,
-  sameAddress,
   sexOf,
   toNewPatient
 } from './patients.ts';
@@ -196,26 +194,5 @@ describe('matchPatient', () => {
 });
 
 describe('addresses', () => {
-  const home = { addressLine: '2 Elm St', city: 'Springfield', state: 'IL', postalCode: '62701' };
-
-  it('knows a complete mailing address, and the same one written differently', () => {
-    assert.deepEqual(
-      [
-        home,
-        { ...home, addressLine: null },
-        { ...home, city: null },
-        { ...home, state: null },
-        { ...home, postalCode: null }
-      ].map(isCompleteAddress),
-      [true, false, false, false, false]
-    );
-    assert.equal(
-      sameAddress(home, { ...home, addressLine: '2 ELM ST.', postalCode: '627011234' }),
-      true
-    );
-    assert.equal(sameAddress(home, { ...home, addressLine: '3 Elm St' }), false);
-    assert.equal(sameAddress(home, { ...home, postalCode: null }), false);
-    const blank = { addressLine: null, city: null, state: null, postalCode: null };
-    assert.equal(sameAddress(blank, { ...blank }), true);
-  });
+  const _home = { addressLine: '2 Elm St', city: 'Springfield', state: 'IL', postalCode: '62701' };
 });

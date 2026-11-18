@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { CLAIM_STATUS_LABELS, CLAIM_STATUSES, readClaim } from './claims.ts';
+import { CLAIM_STATUS_LABELS, CLAIM_STATUSES, type ClaimValue, readClaim } from './claims.ts';
 
 describe('claim statuses', () => {
   it('labels every status', () => {
@@ -11,7 +11,7 @@ describe('claim statuses', () => {
   });
 });
 
-const CLAIM = {
+const CLAIM: ClaimValue = {
   encounterId: 'e-1',
   patientId: 'p-1',
   classification: 'emergency',
@@ -22,7 +22,17 @@ const CLAIM = {
   originCode: 'r',
   destinationCode: 'H',
   diagnoses: ['R07.9', 'I10', 'R079'],
-  coverages: [{ payerName: 'Medicare', payerId: 'pay-1', memberId: 'M1', relationship: null }],
+  coverages: [
+    {
+      payerName: 'Medicare',
+      payerId: 'pay-1',
+      memberId: 'M1',
+      groupId: null,
+      relationship: null,
+      insuredFirstName: null,
+      insuredLastName: null
+    }
+  ],
   lines: [
     { code: 'a0427', modifiers: ['rh'], units: 1, unitCents: 80000, totalCents: 80000 },
     { code: 'A0425', modifiers: [], units: 11.6, unitCents: 1500, totalCents: 17400 }
@@ -82,7 +92,10 @@ describe('readClaim', () => {
 
   it('says what is wrong with a claim it cannot save', () => {
     const wrong = (patch: object, message: RegExp) =>
-      assert.throws(() => readClaim({ ...CLAIM, totalCents: null, ...patch }), message);
+      assert.throws(
+        () => readClaim({ ...CLAIM, totalCents: null, ...patch } as ClaimValue),
+        message
+      );
     wrong({ patientId: null }, /needs its patient/);
     wrong({ encounterId: '' }, /needs its encounter/);
     wrong({ classification: 'maybe' }, /maybe is not a classification/);

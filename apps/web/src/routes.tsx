@@ -176,7 +176,7 @@ const routes: readonly Route[] = [
         client={c.claims}
         live={c.live}
         claimId={p.id ?? ''}
-        back={backOf(q, '/claims', '/patients/')}
+        back={backOf(q, '/claims', '/patients/', '/imports/')}
         tab={CLAIM_TABS.find((t) => t.value === q.get('tab'))?.value ?? 'overview'}
       />
     )

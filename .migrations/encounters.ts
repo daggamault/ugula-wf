@@ -23,15 +23,7 @@ const buildEncountersTable = (db: Kysely<Database>) =>
     .addCheckConstraint('encounters_revision_check', sql`revision >= 1`)
     .addCheckConstraint('encounters_data_check', sql`jsonb_typeof(data) = 'object'`);
 
-const buildEncountersIndexes = (db: Kysely<Database>) => [
-  db.schema
-    .createIndex('idx_encounters_agency_created')
-    .on('encounters')
-    .columns(['agency_id', 'created_at desc'])
-];
-
 export const createEncountersTable = async (db: Kysely<Database>) => {
   await buildEncountersTable(db).execute();
   await dailyNumberTrigger('encounters', 'encounter').execute(db);
-  for (const index of buildEncountersIndexes(db)) await index.execute();
 };

@@ -5,6 +5,7 @@ import { ClaimDataView } from '../../shared/claims/claim-data.tsx';
 import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
 import { EncounterPanel } from '../../shared/claims/claim-encounter.tsx';
 import { PayersPanel } from '../../shared/claims/claim-payers.tsx';
+import { ClaimStatusBadge } from '../../shared/claims/claim-status-badge.tsx';
 import { ClaimSummaryPanel, ReasonsPanel } from '../../shared/claims/claim-summary.tsx';
 import { patientName } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
@@ -15,7 +16,6 @@ import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Tabs } from '../../shared/ui/tabs.tsx';
 import { backLabelOf, withBack } from '../../shared/url-state.ts';
 import { loadFailure, refreshFailure, useResource } from '../../shared/use-resource.ts';
-import { ClaimStatusBadge } from './claim-status-badge.tsx';
 import type { ClaimsClient } from './client.ts';
 
 type ClaimPageProps = {
@@ -56,12 +56,10 @@ export const ClaimView = ({
       backTo={back}
       backLabel={backLabelOf(back)}
       description={
-        <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="flex flex-wrap items-center gap-2">
           <ClaimStatusBadge status={claim.status} />
           <span className="text-surface-fg font-medium">{patientOf(claim)}</span>
           {claim.patient_number !== null ? <span>Patient {claim.patient_number}</span> : null}
-          {claim.encounter_number ? <span>Encounter {claim.encounter_number}</span> : null}
-          <span>{claim.pcr_number ? `PCR ${claim.pcr_number}` : 'No PCR number'}</span>
         </span>
       }
       actions={

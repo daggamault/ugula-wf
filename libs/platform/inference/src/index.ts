@@ -1,51 +1,12 @@
-import {
-  createRedisLeases,
-  createSharedLimiter,
-  type Limiter,
-  type ScriptRunner
-} from './limiter.ts';
-
-export { busyRetryAfter } from './limiter.ts';
-
 export type Fetch = typeof fetch;
 
 export type Embedder = {
   embed: (texts: string[]) => Promise<number[][]>;
 };
 
-type JsonSchema = { [key: string]: unknown };
-
-export type CompletionRequest = {
-  system: string;
-  user: string;
-  schema: JsonSchema;
-  maxTokens: number;
-};
-
-export type Completer = {
-  complete: (request: CompletionRequest, signal?: AbortSignal) => Promise<unknown>;
-};
-
 export const EMBED_BATCH_SIZE = 256;
 
 const TIMEOUT_MS = 120_000;
-
-const COMPLETION_LEASES_KEY = 'ugula:completions:leases';
-
-const LEASE_MS = TIMEOUT_MS + 30_000;
-
-export const createCompletionLimiter = (
-  redis: ScriptRunner,
-  limit: number,
-  onReleaseError?: (err: unknown) => void
-): Limiter =>
-  createSharedLimiter(
-    createRedisLeases(redis, { key: COMPLETION_LEASES_KEY, limit, ttlMs: LEASE_MS }),
-    onReleaseError ? { onReleaseError } : {}
-  );
-
-const isRecord = (x: unknown): x is Record<string, unknown> =>
-  x !== null && typeof x === 'object' && !Array.isArray(x);
 
 const isVector = (x: unknown): x is number[] =>
   Array.isArray(x) && x.length > 0 && x.every((n) => typeof n === 'number');
@@ -82,49 +43,3 @@ export const createEmbedder = ({ url, fetch }: { url: string; fetch: Fetch }): E
     return vectors;
   }
 });
-
-export const createCompleter = ({
-  url,
-  model,
-  fetch,
-  limit
-}: {
-  url: string;
-  model: string;
-  fetch: Fetch;
-  limit: Limiter;
-}): Completer => {
-  return {
-    complete: async ({ system, user, schema, maxTokens }, signal) => {
-      signal?.throwIfAborted();
-      const out = await limit(() =>
-        postJson(
-          fetch,
-          `${url}/v1/chat/completions`,
-          {
-            model,
-            temperature: 0,
-            max_tokens: maxTokens,
-            response_format: {
-              type: 'json_schema',
-              json_schema: { name: 'result', strict: true, schema }
-            },
-            messages: [
-              { role: 'system', content: system },
-              { role: 'user', content: user }
-            ]
-          },
-          signal
-        )
-      );
-      const [choice] = isRecord(out) && Array.isArray(out.choices) ? out.choices : [];
-      const content = isRecord(choice) && isRecord(choice.message) ? choice.message.content : null;
-      if (isRecord(choice) && choice.finish_reason === 'length') {
-        throw new Error(`The completion ran past ${maxTokens} tokens`);
-      }
-      if (typeof content !== 'string')
-        throw new Error('The completions service returned no answer');
-      return JSON.parse(content) as unknown;
-    }
-  };
-};

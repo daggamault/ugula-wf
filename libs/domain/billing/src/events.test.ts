@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { billingEvents, EVENT_TYPES } from './events.ts';
+import { BILLING_EVENTS, billingEvents } from './events.ts';
 
 describe('billingEvents', () => {
   it('names the events agencies can start workflows on', () => {
     assert.deepEqual(
       billingEvents.map((e) => e.type),
-      Object.values(EVENT_TYPES)
+      Object.values(BILLING_EVENTS)
     );
   });
 

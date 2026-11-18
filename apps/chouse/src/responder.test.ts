@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { build270 } from '@ugula/billing';
-import { sampleSubmitter } from '@ugula/billing/testing';
+import { build270, sampleSubmitter } from '@ugula/billing/testing';
 import { createMockFiles } from './files.ts';
 import { createResponder, type Responders } from './responder.ts';
 import { DOWNLOAD, UPLOAD } from './uploads.ts';

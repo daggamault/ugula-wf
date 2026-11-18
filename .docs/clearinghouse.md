@@ -1,31 +1,16 @@
 # Clearinghouse
 
-The clearinghouse foundations are in place: the port, its SFTP and real-time transports, sealed per-agency connections, the X12 builders and readers, and the mock. No workflow uses them yet: submission, acknowledgments, eligibility, claim status and remittance are rebuilt on the [workflow](workflows.md) model next, each started from an event.
+What exists today is the agency connection, the X12 builders and readers the mock uses, and the mock itself. No workflow exchanges files yet: the operations port, its SFTP and real-time transports, and submission, acknowledgments, eligibility, claim status and remittance are rebuilt on the [workflow](workflows.md) model next, each started from an event.
 
-## The port
+## What is kept
 
-`Clearinghouse` (`libs/domain/billing/src/clearinghouse.ts`) is an operations port, not a transport:
-
-| Operation           | Does                                                                                                    |
-| ------------------- | ------------------------------------------------------------------------------------------------------- |
-| `submitClaims`      | Uploads an 837P batch file, named with the connection's claim extension                                 |
-| `submitEligibility` | Uploads a batch 270; the 271 arrives with the other downloads                                           |
-| `checkEligibility`  | Real-time 270 → 271 text or an error (`null` when the connection has none)                              |
-| `submitClaimStatus` | Uploads a batch 276; the 277 arrives with the other downloads                                           |
-| `checkClaimStatus`  | Real-time 276 → 277 text or an error (`null` without real time)                                         |
-| `discoverCoverage`  | Real-time search 270s (one per payer, no member ID) → a 271 or an error each (`null` without real time) |
-| `inbox`             | Lists, reads and deletes response files over one session; `afterDownload` says delete/keep              |
-
-`createClearinghouse` composes it from two transports, both domain-free adapters in `libs/platform/clearinghouse` (`@ugula/clearinghouse`):
-
-- `sftp-batch`: SFTP (`ssh2-sftp-client`) with an upload folder and any number of download folders: one session per upload and one per poll of a connection. It accepts only the server whose host key matches the pinned SHA256 fingerprint (and names the key it saw when another answers), gives every operation a deadline (60s) on top of SSH keepalives, and uploads under `<name>.part` before renaming the file into place, so the clearinghouse never picks up half a file.
-- `core-realtime`: a CAQH CORE Connectivity vC2.2.0 client. It posts a `multipart/form-data` envelope (`PayloadType`, `ProcessingMode=RealTime`, `PayloadID`, `TimeStamp`, `SenderID`, `ReceiverID`, `CORERuleVersion=2.2.0`, `Payload`) with HTTP Basic auth and a timeout, and returns the payload or an error (HTTP status, `ErrorCode`/`ErrorMessage`, a different `PayloadID`, a timeout). The domain maps 270 to `X12_270_Request_005010X279A1` / `X12_271_Response_005010X279A1` and 276 to `X12_276_Request_005010X212` / `X12_277_Response_005010X212`.
-- `secrets`: AES-256-GCM sealing of connection passwords as `v1.<key id>.<iv>.<tag>.<body>`, with the agency ID as associated data so a sealed password only opens for its agency. The key id is derived from the key, so a keyring of the current key and any previous ones opens every password; a password sealed with a previous key opens until it is saved again under the current one.
+- `libs/platform/clearinghouse` (`@ugula/clearinghouse`): `secrets`, AES-256-GCM sealing of connection passwords as `v1.<key id>.<iv>.<tag>.<body>`, with the agency ID as associated data so a sealed password only opens for its agency, and a keyring so a password sealed with a previous key opens until it is saved again; and `host-key`, the SHA256 fingerprint of an SSH host key.
+- `libs/domain/billing`: the 837P builder and the 270, 271, 276, 277, 277CA, 835 and 999 readers and builders, which the mock produces and its tests read back.
 
 ## Connections
 
-- Each agency can have one row in `clearinghouse_connections` (Settings → Clearinghouse Connection, permission `settings:update`): vendor (`waystar`, `mock` or `custom-sftp`, each a preset in `VENDOR_PRESETS`), on or paused, SFTP host, port, host key fingerprint (`SHA256:…`, required; only the mock preset fills it), username and password, upload and download folders, the 837P, 270 and 276 extensions, delete or keep after download, and an optional CORE real-time URL. The real-time client uses the SFTP username and password (an MVP assumption; Waystar may issue separate API credentials) and sends the billing profile's submitter ID as `SenderID` and its receiver ID as `ReceiverID`.
-- A paused connection exchanges nothing for its agency.
+- Each agency can have one row in `clearinghouse_connections` (Settings → Clearinghouse Connection, permission `settings:update`): vendor (`waystar`, `mock` or `custom-sftp`, each a preset in `VENDOR_PRESETS`), on or paused, SFTP host, port, host key fingerprint (`SHA256:…`, required; only the mock preset fills it), username and password, upload and download folders, the 837P, 270 and 276 extensions, delete or keep after download, and an optional CORE real-time URL.
+- A paused connection will exchange nothing for its agency.
 - Outside `NODE_ENV=development` the API refuses the mock vendor, SFTP hosts and real-time URLs on loopback, private, link-local or local names, and real-time URLs that are not https.
 - The password is sealed with `CLEARINGHOUSE_SECRET_KEY` (32 random bytes, base64; rotate by moving the old key to `CLEARINGHOUSE_PREVIOUS_SECRET_KEYS`) before it is stored. The key is parsed only in the API's composition root. The API never returns the password, only `secret_set`; leaving the field blank keeps it, but only while the host, port, host key, username and real-time URL stay the same, so a stored password is never sent to a server it was not entered for. Without the key the API refuses to store passwords.
 

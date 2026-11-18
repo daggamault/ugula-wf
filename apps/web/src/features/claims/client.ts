@@ -1,9 +1,7 @@
-import type { ClaimStatus, CodeDescriptions } from '@ugula/billing';
+import type { CodeDescriptions } from '@ugula/billing';
 import type { Api } from '../../shared/api.ts';
 import type { ClaimDetail, ClaimSummary } from '../../shared/claims/claim-detail.ts';
 import type { Page } from '../../shared/url-state.ts';
-
-export type { ClaimStatus };
 
 export type ClaimSearch = {
   firstName: string;

@@ -57,8 +57,13 @@ describe('modifierCode', () => {
     assert.deepEqual(modifierCode('R'), { text: 'Residence', code: 'R' });
   });
 
+  it('names an origin and destination pair', () => {
+    assert.deepEqual(modifierCode('RH'), { text: 'Residence to Hospital', code: 'RH' });
+  });
+
   it('shows an unknown code bare', () => {
     assert.deepEqual(modifierCode('Q'), { text: 'Q', code: null });
+    assert.deepEqual(modifierCode('QL'), { text: 'QL', code: null });
   });
 });
 

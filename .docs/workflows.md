@@ -66,7 +66,7 @@ Read PCR File → For Each report → Try **Save PCR** (Read PCR → Save Encoun
 
 The API records the import and emits the event in one transaction; an upload is refused when no published workflow starts on it, so an agency can add its own workflow next to this one.
 
-### Encounter to Claim (on `encounter.created`) and Encounter Revised (on `encounter.revised`)
+### Encounter to Claim (on `encounter.created`) and Revised Encounter to Claim (on `encounter.revised`)
 
 Read Encounter → **Build Claim**: Trip Classification → Billable?
 
@@ -76,17 +76,18 @@ Read Encounter → **Build Claim**: Trip Classification → Billable?
 | Graph                  | Kind  | Built from                                                                                                                                |
 | ---------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Trip Classification    | rule  | Conditions on dispositions and service type: not billable, refusal, treated without transport, scheduled, emergency, the first that holds |
-| Determine Service      | rule  | Service Date, Level of Service, Emergency Status, Loaded Miles                                                                            |
+| Service                | rule  | Service Date, Level of Service, Emergency Status, Loaded Miles                                                                            |
 | Level of Service       | rule  | SCT, ALS2, ALS1 conditions on procedures (ALS2 Procedures table), IV/IO medications (IV Solutions table), ALS assessment, crew level; BLS |
 | Emergency Status       | rule  | Response mode, or the call type or crew level when there is none                                                                          |
 | Loaded Miles           | rule  | Destination less scene odometer, never below zero, rounded up to the tenth                                                                |
 | Service Date           | rule  | The first time recorded: at patient, at scene, notified, call                                                                             |
-| Assign Diagnoses       | rule  | Primary then secondary impressions, each once, at most twelve                                                                             |
+| Diagnoses              | rule  | Primary then secondary impressions, each once, at most twelve                                                                             |
 | Origin and Destination | rule  | Origin from the pickup type or service type; destination from the Destination Letters table; neither unless both                          |
-| Resolve Patient        | stage | Find Patient → Matched; Not Found → Save Patient; Similar → task Choose the Patient; Incomplete → task Complete the Patient               |
-| Determine Payers       | stage | Billing Order, then Insurance Coverage for each insurance                                                                                 |
+| Resolve Patient        | stage | Match Patient; Incomplete → task Complete the Patient, then Match Patient again                                                           |
+| Match Patient          | stage | Find Patient → Matched; Not Found → Save Patient; Similar → task Choose the Patient (Patient Choice)                                      |
+| Determine Payers       | stage | Billing Order, then Resolve Coverage for each insurance                                                                                   |
 | Billing Order          | rule  | Primary, secondary, tertiary, then others                                                                                                 |
-| Insurance Coverage     | stage | Find Payer → Found; Similar → task Match the Payer; relationship from the Insured Relationships table                                     |
+| Resolve Coverage       | stage | Find Payer → Found; Similar → task Match the Payer (Payer Choice); relationship from the Insured Relationships table                      |
 | Assign Charges         | stage | Charge Lines, then Price Line for each, and the total                                                                                     |
 | Charge Lines           | rule  | Base Rate Code, and A0425 for loaded miles of a transport, each with the origin and destination modifier                                  |
 | Base Rate Code         | rule  | A0998 without transport, else the Base Rate Codes table by level and emergency                                                            |
@@ -94,13 +95,13 @@ Read Encounter → **Build Claim**: Trip Classification → Billable?
 
 ## Customizing
 
-| An agency wants                              | It overrides                                                 |
-| -------------------------------------------- | ------------------------------------------------------------ |
-| A different base rate or code                | The Base Rate Codes table or its fee schedule                |
-| Its own payer order                          | Billing Order                                                |
-| An extra charge (oxygen, a second attendant) | Charge Lines, adding a line from its own rule                |
-| Its own handling of one payer                | Insurance Coverage or Billing Order, branching on that payer |
-| Something after every claim                  | Nothing: a new workflow on `claim.created`                   |
+| An agency wants                              | It overrides                                               |
+| -------------------------------------------- | ---------------------------------------------------------- |
+| A different base rate or code                | The Base Rate Codes table or its fee schedule              |
+| Its own payer order                          | Billing Order                                              |
+| An extra charge (oxygen, a second attendant) | Charge Lines, adding a line from its own rule              |
+| Its own handling of one payer                | Resolve Coverage or Billing Order, branching on that payer |
+| Something after every claim                  | Nothing: a new workflow on `claim.created`                 |
 
 ## Next
 

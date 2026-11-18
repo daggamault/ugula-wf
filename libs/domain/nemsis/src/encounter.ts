@@ -1,5 +1,6 @@
 import { isRecord, type Json, type Model, modelType, type ValueType } from '@ugula/graph';
 import { elementLabel } from './elements.ts';
+import { BLOB } from './reports.ts';
 
 type Kind = 'text' | 'texts' | 'number' | 'integer' | 'datetime' | 'icd10' | 'icd10s';
 
@@ -16,8 +17,6 @@ type Part = {
 };
 
 const CATEGORY = 'Encounter';
-
-const BLOB = { object: { bucket: 'string', key: 'string' } } as const satisfies ValueType;
 
 const TYPES: Record<Kind, ValueType> = {
   text: 'string',
@@ -66,7 +65,7 @@ const ADDRESS_FIELDS = [
   { name: 'postalCode', type: 'string', label: 'ZIP code' }
 ] as const;
 
-export const ADDRESS: Model = {
+const ADDRESS: Model = {
   key: 'address',
   name: 'address',
   title: 'Address',
@@ -75,7 +74,7 @@ export const ADDRESS: Model = {
   fields: ADDRESS_FIELDS
 };
 
-export const ADDRESS_TYPE = modelType(ADDRESS);
+const ADDRESS_TYPE = modelType(ADDRESS);
 
 const PATIENT_ADDRESS = addressOf(
   'ePatient.05',
@@ -108,7 +107,7 @@ const PERSON_ELEMENTS = [
   el('weightKg', 'eExam.01', 'number')
 ];
 
-export const PERSON: Model = {
+const PERSON: Model = {
   key: 'person',
   name: 'person',
   title: 'Person',
@@ -120,7 +119,7 @@ export const PERSON: Model = {
   ]
 };
 
-export const LOCATION: Model = {
+const LOCATION: Model = {
   key: 'location',
   name: 'location',
   title: 'Location',
@@ -272,7 +271,7 @@ const ATTACHMENT_ELEMENTS = [
   el('name', 'eOther.22')
 ];
 
-export const ATTACHMENT: Model = {
+const ATTACHMENT: Model = {
   key: 'attachment',
   name: 'attachment',
   title: 'Attachment',
@@ -435,7 +434,7 @@ const readGroups = (report: unknown, group: string, p: Part, given?: string) =>
     .filter((g) => !given || !isPertinentNegative(find(g, given)))
     .map((g) => read(g, p.elements));
 
-export type PlaceNames = Readonly<Record<string, string>>;
+type PlaceNames = Readonly<Record<string, string>>;
 
 const isPlaceCode = (x: Json | undefined): x is string => typeof x === 'string' && /^\d+$/.test(x);
 
@@ -450,7 +449,7 @@ export const placeCodesOf = (report: unknown): string[] => [
   )
 ];
 
-export type Attachment = { name: string | null; data: string };
+type Attachment = { name: string | null; data: string };
 
 const fileGroups = (report: unknown) =>
   groups(report, 'eOther.FileGroup').filter((g) => textOf(find(g, 'eOther.11')) !== null);

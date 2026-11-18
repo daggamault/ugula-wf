@@ -20,7 +20,8 @@ describe('ClaimView', () => {
     assert.ok(html.includes('Needs Review'));
     assert.ok(html.includes('Doe, Jane'));
     assert.ok(html.includes('Claim 20261001-0012') && html.includes('Patient 20260915-0003'));
-    assert.ok(html.includes('Encounter 20261001-0007') && html.includes('PCR PCR-1001'));
+    assert.ok(html.includes('20261001-0007') && html.includes('PCR-1001'));
+    assert.ok(!html.includes('Encounter 20261001-0007') && !html.includes('PCR PCR-1001'));
     assert.ok(html.includes('Emergency Transport') && html.includes('12.4 miles'));
     assert.ok(html.includes('Emergency response') && html.includes('Pt found sitting.'));
     assert.ok(html.includes('href="/imports/i1"') && html.includes('href="/patients/p1"'));
@@ -30,10 +31,9 @@ describe('ClaimView', () => {
     assert.ok(html.includes('href="/claims/c1?tab=data"'));
   });
 
-  it('leaves out the encounter number and says when there is no PCR number', () => {
-    const html = renderView({ encounter_number: null, pcr_number: null, patient_number: null });
-    assert.ok(!html.includes('Encounter 2') && !html.includes('Patient 2'));
-    assert.ok(html.includes('No PCR number'));
+  it('leaves out a patient number the patient does not have', () => {
+    const html = renderView({ patient_number: null });
+    assert.ok(!html.includes('Patient 2'));
   });
 
   it('shows the claim data read only on its tab, with no form anywhere', () => {

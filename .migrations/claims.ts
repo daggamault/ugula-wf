@@ -121,12 +121,7 @@ const buildClaimCoveragesTable = (db: Kysely<Database>) =>
       ['agency_id', 'id'],
       (fk) => fk.onDelete('cascade').onUpdate('cascade')
     )
-    .addUniqueConstraint(
-      'claim_coverages_claim_id_position_unique',
-      ['claim_id', 'position'],
-      (c) => c.deferrable().initiallyDeferred()
-    )
-    .addUniqueConstraint('claim_coverages_claim_id_id_unique', ['claim_id', 'id'])
+    .addUniqueConstraint('claim_coverages_claim_id_position_unique', ['claim_id', 'position'])
     .addCheckConstraint('claim_coverages_position_check', sql`position >= 1`)
     .addCheckConstraint('claim_coverages_payer_name_check', sql`payer_name <> ''`)
     .addCheckConstraint(

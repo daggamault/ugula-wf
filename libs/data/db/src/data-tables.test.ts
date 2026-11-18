@@ -5,7 +5,6 @@ import {
   AGENCY_TABLE_PREFIX,
   buildCopyRunTables,
   buildPinRunTables,
-  findGraphTables,
   findTableDefinitions,
   resolvedTable
 } from './data-tables.ts';
@@ -63,27 +62,6 @@ describe('pinning run tables', () => {
       'insert into workflow_run_tables (run_id, key, table_version_id) select t.id, p.key, p.table_version_id from workflow_run_tables p cross join unnest($1::uuid[]) as t (id) where p.run_id = $2::uuid on conflict do nothing'
     );
     assert.deepEqual(copy.parameters, [['r-2', 'r-3'], 'r-1']);
-    await db.destroy();
-  });
-});
-
-describe('findGraphTables', () => {
-  it('resolves every table some graph versions reference for an agency, without a run', async () => {
-    const rows = [{ key: 'billing.check-severity', kind: 'lookup', definition: {} }];
-    const { db, queries } = createRecordingDb(() => rows);
-    assert.deepEqual(await findGraphTables(db, 't-1', ['v-1', 'v-2']), rows);
-    assert.equal(
-      flat(queries[0]),
-      `select k.key, t.kind, tv.definition from ( select distinct jsonb_path_query(gv.definition, $1::jsonpath) #>> '{}' as key from graph_versions gv where gv.id = any($2::uuid[]) ) k cross join lateral (select ${resolvedSql('"k"."key"', '$3')} as id) r join data_table_versions tv on tv.id = r.id join data_tables t on t.id = tv.table_id order by k.key`
-    );
-    assert.deepEqual(queries[0]?.parameters, [TABLE_KEYS_PATH, ['v-1', 'v-2'], 't-1']);
-    await db.destroy();
-  });
-
-  it('reads nothing for no graph versions', async () => {
-    const { db, queries } = createRecordingDb(() => [{ key: 'k' }]);
-    assert.deepEqual(await findGraphTables(db, 't-1', []), []);
-    assert.equal(queries.length, 0);
     await db.destroy();
   });
 });

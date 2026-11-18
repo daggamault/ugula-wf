@@ -1,15 +1,10 @@
 import type { ClaimStatus } from '@ugula/billing';
+import type { EncounterOutcome } from '@ugula/nemsis';
 import type { Api } from '../../shared/api.ts';
 import type { RunStatus } from '../../shared/ui/run-status-badge.tsx';
 import type { Page } from '../../shared/url-state.ts';
 
-type ImportResult = {
-  importId: string;
-  runIds: string[];
-  file: { bucket: string; key: string; size: number; contentType: string };
-};
-
-export type ReportOutcome = 'created' | 'revised' | 'unchanged';
+type ImportResult = { importId: string };
 
 export type ImportSummary = {
   id: string;
@@ -30,11 +25,9 @@ export type ImportSummary = {
 export type ImportReport = {
   id: string;
   position: number;
-  number: string;
   pcr_number: string | null;
-  outcome: ReportOutcome | null;
+  outcome: EncounterOutcome | null;
   encounter_number: string | null;
-  encounter_revision: number | null;
   claim_id: string | null;
   claim_status: ClaimStatus | null;
   total_cents: number | null;

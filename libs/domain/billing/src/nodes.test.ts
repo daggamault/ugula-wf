@@ -60,10 +60,8 @@ const fakeStores = () => {
             : { known: null, similar: [] }
     },
     fees: {
-      findSchedules: async (_, payerId, codes) => ({
-        payer: payerId === 'pay-1' ? { A0427: 70000 } : {},
-        default: Object.fromEntries(codes.filter((c) => c !== 'A0999').map((c) => [c, 80000]))
-      })
+      findFee: async (_, payerId, code) =>
+        payerId === 'pay-1' && code === 'A0427' ? 70000 : code === 'A0999' ? null : 80000
     },
     claims: {
       saveClaim: async (_, claim) => {

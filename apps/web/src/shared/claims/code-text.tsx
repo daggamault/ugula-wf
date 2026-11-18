@@ -1,12 +1,10 @@
 import { type CodeDescriptions, type CodeSet, describeCode, formatIcd10 } from '@ugula/billing';
 import { classNamesOf } from '../class-names.ts';
 
-export type Coded = { text: string; code: string | null };
+type Coded = { text: string; code: string | null };
 
 export const coded = (description: string | null, code: string): Coded =>
   description ? { text: description, code } : { text: code, code: null };
-
-export const codedText = ({ text, code }: Coded) => (code ? `${text} (${code})` : text);
 
 export const shownCode = (set: CodeSet, code: string) =>
   set === 'icd10cm' ? formatIcd10(code) : code;

@@ -13,6 +13,7 @@ import {
   findImport,
   findReport,
   findSftpAgency,
+  hasImport,
   type ImportFilters,
   insertImport,
   listImportReports,
@@ -114,7 +115,7 @@ export const createImportService = ({
     },
 
     reports: async (agencyId: string, id: string, page: PageRequest<ReportSort>) =>
-      (await findImport(db, agencyId, id))
+      (await hasImport(db, agencyId, id))
         ? ok(await listImportReports(db, agencyId, id, page))
         : importNotFound,
 

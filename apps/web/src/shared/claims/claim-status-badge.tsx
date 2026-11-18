@@ -1,7 +1,6 @@
-import { CLAIM_STATUS_LABELS } from '@ugula/billing';
-import { Badge } from '../../shared/ui/badge.tsx';
-import type { Intent } from '../../shared/ui/intent.ts';
-import type { ClaimStatus } from './client.ts';
+import { CLAIM_STATUS_LABELS, type ClaimStatus } from '@ugula/billing';
+import { Badge } from '../ui/badge.tsx';
+import type { Intent } from '../ui/intent.ts';
 
 const INTENTS: Record<ClaimStatus, Intent> = {
   needs_review: 'warning'

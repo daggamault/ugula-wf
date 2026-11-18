@@ -37,21 +37,19 @@ export type ClaimCoverage = {
   group_id: string | null;
 };
 
-export type EncounterAddress = {
+type EncounterAddress = {
   line: string | null;
   city: string | null;
-  county: string | null;
   state: string | null;
   postalCode: string | null;
 };
 
 export type EncounterLocation = {
   name: string | null;
-  type: string | null;
   address: EncounterAddress;
 };
 
-export type EncounterTimes = Record<
+type EncounterTimes = Record<
   | 'call'
   | 'unitNotified'
   | 'enRoute'
@@ -64,7 +62,7 @@ export type EncounterTimes = Record<
   string | null
 >;
 
-export type ClaimEncounter = {
+type ClaimEncounter = {
   pcrNumber: string | null;
   times: EncounterTimes;
   pickup: EncounterLocation;
@@ -75,7 +73,6 @@ export type ClaimEncounter = {
 export type ClaimDetail = ClaimSummary & {
   import_id: string | null;
   import_file_name: string | null;
-  encounter_id: string;
   encounter_revision: number;
   encounter: ClaimEncounter;
   classification: Classification;
@@ -86,7 +83,6 @@ export type ClaimDetail = ClaimSummary & {
   reasons: string[];
   patient_id: string;
   birth_date: string | null;
-  gender: string | null;
   address_line: string | null;
   city: string | null;
   state: string | null;

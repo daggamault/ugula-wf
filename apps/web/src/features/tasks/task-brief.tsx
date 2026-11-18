@@ -14,14 +14,11 @@ const reasonsOf = (context: Json) =>
     ? context.reasons.filter((r): r is string => typeof r === 'string' && r !== '')
     : [];
 
-export const headlineOf = (task: Pick<TaskDetail, 'summary' | 'title'>) =>
-  task.summary ?? task.title;
-
 export const TaskIssue = ({
   task,
   children
 }: {
-  task: Pick<TaskDetail, 'summary' | 'context' | 'title' | 'instructions' | 'kind'>;
+  task: Pick<TaskDetail, 'summary' | 'context' | 'instructions' | 'kind'>;
   children?: ReactNode;
 }) => {
   const reasons = reasonsOf(task.context);
@@ -30,7 +27,7 @@ export const TaskIssue = ({
   return (
     <SectionPanel
       title={task.kind === 'fault' ? 'What Went Wrong' : 'The Issue'}
-      description={headlineOf(task)}
+      description={task.summary ?? undefined}
       accent="primary"
     >
       {reasons.length ? (

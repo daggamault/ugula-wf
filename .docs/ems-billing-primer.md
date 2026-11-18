@@ -63,9 +63,9 @@ What the app does today is in [Workflows](workflows.md); everything else is rebu
 
 | Item                                                                                             | Status                                                                     |
 | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| Trip classification, level of service, emergency status, loaded miles                            | Built: Trip Classification, Determine Service                              |
+| Trip classification, level of service, emergency status, loaded miles                            | Built: Trip Classification, Service                                        |
 | Base rate (A0426-A0434), A0998 without transport, A0425 mileage, origin and destination modifier | Built: Charge Lines, Base Rate Code, Origin and Destination                |
-| Patient matching and payer directory matching                                                    | Built: Resolve Patient, Insurance Coverage                                 |
+| Patient matching and payer directory matching                                                    | Built: Resolve Patient, Resolve Coverage                                   |
 | Coordination of benefits order                                                                   | Built as report order (Billing Order); Medicare Secondary Payer to rebuild |
 | Claim checks (signature, PCS, transport reason, timely filing, ABN, prior authorization)         | To rebuild                                                                 |
 | Eligibility (270/271) and insurance discovery                                                    | To rebuild; the X12 and clearinghouse foundations exist                    |

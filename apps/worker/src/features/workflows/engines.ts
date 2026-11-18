@@ -14,7 +14,6 @@ import {
   stdGraphSource
 } from '@ugula/graph';
 import * as v from 'valibot';
-import { deferralOf } from '../../shared/defer.ts';
 import { isTransient } from './errors.ts';
 
 type LoadedEngine = {
@@ -63,8 +62,7 @@ export const buildEngine = (
     engine: createEngine({
       nodes,
       graphs: combineSources(stdGraphSource, (ref) => graphs.get(refKey(ref))),
-      isTransient,
-      deferOf: deferralOf
+      isTransient
     }),
     root: { type: root.key, version: root.version }
   };

@@ -81,7 +81,7 @@ describe('sourceOf', () => {
   it('names each way a file can arrive', () => {
     assert.deepEqual(
       (['upload', 'sftp', 'manual'] as const).map((source) => sourceOf({ source })),
-      ['Upload', 'SFTP', 'Workflow run']
+      ['Upload', 'SFTP', 'Workflow Run']
     );
   });
 });
@@ -155,7 +155,7 @@ describe('ImportHistory', () => {
     const [row] = rowsOf();
     assert.ok(row);
     assert.deepEqual(valuesOf(row).slice(0, 4), [
-      'october.xmlWorkflow run',
+      'october.xmlWorkflow Run',
       formatDateTime('2026-10-20T14:00:00Z'),
       'Waiting',
       '—'

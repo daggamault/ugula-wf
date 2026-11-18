@@ -1,5 +1,6 @@
-import { CLAIM_STATUS_LABELS } from '@ugula/billing';
+import type { EncounterOutcome } from '@ugula/nemsis';
 import { ActivityIcon } from 'lucide-react';
+import { ClaimStatusBadge } from '../../shared/claims/claim-status-badge.tsx';
 import { formatCents, formatDateTime, patientName } from '../../shared/format.ts';
 import { isOnPage, LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
@@ -12,9 +13,9 @@ import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
-import { useTableState } from '../../shared/url-state.ts';
+import { useTableState, withBack } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
-import type { ImportReport, ImportsClient, ReportOutcome } from './client.ts';
+import type { ImportReport, ImportsClient } from './client.ts';
 import { importStatus, sourceOf } from './import-history.tsx';
 
 type ImportPageProps = {
@@ -24,7 +25,7 @@ type ImportPageProps = {
   back?: string;
 };
 
-const OUTCOMES: Readonly<Record<ReportOutcome, StatusBadgeStyle>> = {
+const OUTCOMES: Readonly<Record<EncounterOutcome, StatusBadgeStyle>> = {
   created: { intent: 'success', label: 'New' },
   revised: { intent: 'info', label: 'Revised' },
   unchanged: { label: 'Unchanged' }
@@ -52,9 +53,11 @@ const REPORT_TABLE = {
 
 export const ReportsTable = ({
   reports,
+  back,
   sorting
 }: {
   reports: readonly ImportReport[];
+  back: string;
   sorting?: TableSorting;
 }) => (
   <Table
@@ -83,14 +86,17 @@ export const ReportsTable = ({
             <Badge intent={outcome.intent}>{outcome.label}</Badge>
           </TableCell>
           <TableCell isMuted={!r.claim_status}>
-            {r.claim_status ? CLAIM_STATUS_LABELS[r.claim_status] : 'No claim'}
+            {r.claim_status ? <ClaimStatusBadge status={r.claim_status} /> : 'No claim'}
           </TableCell>
           <TableCell kind="numeric">
             {r.total_cents === null ? emptyValue : formatCents(r.total_cents)}
           </TableCell>
           <TableCell kind="actions">
             {r.claim_id ? (
-              <OpenLink to={`/claims/${r.claim_id}`} name={`claim for ${pcrOf(r)}`} />
+              <OpenLink
+                to={withBack(`/claims/${r.claim_id}`, back)}
+                name={`claim for ${pcrOf(r)}`}
+              />
             ) : null}
           </TableCell>
         </TableRow>
@@ -128,7 +134,7 @@ const ImportReports = ({
     <Alert>{reports.error.message}</Alert>
   ) : items.length && reports.data ? (
     <>
-      <ReportsTable reports={items} sorting={table} />
+      <ReportsTable reports={items} back={table.href} sorting={table} />
       <Pagination label="PCRs" total={reports.data.total} state={table} />
     </>
   ) : reports.loading ? (

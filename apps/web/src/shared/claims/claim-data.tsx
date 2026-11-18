@@ -20,13 +20,17 @@ export const addressText = (p: Place | null) =>
     .filter(Boolean)
     .join(', ') || null;
 
-export const modifierCode = (code: string) =>
-  coded(
-    Object.hasOwn(ORIGIN_DESTINATION_CODES, code)
-      ? (ORIGIN_DESTINATION_CODES[code as keyof typeof ORIGIN_DESTINATION_CODES] ?? null)
-      : null,
-    code
-  );
+const placeOf = (letter: string | undefined) =>
+  letter && Object.hasOwn(ORIGIN_DESTINATION_CODES, letter)
+    ? (ORIGIN_DESTINATION_CODES[letter] ?? null)
+    : null;
+
+const pairOf = (code: string) => {
+  const [origin, destination] = [placeOf(code[0]), placeOf(code[1])];
+  return code.length === 2 && origin && destination ? `${origin} to ${destination}` : null;
+};
+
+export const modifierCode = (code: string) => coded(placeOf(code) ?? pairOf(code), code);
 
 export const ClaimDataView = ({
   claim: c,

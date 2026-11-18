@@ -19,17 +19,50 @@ const encounterModel = (key: string): Model => {
   return found;
 };
 
+export const ENCOUNTER = encounterModel('encounter');
+
+export const PERSON = encounterModel('person');
+
+export const LOCATION = encounterModel('location');
+
+export const INSURANCE = encounterModel('insurance');
+
+export const PAYMENT = encounterModel('payment');
+
+export const TIMES = encounterModel('times');
+
+export const ODOMETER = encounterModel('odometer');
+
+export const listOf = (type: ValueType): ValueType => ({ list: type });
+
+export const ID = {
+  claim: { id: 'claim' },
+  encounter: { id: 'encounter' },
+  patient: { id: 'patient' },
+  payer: { id: 'payer' },
+  report: { id: 'report' }
+} as const;
+
 export const T = {
-  encounter: modelType(encounterModel('encounter')),
-  person: modelType(encounterModel('person')),
-  insurance: modelType(encounterModel('insurance')),
+  encounter: modelType(ENCOUNTER),
+  person: modelType(PERSON),
+  insurance: modelType(INSURANCE),
   claim: modelType(CLAIM),
   coverage: modelType(COVERAGE),
   chargeLine: modelType(CHARGE_LINE),
   blob: { object: { bucket: 'string', key: 'string' } }
 } satisfies Record<string, ValueType>;
 
-export const listOf = (type: ValueType): ValueType => ({ list: type });
+export const QUEUE = 'billing';
+
+export const SERVICE_TYPES = {
+  leavingHospital: ['2205005', '2205015'],
+  leavingCare: ['2205017', '2205019'],
+  scheduled: ['2205007'],
+  emergency: ['2205001', '2205003', '2205009']
+} as const;
+
+export const INTERFACILITY = [...SERVICE_TYPES.leavingHospital, ...SERVICE_TYPES.leavingCare];
 
 export type Builder = ReturnType<typeof graph>;
 
@@ -44,6 +77,9 @@ export const d = (
   description: string,
   optional = false
 ): PinSpec => ({ name, type, label, description, ...(optional ? { optional: true } : {}) });
+
+export const reasonsOut = (what: string) =>
+  d('reasons', listOf('string'), 'Reasons', `Every rule that held, so a biller sees why ${what}.`);
 
 export const exit = (label: string, description: string): ExitDoc => ({ label, description });
 
@@ -80,29 +116,22 @@ export const asWorkflow = seed('workflow', 'workflow');
 
 export type Test = { field: string; op: string; value?: Json; input?: string };
 
-export type Fixed = { value: Json };
+type Fixed = { value: Json };
 
 export const fixed = (value: Json): Fixed => ({ value });
 
-const ACRONYMS: Record<string, string> = {
-  als: 'ALS',
-  hcpcs: 'HCPCS',
-  id: 'ID',
-  iv: 'IV',
-  pcr: 'PCR',
-  sct: 'SCT'
-};
+const ACRONYMS: Record<string, string> = { als: 'ALS', als2: 'ALS2', iv: 'IV', pcr: 'PCR' };
 
 const MINOR = new Set(['a', 'an', 'and', 'as', 'at', 'by', 'for', 'from', 'in', 'of', 'on', 'or']);
 
 const words = (name: string) =>
   name
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([a-z])([A-Z0-9])/g, '$1 $2')
     .split(/[\s-]+/)
     .filter(Boolean)
     .map((w) => w.toLowerCase());
 
-export const labelOf = (name: string) =>
+const labelOf = (name: string) =>
   words(name)
     .map(
       (w, i) => ACRONYMS[w] ?? (i > 0 && MINOR.has(w) ? w : `${w[0]?.toUpperCase()}${w.slice(1)}`)
@@ -176,7 +205,7 @@ export const firstSet = (
   return `${id}.value` as const;
 };
 
-export type Case = { id: string; label: string; when: Port; value: Port | Fixed };
+type Case = { id: string; label: string; when: Port; value: Port | Fixed };
 
 export const firstThatHolds = (
   g: Builder,
@@ -209,6 +238,19 @@ export const makeList = (g: Builder, id: string, label: string, type: ValueType,
   return `${id}.list` as const;
 };
 
+export const presentOf = (
+  g: Builder,
+  id: string,
+  label: string,
+  type: ValueType,
+  items: Port[]
+) => {
+  const all = makeList(g, `${id}Or`, `${label} or Nothing`, type, items);
+  g.add(id, 'std.list.compact', { label });
+  g.wire(all, `${id}.list`);
+  return `${id}.list` as const;
+};
+
 export const joinLists = (
   g: Builder,
   id: string,
@@ -223,18 +265,14 @@ export const joinLists = (
 
 export type Reason = { id: string; label: string; when: Port; reason: string };
 
-export const reasonsOf = (g: Builder, id: string, label: string, reasons: Reason[]) => {
-  const all = makeList(
+export const reasonsOf = (g: Builder, id: string, label: string, reasons: Reason[]) =>
+  presentOf(
     g,
-    `${id}All`,
-    `${label} or Nothing`,
+    id,
+    label,
     'string',
     reasons.map((r) => select(g, r.id, r.label, r.when, fixed(r.reason)))
   );
-  g.add(id, 'std.list.compact', { label });
-  g.wire(all, `${id}.list`);
-  return `${id}.list` as const;
-};
 
 export const breakRecord = (
   g: Builder,
@@ -248,25 +286,7 @@ export const breakRecord = (
   return id;
 };
 
-export const ENCOUNTER = encounterModel('encounter');
-
-export const PERSON = encounterModel('person');
-
-export const LOCATION = encounterModel('location');
-
-export const INSURANCE = encounterModel('insurance');
-
-export const PAYMENT = encounterModel('payment');
-
-export const TIMES = encounterModel('times');
-
-export const ODOMETER = encounterModel('odometer');
-
-export const lookup = (g: Builder, id: string, label: string, table: Json, key: Port) => {
-  g.add(id, 'std.table.lookup', { label, config: table });
-  g.wire(key, `${id}.key`);
-  return id;
-};
+export type CodeTable = ReturnType<typeof codeTable>;
 
 export const codeTable = (
   key: string,
@@ -281,6 +301,12 @@ export const codeTable = (
     ...(fallback === undefined ? {} : { fallback })
   });
 
+export const lookup = (g: Builder, id: string, label: string, table: CodeTable, key: Port) => {
+  g.add(id, 'std.table.lookup', { label, config: table.lookup });
+  g.wire(key, `${id}.key`);
+  return id;
+};
+
 export const keepWhere = (
   g: Builder,
   id: string,
@@ -291,4 +317,67 @@ export const keepWhere = (
   g.add(id, 'std.list.where', { label, config });
   g.wire(list, `${id}.list`);
   return id;
+};
+
+const CHOICE = { object: { value: 'string', label: 'string' } } as const;
+
+export const choiceRule = (
+  candidate: { description: string; fields: Record<string, ValueType>; value: string },
+  label: { template: string; description: string }
+): GraphDef => {
+  const g = rule(
+    [d('candidate', { object: candidate.fields }, 'Candidate', candidate.description)],
+    [d('choice', CHOICE, 'Choice', label.description)]
+  );
+  g.add('parts', 'std.object.break', {
+    label: 'Candidate',
+    config: {
+      fields: Object.entries(candidate.fields).map(([name, type]) => ({ name, type }))
+    } as Json
+  });
+  g.add('label', 'std.text.template', {
+    label: 'Choice Label',
+    config: { template: label.template }
+  });
+  g.add('choice', 'std.object.make', {
+    label: 'Choice',
+    config: {
+      fields: [
+        { name: 'value', type: 'string' },
+        { name: 'label', type: 'string' }
+      ]
+    } as Json
+  });
+  g.wire('entry.candidate', 'parts.object');
+  for (const name of Object.keys(candidate.fields).filter((n) =>
+    label.template.includes(`{${n}}`)
+  )) {
+    g.wire(`parts.${name}`, `label.${name}`);
+  }
+  g.wire(`parts.${candidate.value}`, 'choice.value');
+  g.wire('label.text', 'choice.label');
+  g.ret('return');
+  g.wire('choice.object', 'return.choice');
+  return g.def;
+};
+
+export const choicesFor = (
+  g: Builder,
+  id: string,
+  label: string,
+  rule: string,
+  field: string,
+  candidates: Port
+) => {
+  g.add(`${id}List`, 'std.list.map-rule', {
+    label: `${label} as Choices`,
+    config: { rule, version: 1, item: 'candidate' }
+  });
+  g.add(id, 'std.object.make', {
+    label,
+    config: { fields: [{ name: field, type: listOf(CHOICE) }] } as Json
+  });
+  g.wire(candidates, `${id}List.list`);
+  g.wire(`${id}List.choice`, `${id}.${field}`);
+  return `${id}.object` as const;
 };

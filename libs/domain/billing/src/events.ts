@@ -1,6 +1,6 @@
 import type { EventDef, PinSpec } from '@ugula/graph';
 
-export const EVENT_TYPES = {
+export const BILLING_EVENTS = {
   claimCreated: 'claim.created',
   taskCompleted: 'task.completed'
 } as const;
@@ -14,7 +14,7 @@ const p = (name: string, type: PinSpec['type'], label: string, description: stri
 
 export const billingEvents: EventDef[] = [
   {
-    type: EVENT_TYPES.claimCreated,
+    type: BILLING_EVENTS.claimCreated,
     label: 'Claim Created',
     description: 'A claim was saved for an encounter and needs review.',
     payload: [
@@ -23,7 +23,7 @@ export const billingEvents: EventDef[] = [
     ]
   },
   {
-    type: EVENT_TYPES.taskCompleted,
+    type: BILLING_EVENTS.taskCompleted,
     label: 'Task Completed',
     description: 'A biller completed a task.',
     payload: [

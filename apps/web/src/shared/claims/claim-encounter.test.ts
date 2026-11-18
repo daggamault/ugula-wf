@@ -13,16 +13,15 @@ describe('locationText', () => {
     assert.equal(
       locationText({
         name: 'St. Mary',
-        type: null,
         address: { ...address, line: '1 Main', city: 'Erie', state: '42', postalCode: '16505' }
       }),
       'St. Mary, 1 Main, Erie, PA 16505'
     );
     assert.equal(
-      locationText({ name: null, type: null, address: { ...address, state: 'Nowhere' } }),
+      locationText({ name: null, address: { ...address, state: 'Nowhere' } }),
       'Nowhere'
     );
-    assert.equal(locationText({ name: null, type: null, address }), null);
+    assert.equal(locationText({ name: null, address }), null);
   });
 });
 

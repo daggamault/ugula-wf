@@ -135,12 +135,7 @@ describe('ImportsPage', () => {
     const { client } = fakeClient({
       upload: () =>
         new Promise((resolve) => {
-          finish = () =>
-            resolve({
-              importId: 'i',
-              runIds: ['r'],
-              file: { bucket: 'b', key: 'k', size: 1, contentType: 'x' }
-            });
+          finish = () => resolve({ importId: 'i' });
         })
     });
     show(client);

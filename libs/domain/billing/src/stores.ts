@@ -14,19 +14,17 @@ export type PatientStore = {
   updateAddress: (runId: string, patientId: string, address: Address) => Promise<Patient>;
 };
 
-export type FeeSchedules = { payer: Record<string, number>; default: Record<string, number> };
-
 export type FeeStore = {
-  findSchedules: (runId: string, payerId: string | null, codes: string[]) => Promise<FeeSchedules>;
+  findFee: (runId: string, payerId: string | null, code: string) => Promise<number | null>;
 };
 
-export type FoundPayer = { known: DirectoryPayer | null; similar: PayerCandidate[] };
+type FoundPayer = { known: DirectoryPayer | null; similar: PayerCandidate[] };
 
 export type PayerStore = {
   findPayer: (runId: string, name: string) => Promise<FoundPayer>;
 };
 
-export type SavedClaim = { id: string; outcome: 'created' | 'replaced' };
+type SavedClaim = { id: string; outcome: 'created' | 'replaced' };
 
 export type ClaimStore = {
   saveClaim: (runId: string, claim: ClaimInput) => Promise<SavedClaim>;

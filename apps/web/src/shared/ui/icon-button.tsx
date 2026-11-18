@@ -2,7 +2,6 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   ChevronRightIcon,
-  ListTodoIcon,
   type LucideIcon,
   PencilIcon,
   PlayIcon,
@@ -106,10 +105,6 @@ export const EditLink = ({ to, name }: { to: string; name: string }) => (
 
 export const OpenLink = ({ to, name }: { to: string; name: string }) => (
   <IconLink to={to} label={`Open ${name}`} tooltip="Open" icon={ChevronRightIcon} />
-);
-
-export const WorkLink = ({ to, name }: { to: string; name: string }) => (
-  <IconLink to={to} label={`Work ${name}`} tooltip="Work Task" icon={ListTodoIcon} />
 );
 
 export const RunLink = ({ to, name }: { to: string; name: string }) => (

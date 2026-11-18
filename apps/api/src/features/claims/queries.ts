@@ -120,7 +120,6 @@ export const findClaim = (db: Db, agencyId: string, id: string) =>
     .select((eb) => [
       'i.id as import_id',
       'i.file_name as import_file_name',
-      'c.encounter_id',
       'e.revision as encounter_revision',
       'e.data as encounter',
       'c.classification',
@@ -131,7 +130,6 @@ export const findClaim = (db: Db, agencyId: string, id: string) =>
       'c.reasons',
       'c.patient_id',
       'p.birth_date',
-      'p.gender',
       'p.address_line',
       'p.city',
       'p.state',

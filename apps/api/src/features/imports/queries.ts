@@ -1,6 +1,11 @@
 import { type CodeSet, normalizeCode, usState } from '@ugula/billing';
-import { type Db, describeCodes, type ImportSource, type ReportOutcome } from '@ugula/db';
-import { codeSystemOf, type ReportDictionary, type ReportTerms } from '@ugula/nemsis';
+import { type Db, describeCodes, type ImportSource } from '@ugula/db';
+import {
+  codeSystemOf,
+  type EncounterOutcome,
+  type ReportDictionary,
+  type ReportTerms
+} from '@ugula/nemsis';
 import { sql } from 'kysely';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { containsPattern } from '../../shared/search.ts';
@@ -54,7 +59,7 @@ export const findReport = (db: Db, agencyId: string, id: string) =>
     .where('i.agency_id', '=', agencyId)
     .executeTakeFirst();
 
-const outcomeCount = (outcome: ReportOutcome) =>
+const outcomeCount = (outcome: EncounterOutcome) =>
   sql<number>`(count(*) filter (where ir.outcome = ${outcome}))::int`;
 
 const IMPORT_ORDER = {
@@ -92,6 +97,7 @@ const importRows = (db: Db, agencyId: string) =>
             sql<number>`count(*)::int`.as('claims'),
             sql<number>`coalesce(sum(c.total_cents), 0)::float8`.as('charges_cents')
           ])
+          .whereRef('c.agency_id', '=', 'i.agency_id')
           .where('c.encounter_id', 'in', (q) =>
             q
               .selectFrom('import_reports as ir')
@@ -130,6 +136,14 @@ export const searchImports = (db: Db, agencyId: string, f: ImportFilters) => {
   return paged(q, f, IMPORT_ORDER, sql.ref('i.id'));
 };
 
+export const hasImport = async (db: Db, agencyId: string, id: string) =>
+  (await db
+    .selectFrom('imports')
+    .select('id')
+    .where('id', '=', id)
+    .where('agency_id', '=', agencyId)
+    .executeTakeFirst()) !== undefined;
+
 export const findImport = (db: Db, agencyId: string, id: string) =>
   importRows(db, agencyId).where('i.id', '=', id).executeTakeFirst();
 
@@ -152,16 +166,16 @@ export const listImportReports = (
     db
       .selectFrom('import_reports as ir')
       .leftJoin('encounters as e', 'e.id', 'ir.encounter_id')
-      .leftJoin('claims as c', 'c.encounter_id', 'ir.encounter_id')
+      .leftJoin('claims as c', (j) =>
+        j.onRef('c.agency_id', '=', 'ir.agency_id').onRef('c.encounter_id', '=', 'ir.encounter_id')
+      )
       .leftJoin('patients as p', 'p.id', 'c.patient_id')
       .select([
         'ir.id',
         'ir.position',
-        'ir.number',
         'ir.pcr_number',
         'ir.outcome',
         'e.number as encounter_number',
-        'e.revision as encounter_revision',
         'c.id as claim_id',
         'c.status as claim_status',
         'c.total_cents',

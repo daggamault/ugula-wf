@@ -1,8 +1,9 @@
-import type { GraphDef, Json } from '@ugula/graph';
+import type { GraphDef, Json, PinSpec } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import {
   asRule,
   asStage,
+  type Builder,
   breakRecord,
   codeTable,
   condition,
@@ -11,12 +12,15 @@ import {
   exit,
   firstThatHolds,
   fixed,
+  ID,
+  joinLists,
   LOCATION,
   listOf,
   lookup,
-  makeList,
   type Port,
+  presentOf,
   rule,
+  SERVICE_TYPES,
   select,
   stage,
   T
@@ -26,11 +30,28 @@ const HCPCS = { code: 'hcpcs' } as const;
 
 const MODIFIER = { code: 'modifier' } as const;
 
-const PAYER_ID = { id: 'payer' } as const;
+const LINE_FIELDS = [
+  { name: 'code', type: HCPCS },
+  { name: 'modifiers', type: listOf(MODIFIER) },
+  { name: 'units', type: 'number' }
+] as const;
 
 const UNPRICED = {
-  object: { code: HCPCS, modifiers: listOf(MODIFIER), units: 'number' }
-} as const;
+  object: Object.fromEntries(LINE_FIELDS.map((f) => [f.name, f.type]))
+};
+
+const lineRecord = (
+  g: Builder,
+  id: string,
+  kind: 'make' | 'break',
+  label: string,
+  values?: Record<string, Json>
+) =>
+  g.add(id, `std.object.${kind}`, {
+    label,
+    config: { fields: LINE_FIELDS } as unknown as Json,
+    ...(values ? { values } : {})
+  });
 
 const DESTINATION_LETTERS = codeTable(
   'billing.destination-letters',
@@ -81,64 +102,59 @@ const originAndDestination = (): GraphDef => {
     condition(g, id, label, { pickupType: ['string', 'pickup.type'] }, [
       { field: 'pickupType', op: 'startsWith', value: prefix }
     ]);
-  const service = (id: string, label: string, types: string[]) =>
+  const service = (id: string, label: string, types: readonly string[]) =>
     condition(g, id, label, { serviceType: ['string', 'trip.serviceType'] }, [
-      { field: 'serviceType', op: 'oneOf', value: types }
+      { field: 'serviceType', op: 'oneOf', value: [...types] }
     ]);
   const origins = [
-    {
-      id: 'home',
-      letter: 'R',
-      label: 'Picked Up at Home',
-      when: place('atHome', 'Picked Up at Home', 'Y92.0')
-    },
-    {
-      id: 'institution',
-      letter: 'E',
-      label: 'Picked Up at a Residential Institution',
-      when: place('atInstitution', 'Picked Up at a Residential Institution', 'Y92.1')
-    },
-    {
-      id: 'hospital',
-      letter: 'H',
-      label: 'Picked Up at a Hospital',
-      when: place('atHospital', 'Picked Up at a Hospital', 'Y92.23')
-    },
-    {
-      id: 'office',
-      letter: 'P',
-      label: "Picked Up at a Physician's Office",
-      when: place('atOffice', "Picked Up at a Physician's Office", 'Y92.53')
-    },
-    {
-      id: 'interfacility',
-      letter: 'H',
-      label: 'Leaving a Hospital',
-      when: service('leavingHospital', 'Leaving a Hospital', ['2205005', '2205015'])
-    },
-    {
-      id: 'careFacility',
-      letter: 'E',
-      label: 'Leaving a Care Facility',
-      when: service('leavingCare', 'Leaving a Care Facility', ['2205017', '2205019'])
-    },
-    {
-      id: 'scene',
-      letter: 'S',
-      label: 'Emergency Response to a Scene',
-      when: service('atScene', 'Emergency Response to a Scene', ['2205001', '2205003', '2205009'])
-    }
-  ];
+    ['home', 'R', 'Picked Up at Home', place('atHome', 'Picked Up at Home', 'Y92.0')],
+    [
+      'institution',
+      'E',
+      'Picked Up at a Residential Institution',
+      place('atInstitution', 'Picked Up at a Residential Institution', 'Y92.1')
+    ],
+    [
+      'hospital',
+      'H',
+      'Picked Up at a Hospital',
+      place('atHospital', 'Picked Up at a Hospital', 'Y92.23')
+    ],
+    [
+      'office',
+      'P',
+      "Picked Up at a Physician's Office",
+      place('atOffice', "Picked Up at a Physician's Office", 'Y92.53')
+    ],
+    [
+      'interfacility',
+      'H',
+      'Leaving a Hospital',
+      service('leavingHospital', 'Leaving a Hospital', SERVICE_TYPES.leavingHospital)
+    ],
+    [
+      'careFacility',
+      'E',
+      'Leaving a Care Facility',
+      service('leavingCare', 'Leaving a Care Facility', SERVICE_TYPES.leavingCare)
+    ],
+    [
+      'scene',
+      'S',
+      'Emergency Response to a Scene',
+      service('atScene', 'Emergency Response to a Scene', SERVICE_TYPES.emergency)
+    ]
+  ] as const;
   const origin = firstThatHolds(
     g,
     'origin',
     'Origin Letter',
     'string',
-    origins.map((o) => ({
-      id: `${o.id}Letter`,
-      label: `${o.letter} When ${o.label}`,
-      when: o.when,
-      value: fixed(o.letter)
+    origins.map(([id, letter, label, when]) => ({
+      id: `${id}Letter`,
+      label: `${letter} When ${label}`,
+      when,
+      value: fixed(letter)
     })),
     fixed(null)
   );
@@ -152,6 +168,19 @@ const originAndDestination = (): GraphDef => {
       { field: 'origin', op: 'present' },
       { field: 'destination', op: 'present' }
     ]
+  );
+  const reason = firstThatHolds(
+    g,
+    'originReason',
+    'Why That Origin',
+    'string',
+    origins.map(([id, letter, label, when]) => ({
+      id: `${id}Reason`,
+      label: `Reason When ${label}`,
+      when,
+      value: fixed(`Origin ${letter}: ${label.toLowerCase()}`)
+    })),
+    fixed(null)
   );
   g.ret('return');
   g.wire(
@@ -169,24 +198,12 @@ const originAndDestination = (): GraphDef => {
     ),
     'return.destinationCode'
   );
-  const reason = firstThatHolds(
-    g,
-    'originReason',
-    'Why That Origin',
-    'string',
-    origins.map((o) => ({
-      id: `${o.id}Reason`,
-      label: `Reason When ${o.label}`,
-      when: o.when,
-      value: fixed(`Origin ${o.letter}: ${o.label.toLowerCase()}`)
-    })),
-    fixed(null)
+  g.wire(
+    presentOf(g, 'reasons', 'Origin Reason', 'string', [
+      select(g, 'reasonApplied', 'Reason When Both Known', both, reason, fixed(null))
+    ]),
+    'return.reasons'
   );
-  const applied = select(g, 'reasonApplied', 'Reason When Both Known', both, reason, fixed(null));
-  const listed = makeList(g, 'reasonListed', 'Origin Reason or Nothing', 'string', [applied]);
-  g.add('reasons', 'std.list.compact', { label: 'Origin Reason' });
-  g.wire(listed, 'reasons.list');
-  g.wire('reasons.list', 'return.reasons');
   return g.def;
 };
 
@@ -206,15 +223,27 @@ const BASE_RATES = codeTable(
   }
 );
 
-const SERVICE_IN = [
+const SERVICE_IN: PinSpec[] = [
   d('classification', 'string', 'Classification', 'What kind of trip it was.'),
   d('level', 'string', 'Level of Service', 'BLS, ALS1, ALS2 or SCT.'),
   d('emergency', 'boolean', 'Emergency', 'Whether the trip is billed as an emergency.')
 ];
 
+const CHARGE_IN: PinSpec[] = [
+  ...SERVICE_IN,
+  d('loadedMiles', 'number', 'Loaded Miles', 'Miles with the patient on board.', true),
+  d('originCode', 'string', 'Origin', 'The origin letter.', true),
+  d('destinationCode', 'string', 'Destination', 'The destination letter.', true)
+];
+
+const PAYER_IN = d('payerId', ID.payer, 'Payer', 'The payer billed first, for its own fees.', true);
+
+const reasonsPin = (what: string) => d('reasons', listOf('string'), 'Reasons', what);
+
 const baseRateCode = (): GraphDef => {
   const g = rule(SERVICE_IN, [
-    d('code', HCPCS, 'Base Rate Code', 'The HCPCS code of the trip itself.')
+    d('code', HCPCS, 'Base Rate Code', 'The HCPCS code of the trip itself.'),
+    reasonsPin('Which code was chosen and why.')
   ]);
   const kind = select(
     g,
@@ -246,32 +275,40 @@ const baseRateCode = (): GraphDef => {
     fixed('A0998'),
     'rate.value'
   );
+  g.add('rateReason', 'std.text.template', {
+    label: 'Base Rate Reason',
+    config: { template: 'Base rate {code}: {key}' }
+  });
+  g.wire(code, 'rateReason.code');
+  g.wire('key.text', 'rateReason.key');
+  const reason = select(
+    g,
+    'reason',
+    'Reason for the Code',
+    noTransport,
+    fixed('A0998: treated without transport'),
+    'rateReason.text'
+  );
   g.add('asCode', 'std.convert.to-code', { label: 'As a HCPCS Code', config: { kind: 'hcpcs' } });
   g.wire(code, 'asCode.text');
   g.ret('return');
   g.wire('asCode.code', 'return.code');
+  g.wire(presentOf(g, 'reasons', 'Base Rate Reason Given', 'string', [reason]), 'return.reasons');
   return g.def;
 };
 
 const chargeLines = (): GraphDef => {
-  const g = rule(
-    [
-      ...SERVICE_IN,
-      d('loadedMiles', 'number', 'Loaded Miles', 'Miles with the patient on board.', true),
-      d('originCode', 'string', 'Origin', 'The origin letter.', true),
-      d('destinationCode', 'string', 'Destination', 'The destination letter.', true)
-    ],
-    [
-      d(
-        'lines',
-        listOf(UNPRICED),
-        'Lines',
-        'The lines to charge, not yet priced: the base rate, then mileage.'
-      )
-    ]
-  );
+  const g = rule(CHARGE_IN, [
+    d(
+      'lines',
+      listOf(UNPRICED),
+      'Lines',
+      'The lines to charge, not yet priced: the base rate, then mileage.'
+    ),
+    reasonsPin('Why each line is charged.')
+  ]);
   g.add('base', 'billing.base-rate-code', { label: 'Base Rate Code' });
-  for (const pin of ['classification', 'level', 'emergency']) g.wire(`entry.${pin}`, `base.${pin}`);
+  for (const pin of SERVICE_IN) g.wire(`entry.${pin.name}`, `base.${pin.name}`);
   g.add('letters', 'std.text.template', {
     label: 'Origin Then Destination',
     config: { template: '{origin}{destination}' }
@@ -283,34 +320,18 @@ const chargeLines = (): GraphDef => {
     config: { kind: 'modifier' }
   });
   g.wire('letters.text', 'modifier.text');
-  const listed = makeList(g, 'listed', 'Origin and Destination Modifier', MODIFIER, [
-    'modifier.code'
-  ]);
-  g.add('modifiers', 'std.list.compact', { label: 'Modifiers' });
-  g.wire(listed, 'modifiers.list');
-  const line = (id: string, label: string, code: Port, units: Port | { value: Json }) => {
-    g.add(id, 'std.object.make', {
-      label,
-      config: {
-        fields: [
-          { name: 'code', type: HCPCS },
-          { name: 'modifiers', type: listOf(MODIFIER) },
-          { name: 'units', type: 'number' }
-        ]
-      } as Json,
-      ...(typeof units === 'string' ? {} : { values: { units: units.value } })
-    });
+  const modifiers = presentOf(g, 'modifiers', 'Modifiers', MODIFIER, ['modifier.code']);
+  const line = (id: string, label: string, code: Port, units: Port | number) => {
+    lineRecord(g, id, 'make', label, typeof units === 'number' ? { units } : undefined);
     g.wire(code, `${id}.code`);
-    g.wire('modifiers.list', `${id}.modifiers`);
-    if (typeof units === 'string') g.wire(units, `${id}.units`);
+    g.wire(modifiers, `${id}.modifiers`);
+    if (typeof units !== 'number') g.wire(units, `${id}.units`);
     return `${id}.object` as const;
   };
-  const baseLine = line('baseLine', 'Base Rate Line', 'base.code', { value: 1 });
   g.add('mileageCode', 'std.value', {
     label: 'Mileage Code',
     config: { type: HCPCS, value: 'A0425' }
   });
-  const mileageLine = line('mileageLine', 'Mileage Line', 'mileageCode.value', 'entry.loadedMiles');
   const billsMiles = condition(
     g,
     'billsMiles',
@@ -329,41 +350,52 @@ const chargeLines = (): GraphDef => {
     'mileage',
     'Mileage When Transported',
     billsMiles,
-    mileageLine,
+    line('mileageLine', 'Mileage Line', 'mileageCode.value', 'entry.loadedMiles'),
     fixed(null)
   );
-  const all = makeList(g, 'all', 'Base Rate, Then Mileage', UNPRICED, [baseLine, mileage]);
-  g.add('lines', 'std.list.compact', { label: 'Lines to Charge' });
-  g.wire(all, 'lines.list');
+  g.add('mileageText', 'std.text.template', {
+    label: 'Mileage Reason',
+    config: { template: 'Mileage A0425: {miles} loaded miles' }
+  });
+  g.wire('entry.loadedMiles', 'mileageText.miles');
+  const mileageReason = select(
+    g,
+    'mileageReason',
+    'Mileage Reason When Transported',
+    billsMiles,
+    'mileageText.text',
+    fixed(null)
+  );
   g.ret('return');
-  g.wire('lines.list', 'return.lines');
+  g.wire(
+    presentOf(g, 'lines', 'Lines to Charge', UNPRICED, [
+      line('baseLine', 'Base Rate Line', 'base.code', 1),
+      mileage
+    ]),
+    'return.lines'
+  );
+  g.wire(
+    joinLists(g, 'reasons', 'Reasons for the Lines', 'string', [
+      'base.reasons',
+      presentOf(g, 'mileageReasons', 'Mileage Reason Given', 'string', [mileageReason])
+    ]),
+    'return.reasons'
+  );
   return g.def;
 };
 
 const priceLine = (): GraphDef => {
   const g = stage(
-    [
-      d('line', UNPRICED, 'Line', 'The line to price: its code, modifiers and units.'),
-      d('payerId', PAYER_ID, 'Payer', 'The payer billed first, for its own fees.', true)
-    ],
+    [d('line', UNPRICED, 'Line', 'The line to price: its code, modifiers and units.'), PAYER_IN],
     [
       d('line', T.chargeLine, 'Charge Line', 'The line with its price.'),
       d('reason', 'string', 'Reason', 'Why the line has no price, when it has none.', true)
     ],
     { priced: exit('Priced', 'The line has its price, or none when the code has no fee.') }
   );
-  g.add('parts', 'std.object.break', {
-    label: 'Line',
-    config: {
-      fields: [
-        { name: 'code', type: HCPCS },
-        { name: 'modifiers', type: listOf(MODIFIER) },
-        { name: 'units', type: 'number' }
-      ]
-    } as Json
-  });
+  lineRecord(g, 'parts', 'break', 'Line');
   g.wire('entry.line', 'parts.object');
-  g.add('fee', 'fee.find', { label: 'Find the Fee' });
+  g.add('fee', 'fee.find', { label: 'Find Fee' });
   g.add('total', 'std.math.multiply', { label: 'Fee Times Units' });
   g.add('cents', 'std.math.round', { label: 'To the Cent' });
   g.add('priced', 'charge-line.make', { label: 'Priced Line' });
@@ -395,17 +427,11 @@ const priceLine = (): GraphDef => {
 
 const assignCharges = (): GraphDef => {
   const g = stage(
-    [
-      ...SERVICE_IN,
-      d('loadedMiles', 'number', 'Loaded Miles', 'Miles with the patient on board.', true),
-      d('originCode', 'string', 'Origin', 'The origin letter.', true),
-      d('destinationCode', 'string', 'Destination', 'The destination letter.', true),
-      d('payerId', PAYER_ID, 'Payer', 'The payer billed first, for its own fees.', true)
-    ],
+    [...CHARGE_IN, PAYER_IN],
     [
       d('lines', listOf(T.chargeLine), 'Charge Lines', 'Every line, priced.'),
       d('totalCents', 'integer', 'Total', 'The total charge, in cents.'),
-      d('reasons', listOf('string'), 'Reasons', 'Lines that have no fee.')
+      reasonsPin('Why each line is charged, and any line that has no fee.')
     ],
     { charged: exit('Charged', 'Every line is priced, or has a reason it is not.') },
     [
@@ -414,23 +440,14 @@ const assignCharges = (): GraphDef => {
     ]
   );
   g.add('toCharge', 'billing.charge-lines', { label: 'Charge Lines' });
-  for (const pin of [
-    'classification',
-    'level',
-    'emergency',
-    'loadedMiles',
-    'originCode',
-    'destinationCode'
-  ]) {
-    g.wire(`entry.${pin}`, `toCharge.${pin}`);
-  }
+  for (const pin of CHARGE_IN) g.wire(`entry.${pin.name}`, `toCharge.${pin.name}`);
   g.add('each', 'std.flow.for-each', { label: 'Each Line' });
   g.add('price', 'billing.price-line', { label: 'Price Line' });
   g.add('keep', 'std.var.append', { label: 'Keep the Line', config: { name: 'lines' } });
   g.add('note', 'std.var.append', { label: 'Keep the Reason', config: { name: 'reasons' } });
   g.add('kept', 'std.var.get', { label: 'Lines', config: { name: 'lines' } });
   g.add('noted', 'std.var.get', { label: 'Reasons', config: { name: 'reasons' } });
-  g.add('given', 'std.list.compact', { label: 'Reasons Given' });
+  g.add('given', 'std.list.compact', { label: 'Fee Reasons Given' });
   g.add('totals', 'std.list.pluck', { label: 'Line Totals', values: { field: 'totalCents' } });
   g.add('sum', 'std.math.sum', { label: 'Total Charge' });
   g.ret('return', 'charged');
@@ -448,7 +465,10 @@ const assignCharges = (): GraphDef => {
   g.wire('totals.list', 'sum.values');
   g.wire('sum.result', 'return.totalCents');
   g.wire('noted.value', 'given.list');
-  g.wire('given.list', 'return.reasons');
+  g.wire(
+    joinLists(g, 'reasons', 'Line and Fee Reasons', 'string', ['toCharge.reasons', 'given.list']),
+    'return.reasons'
+  );
   return g.def;
 };
 
@@ -480,7 +500,7 @@ export const chargeGraphs: SeedGraph[] = [
   asStage(
     'billing.assign-charges',
     'Assign Charges',
-    'The priced charge lines of a claim and their total.',
+    'The priced charge lines of a claim, their total, and why each line is charged.',
     assignCharges()
   )
 ];

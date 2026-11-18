@@ -140,7 +140,7 @@ const NOTICES = {
   notes: { intent: 'info', title: 'Notes' }
 } as const;
 
-const SPECIAL = new Set(['warnings', 'notes', 'changes']);
+const SPECIAL = new Set(['warnings', 'notes', 'changes', 'reasons']);
 
 const ContextBody = ({
   value,

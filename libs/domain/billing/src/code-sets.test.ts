@@ -1,27 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import {
-  CODE_SET_NAMES,
-  CODE_SETS,
-  claimCodeRefs,
-  describeCode,
-  formatIcd10,
-  isCodeSet,
-  normalizeCode
-} from './code-sets.ts';
+import { claimCodeRefs, describeCode, formatIcd10, normalizeCode } from './code-sets.ts';
 
 describe('code sets', () => {
-  it('knows its code sets', () => {
-    assert.deepEqual(['icd10cm', 'snomed', 'cpt', 'ICD10CM', null].map(isCodeSet), [
-      true,
-      true,
-      false,
-      false,
-      false
-    ]);
-    assert.deepEqual(Object.keys(CODE_SET_NAMES), [...CODE_SETS]);
-  });
-
   it('normalizes a typed code to how its set stores it', () => {
     assert.equal(normalizeCode('icd10cm', ' r07.9 '), 'R079');
     assert.equal(normalizeCode('hcpcs', 'a0427'), 'A0427');

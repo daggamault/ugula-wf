@@ -3,13 +3,12 @@ import { describe, it } from 'node:test';
 import type { Json } from '@ugula/graph';
 import { createElement } from 'react';
 import { render, screen, within } from '../../shared/testing-dom.ts';
-import { headlineOf, TaskIssue } from './task-brief.tsx';
+import { TaskIssue } from './task-brief.tsx';
 
 type Task = Parameters<typeof TaskIssue>[0]['task'];
 
 const TASK: Task = {
   kind: 'task',
-  title: 'Review PCR',
   summary: null,
   instructions: '',
   context: null
@@ -25,18 +24,14 @@ const listItems = (el: HTMLElement) =>
     .getAllByRole('listitem')
     .map((li) => li.textContent);
 
-describe('headlineOf', () => {
-  it('uses the summary, then the title', () => {
-    assert.equal(headlineOf({ summary: 'Denied: CO-16', title: 'T' }), 'Denied: CO-16');
-    assert.equal(headlineOf({ summary: null, title: 'T' }), 'T');
-  });
-});
-
 describe('TaskIssue', () => {
-  it('heads a task with the issue and a fault with what went wrong', () => {
-    showIssue({});
+  it('heads a task with the issue and its summary', () => {
+    showIssue({ summary: 'Review PCR' });
     assert.ok(within(panel('The Issue')).getByText('Review PCR'));
-    showIssue({ kind: 'fault', title: 'Stuck', summary: 'Timed out' });
+  });
+
+  it('heads a fault with what went wrong', () => {
+    showIssue({ kind: 'fault', summary: 'Timed out' });
     assert.ok(within(panel('What Went Wrong')).getByText('Timed out'));
   });
 

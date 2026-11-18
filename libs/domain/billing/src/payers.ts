@@ -1,5 +1,3 @@
-import type { Completer, CompletionRequest } from './completions.ts';
-
 export const CLAIM_FILING_CODES = {
   MA: 'Medicare Part A',
   MB: 'Medicare Part B',
@@ -34,11 +32,6 @@ export type PlanType = keyof typeof PLAN_TYPES;
 
 export const MAX_APPEAL_DAYS = 730;
 
-const MEDICARE_FILINGS: readonly (string | null)[] = ['MA', 'MB'];
-
-export const isMedicareFiling = (claimFiling: string | null) =>
-  MEDICARE_FILINGS.includes(claimFiling);
-
 const isClaimFilingCode = (x: unknown): x is ClaimFilingCode =>
   typeof x === 'string' && Object.hasOwn(CLAIM_FILING_CODES, x);
 
@@ -60,53 +53,9 @@ export const payerKey = (name: string) =>
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
 
-export const payerQuery = (name: string) =>
-  `Instruct: Given the name of a health insurance payer from an ambulance patient care report, retrieve the matching payer from the agency payer directory\nQuery: ${name}`;
-
 export type DirectoryPayer = { id: string; name: string; claimFiling: string };
 
 export type PayerCandidate = DirectoryPayer & { similarity: number };
 
-export type PayerLookup = {
-  name: string;
-  known: DirectoryPayer | null;
-  candidates: PayerCandidate[];
-};
-
 export const payerDocument = ({ name, claimFiling }: Omit<DirectoryPayer, 'id'>) =>
   isClaimFilingCode(claimFiling) ? `${name} (${CLAIM_FILING_CODES[claimFiling]})` : name;
-
-const CHOICE_SYSTEM =
-  'You match insurance payer names for ambulance billing. Given a payer name from a patient care report and a numbered list of payers from the agency directory (with their claim filing type), answer with the number of the directory payer that is the same insurer or program, or 0 when none clearly is. Abbreviations, states and plan or contractor names may differ. Self pay, unknown and unrelated insurers are 0.';
-
-const payerChoiceRequest = (name: string, candidates: DirectoryPayer[]): CompletionRequest => ({
-  system: CHOICE_SYSTEM,
-  user: [
-    `Report payer: ${name}`,
-    'Directory:',
-    ...candidates.map((c, i) => `${i + 1}. ${payerDocument(c)}`)
-  ].join('\n'),
-  schema: {
-    type: 'object',
-    additionalProperties: false,
-    required: ['choice'],
-    properties: { choice: { type: 'integer', minimum: 0, maximum: candidates.length } }
-  },
-  maxTokens: 20
-});
-
-export const SUGGEST_SIMILARITY = 0.8;
-
-export const suggestPayer = async <T extends DirectoryPayer>(
-  completer: Completer,
-  name: string,
-  candidates: T[],
-  signal?: AbortSignal
-): Promise<T | null> => {
-  if (!candidates.length) return null;
-  const answer = await completer.complete(payerChoiceRequest(name, candidates), signal);
-
-  const choice =
-    answer !== null && typeof answer === 'object' && 'choice' in answer ? answer.choice : 0;
-  return Number.isInteger(choice) ? (candidates[(choice as number) - 1] ?? null) : null;
-};

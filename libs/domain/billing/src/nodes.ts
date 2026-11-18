@@ -1,5 +1,5 @@
 import { actionNode, branchNode, type NodeDef, pin } from '@ugula/graph';
-import { readClaim } from './claims.ts';
+import { type ClaimValue, readClaim } from './claims.ts';
 import { CLAIM_TYPE } from './models.ts';
 import { nameKey } from './names.ts';
 import { type Demographics, matchPatient, readDemographics, toNewPatient } from './patients.ts';
@@ -10,7 +10,7 @@ const ADDRESS = {
   object: { line: 'string', city: 'string', state: 'string', postalCode: 'string' }
 } as const;
 
-export const PATIENT_DETAILS = {
+const PATIENT_DETAILS = {
   object: {
     firstName: 'string',
     lastName: 'string',
@@ -222,9 +222,8 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
         notFound: { label: 'Not Found', description: 'The agency has no fee for the code.' }
       },
       compute: async ({ code, payerId }, _, ctx) => {
-        const fees = await storesOf().fees.findSchedules(ctx.runId, payerId, [code]);
-        const unitCents = fees.payer[code] ?? fees.default[code];
-        return unitCents === undefined
+        const unitCents = await storesOf().fees.findFee(ctx.runId, payerId, code);
+        return unitCents === null
           ? { exit: 'notFound', outputs: {} }
           : { exit: 'found', outputs: { unitCents } };
       }
@@ -247,7 +246,7 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
         replaced: { label: 'Replaced', description: 'The claim already saved was replaced.' }
       },
       compute: async ({ claim }, _, ctx) => {
-        const saved = await storesOf().claims.saveClaim(ctx.runId, readClaim(claim));
+        const saved = await storesOf().claims.saveClaim(ctx.runId, readClaim(claim as ClaimValue));
         return { exit: saved.outcome, outputs: { claimId: saved.id } };
       }
     })

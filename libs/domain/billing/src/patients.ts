@@ -59,22 +59,12 @@ const cityName = (x: unknown) => {
   return name && !/^\d+$/.test(name) ? name : null;
 };
 
-export const readAddress = (r: Record<string, unknown>): Address => ({
+const readAddress = (r: Record<string, unknown>): Address => ({
   addressLine: textOrNull(r.addressLine),
   city: cityName(r.city),
   state: usState(r.state),
   postalCode: zipCode(r.postalCode)
 });
-
-export const isCompleteAddress = (a: Address) =>
-  Boolean(a.addressLine && a.city && a.state && a.postalCode);
-
-const addressKey = (a: Address) =>
-  [a.addressLine, a.city, a.state, a.postalCode?.slice(0, 5)]
-    .map((x) => (x ?? '').toLowerCase().replace(/[^a-z0-9]/g, ''))
-    .join('|');
-
-export const sameAddress = (a: Address, b: Address) => addressKey(a) === addressKey(b);
 
 const isCalendarDate = (s: string) => {
   const t = Date.parse(`${s}T00:00:00Z`);

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { RunQueueClient } from '@ugula/run-queue';
-import { signalRuns, startRun } from './runs.ts';
+import { startRun } from './runs.ts';
 import { createRecordingDb } from './testing.ts';
 
 describe('startRun', () => {
@@ -33,87 +33,6 @@ describe('startRun', () => {
     });
     assert.deepEqual(queries[3]?.parameters, ['t', 'v', 'running', '{}', 'u1']);
     assert.deepEqual(jobs, [{ data: { runId: 'r1', command: { type: 'advance' } }, priority: 2 }]);
-    await db.destroy();
-  });
-});
-
-describe('signalRuns', () => {
-  it('counts the signal before looking for waiters, so a run about to wait sees it', async () => {
-    const { db, queries } = createRecordingDb(() => []);
-    let inserts = 0;
-    const boss: RunQueueClient = { insert: async () => void inserts++ };
-    assert.equal(
-      await signalRuns(db, boss, { agencyId: 't', name: 'claim', keys: ['c1'], payload: null }),
-      0
-    );
-    assert.equal(inserts, 0);
-    assert.equal(
-      queries[0]?.sql,
-      'insert into "signals" ("agency_id", "key", "received") values ($1, $2, $3) on conflict ("agency_id", "key") do update set "received" = signals.received + 1, "updated_at" = now()'
-    );
-    assert.deepEqual(queries[0]?.parameters, ['t', 'claim:c1', 1]);
-    assert.equal(
-      queries[1]?.sql,
-      `select "id", state -> 'suspension' ->> 'id' as "wait_id" from "workflow_runs" where "agency_id" = $1 and "wait_key" in ($2) and "status" = $3`
-    );
-    assert.deepEqual(queries[1]?.parameters, ['t', 'claim:c1', 'suspended']);
-    await db.destroy();
-  });
-
-  it('counts each key once in one statement and signals nothing for no keys', async () => {
-    const { db, queries } = createRecordingDb(() => []);
-    const boss: RunQueueClient = { insert: async () => undefined };
-    const keys = ['c1', 'c2', 'c1'];
-    await signalRuns(db, boss, { agencyId: 't', name: 'claim', keys, payload: null });
-    assert.deepEqual(queries[0]?.parameters, ['t', 'claim:c1', 1, 't', 'claim:c2', 1]);
-    assert.deepEqual(queries[1]?.parameters, ['t', 'claim:c1', 'claim:c2', 'suspended']);
-    assert.equal(
-      await signalRuns(db, boss, { agencyId: 't', name: 'claim', keys: [], payload: null }),
-      0
-    );
-    assert.equal(queries.length, 2);
-    await db.destroy();
-  });
-
-  it('resumes every agency run waiting on the signal key', async () => {
-    const { db, queries } = createRecordingDb((q) =>
-      q.sql.startsWith('select')
-        ? [
-            { id: 'r1', wait_id: '7' },
-            { id: 'r2', wait_id: '9' }
-          ]
-        : []
-    );
-    const jobs: unknown[] = [];
-    const boss: RunQueueClient = { insert: async (_name, batch) => void jobs.push(...batch) };
-    assert.equal(
-      await signalRuns(db, boss, {
-        agencyId: 't',
-        name: 'claim',
-        keys: ['c1'],
-        payload: { a: 1 }
-      }),
-      2
-    );
-    assert.deepEqual(queries[1]?.parameters, ['t', 'claim:c1', 'suspended']);
-    assert.deepEqual(jobs, [
-      {
-        data: {
-          runId: 'r1',
-          command: { type: 'resume', suspensionId: '7', payload: { payload: { a: 1 } } }
-        },
-        priority: 2,
-        retryLimit: 1_000_000
-      },
-      {
-        data: {
-          runId: 'r2',
-          command: { type: 'resume', suspensionId: '9', payload: { payload: { a: 1 } } }
-        },
-        priority: 2,
-        retryLimit: 1_000_000
-      }
-    ]);
     await db.destroy();
   });
 });

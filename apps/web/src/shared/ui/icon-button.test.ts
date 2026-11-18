@@ -12,8 +12,7 @@ import {
   OpenLink,
   RemoveButton,
   RowActions,
-  RunLink,
-  WorkLink
+  RunLink
 } from './icon-button.tsx';
 
 const tooltipOf = (control: HTMLElement) =>
@@ -102,7 +101,6 @@ describe('row actions', () => {
       createElement(
         RowActions,
         null,
-        createElement(WorkLink, { to: '/tasks/t1', name: 'Doe, Jane' }),
         createElement(OpenLink, { to: '/claims/c1', name: 'Doe, Jane' }),
         createElement(EditLink, { to: '/fees/f1', name: 'A0427' }),
         createElement(RunLink, { to: '/reports/aging', name: 'Aging' }),
@@ -115,7 +113,6 @@ describe('row actions', () => {
       tooltipOf(el)
     ]);
     assert.deepEqual(actions, [
-      ['Work Doe, Jane', '/tasks/t1', 'Work Task'],
       ['Open Doe, Jane', '/claims/c1', 'Open'],
       ['Edit A0427', '/fees/f1', 'Edit'],
       ['Run Aging', '/reports/aging', 'Run'],

@@ -12,6 +12,7 @@ import {
   firstSet,
   firstThatHolds,
   fixed,
+  INTERFACILITY,
   joinLists,
   keepWhere,
   listOf,
@@ -21,8 +22,9 @@ import {
   type Port,
   type Reason,
   reasonsOf,
+  reasonsOut,
   rule,
-  select,
+  SERVICE_TYPES,
   T,
   type Test,
   TIMES
@@ -31,9 +33,6 @@ import {
 type Held = { id: string; label: string; reason: string; tests: Test[] };
 
 const ENCOUNTER_IN = d('encounter', T.encounter, 'Encounter', 'The encounter to decide from.');
-
-const REASONS_OUT = (what: string) =>
-  d('reasons', listOf('string'), 'Reasons', `Every rule that held, so a biller sees why ${what}.`);
 
 const heldRules = (g: Builder, inputs: Record<string, [ValueType, Port]>, rules: Held[]) =>
   Object.fromEntries(
@@ -89,10 +88,6 @@ const tripFields = (...names: string[]) =>
     string,
     [ValueType, Port]
   >;
-
-const INTERFACILITY = ['2205005', '2205015', '2205017', '2205019'];
-
-const EMERGENCY_SERVICE = ['2205001', '2205003', '2205009'];
 
 const NON_PATIENT_SERVICES = [
   '2205011',
@@ -233,7 +228,9 @@ const SCHEDULED: Held = {
   id: 'scheduledService',
   label: 'Scheduled or Interfacility Transport',
   reason: 'Scheduled or interfacility transport',
-  tests: [{ field: 'serviceType', op: 'oneOf', value: [...INTERFACILITY, '2205007'] }]
+  tests: [
+    { field: 'serviceType', op: 'oneOf', value: [...INTERFACILITY, ...SERVICE_TYPES.scheduled] }
+  ]
 };
 
 const BILLABLE = ['emergency', 'scheduled', 'treatNoTransport'];
@@ -249,7 +246,7 @@ const tripClassification = (): GraphDef => {
         'What kind of trip it was: emergency, scheduled, treatNoTransport, refusal or notBillable.'
       ),
       d('billable', 'boolean', 'Billable', 'Whether the trip is billed.'),
-      REASONS_OUT('the trip was classified this way')
+      reasonsOut('the trip was classified this way')
     ]
   );
   breakRecord(g, 'trip', 'Encounter', ENCOUNTER, 'entry.encounter');
@@ -318,22 +315,19 @@ const tripClassification = (): GraphDef => {
   g.add('noneHeld', 'std.logic.not', { label: 'No Rule Holds' });
   g.wire(anyHeld(g, 'anyRule', 'Any Rule Holds', rules, held), 'noneHeld.value');
   const ruleReasons = reasonsHeld(g, rules, held);
-  const missing = makeList(g, 'missingAll', 'No Disposition Reported or Nothing', 'string', [
-    select(
-      g,
-      'missingReason',
-      'Reason When No Rule Holds',
-      'noneHeld.result',
-      fixed('No disposition says what happened on the trip')
-    )
+  const missing = reasonsOf(g, 'missing', 'No Disposition Reported', [
+    {
+      id: 'missingReason',
+      label: 'Reason When No Rule Holds',
+      when: 'noneHeld.result',
+      reason: 'No disposition says what happened on the trip'
+    }
   ]);
-  g.add('missing', 'std.list.compact', { label: 'No Disposition Reported' });
-  g.wire(missing, 'missing.list');
   g.ret('return');
   g.wire(classification, 'return.classification');
   g.wire(billable, 'return.billable');
   g.wire(
-    joinLists(g, 'allReasons', 'Every Reason', 'string', [ruleReasons, 'missing.list']),
+    joinLists(g, 'allReasons', 'Every Reason', 'string', [ruleReasons, missing]),
     'return.reasons'
   );
   return g.def;
@@ -415,8 +409,6 @@ const ALS2_PROCEDURES = codeTable(
   )
 );
 
-const tableKey = (table: unknown) => (table as { table: { key: string } }).table;
-
 const SCT: Held[] = [
   {
     id: 'criticalCare',
@@ -485,7 +477,7 @@ const levelOfService = (): GraphDef => {
     [ENCOUNTER_IN],
     [
       d('level', 'string', 'Level of Service', 'The level of service: BLS, ALS1, ALS2 or SCT.'),
-      REASONS_OUT('the level was chosen')
+      reasonsOut('the level was chosen')
     ]
   );
   breakRecord(g, 'trip', 'Encounter', ENCOUNTER, 'entry.encounter');
@@ -498,12 +490,12 @@ const levelOfService = (): GraphDef => {
   keepWhere(g, 'ivDrugs', 'IV/IO Medications Other Than Solutions', 'ivRoute.list', {
     field: 'code',
     op: 'notListed',
-    table: tableKey(IV_SOLUTIONS)
+    table: IV_SOLUTIONS.ref
   });
   keepWhere(g, 'als2Procedures', 'ALS2 Procedures Performed', 'trip.procedures', {
     field: 'code',
     op: 'listed',
-    table: tableKey(ALS2_PROCEDURES)
+    table: ALS2_PROCEDURES.ref
   });
   const rules = [...SCT, ...ALS2, ...ALS1];
   const held = heldRules(
@@ -573,7 +565,7 @@ const EMERGENT: Held[] = [
     reason: 'No response mode, and an emergency call',
     tests: [
       { field: 'responseMode', op: 'empty' },
-      { field: 'serviceType', op: 'oneOf', value: EMERGENCY_SERVICE }
+      { field: 'serviceType', op: 'oneOf', value: [...SERVICE_TYPES.emergency] }
     ]
   }
 ];
@@ -583,7 +575,7 @@ const emergencyStatus = (): GraphDef => {
     [ENCOUNTER_IN],
     [
       d('emergency', 'boolean', 'Emergency', 'Whether the trip is billed as an emergency.'),
-      REASONS_OUT('the trip is or is not an emergency')
+      reasonsOut('the trip is or is not an emergency')
     ]
   );
   breakRecord(g, 'trip', 'Encounter', ENCOUNTER, 'entry.encounter');
@@ -682,7 +674,7 @@ const determineService = (): GraphDef => {
         'Miles with the patient on board, when the odometer was read.',
         true
       ),
-      REASONS_OUT('the service was decided this way')
+      reasonsOut('the service was decided this way')
     ]
   );
   g.add('date', 'billing.service-date', { label: 'Service Date' });
@@ -774,14 +766,14 @@ export const serviceGraphs: SeedGraph[] = [
     serviceDate()
   ),
   asRule(
-    'billing.determine-service',
-    'Determine Service',
+    'billing.service',
+    'Service',
     'The date of service, level of service, emergency status and loaded miles of an encounter, with the reasons.',
     determineService()
   ),
   asRule(
-    'billing.assign-diagnoses',
-    'Assign Diagnoses',
+    'billing.diagnoses',
+    'Diagnoses',
     'The diagnoses of a claim: the primary impression, then the secondary impressions, each once and at most twelve.',
     assignDiagnoses()
   )

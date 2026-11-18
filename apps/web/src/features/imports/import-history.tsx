@@ -16,7 +16,7 @@ export const importStatus = (i: Pick<ImportSummary, 'run_status'>) =>
 const SOURCES: Readonly<Record<ImportSummary['source'], string>> = {
   upload: 'Upload',
   sftp: 'SFTP',
-  manual: 'Workflow run'
+  manual: 'Workflow Run'
 };
 
 export const reportOutcomes = (i: Pick<ImportSummary, 'created' | 'revised' | 'unchanged'>) =>

@@ -24,7 +24,7 @@ const setup = ({
     if (q.sql.includes('from "nemsis_elements"'))
       return [{ element: 'eRecord.01', name: 'Patient Care Report Number' }];
     if (q.sql.includes('from "nemsis_codes"')) return [];
-    if (q.sql.includes('from "imports" as "i"')) {
+    if (q.sql.includes('from "imports" as "i"') || q.sql.startsWith('select "id" from "imports"')) {
       return q.parameters.includes('i1') ? [{ id: 'i1', file_name: 'f.xml' }] : [];
     }
     if (q.sql.includes('from "import_reports"')) {

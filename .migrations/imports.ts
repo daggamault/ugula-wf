@@ -1,4 +1,5 @@
-import { type Database, IMPORT_SOURCES, REPORT_OUTCOMES } from '@ugula/db';
+import { type Database, IMPORT_SOURCES } from '@ugula/db';
+import { ENCOUNTER_OUTCOMES } from '@ugula/nemsis';
 import { type Kysely, sql } from 'kysely';
 import { agencySetNullForeignKey } from './foreign-keys.ts';
 import { dailyNumberCheck, dailyNumberTrigger } from './numbers.ts';
@@ -63,7 +64,7 @@ const buildImportReportsTable = (db: Kysely<Database>) =>
     .addCheckConstraint('import_reports_number_check', dailyNumberCheck)
     .addCheckConstraint(
       'import_reports_outcome_check',
-      sql`outcome in (${sql.join(REPORT_OUTCOMES.map((o) => sql.lit(o)))})`
+      sql`outcome in (${sql.join(ENCOUNTER_OUTCOMES.map((o) => sql.lit(o)))})`
     );
 
 const buildImportsIndexes = (db: Kysely<Database>) => [

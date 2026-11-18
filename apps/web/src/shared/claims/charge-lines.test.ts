@@ -45,7 +45,7 @@ describe('ChargeLines', () => {
       ['HCPCS', 'Modifiers', 'Units', 'Unit Price', 'Amount']
     );
     assert.deepEqual(rows(), [
-      ['A0427', 'RH', '1', '$800.00', '$800.00'],
+      ['A0427', 'Residence to Hospital RH', '1', '$800.00', '$800.00'],
       ['A0425', '—', '6.8', '$12.00', '$81.60']
     ]);
   });

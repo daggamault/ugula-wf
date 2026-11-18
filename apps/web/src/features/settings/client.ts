@@ -48,9 +48,6 @@ export type ClearinghouseConnection = {
   claim_status_extension: string;
   after_download: AfterDownload;
   realtime_url: string | null;
-  last_polled_at: string | null;
-  last_error: string | null;
-  last_error_at: string | null;
 };
 
 export type ConnectionInput = {

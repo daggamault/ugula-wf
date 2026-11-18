@@ -3,6 +3,7 @@ import { attachmentsOf, ENCOUNTER_TYPE, placeCodesOf, toEncounter } from './enco
 import { parseDataset, pcrNumberOf } from './parse.ts';
 import {
   attachmentKey,
+  BLOB,
   type BlobLocation,
   type EncounterStore,
   type ReportStore,
@@ -12,8 +13,6 @@ import {
 export type NemsisStores = { reports: ReportStore; encounters: EncounterStore };
 
 const CATEGORY = 'Encounter';
-
-const BLOB = { object: { bucket: 'string', key: 'string' } } as const;
 
 const UPLOAD_CONCURRENCY = 16;
 

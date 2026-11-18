@@ -2,8 +2,7 @@ import type { ClaimDetail, EncounterLocation } from './claim-detail.ts';
 
 const place = (patch: Partial<EncounterLocation['address']>, name: string | null = null) => ({
   name,
-  type: null,
-  address: { line: null, city: null, county: null, state: null, postalCode: null, ...patch }
+  address: { line: null, city: null, state: null, postalCode: null, ...patch }
 });
 
 export const claimDetail: ClaimDetail = {
@@ -22,7 +21,6 @@ export const claimDetail: ClaimDetail = {
   created_at: '2026-10-01T00:00:00Z',
   first_name: 'Jane',
   last_name: 'Doe',
-  encounter_id: 'e1',
   encounter_revision: 1,
   encounter: {
     pcrNumber: 'PCR-1001',
@@ -84,7 +82,6 @@ export const claimDetail: ClaimDetail = {
     }
   ],
   diagnoses: ['R079', 'I10'],
-  gender: 'F',
   address_line: '1 Main St',
   city: 'Springfield',
   state: 'IL',

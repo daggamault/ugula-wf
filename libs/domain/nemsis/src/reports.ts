@@ -1,4 +1,6 @@
-import type { Json } from '@ugula/graph';
+import type { Json, ValueType } from '@ugula/graph';
+
+export const BLOB = { object: { bucket: 'string', key: 'string' } } as const satisfies ValueType;
 
 export type BlobLocation = { bucket: string; key: string };
 
@@ -23,9 +25,11 @@ export type ReportStore = {
   findPlaces: (codes: string[]) => Promise<Record<string, string>>;
 };
 
-export type EncounterOutcome = 'created' | 'revised' | 'unchanged';
+export const ENCOUNTER_OUTCOMES = ['created', 'revised', 'unchanged'] as const;
 
-export type SavedEncounter = { id: string; revision: number; outcome: EncounterOutcome };
+export type EncounterOutcome = (typeof ENCOUNTER_OUTCOMES)[number];
+
+type SavedEncounter = { id: string; revision: number; outcome: EncounterOutcome };
 
 export type EncounterStore = {
   saveEncounter: (

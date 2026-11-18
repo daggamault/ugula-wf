@@ -2,8 +2,6 @@ import type { TableKind } from '@ugula/db';
 import {
   ENTRY_TYPE,
   type GraphDef,
-  INPUT_TYPE,
-  type InputBinding,
   type Json,
   type NodeInstance,
   RETURN_TYPE,
@@ -15,7 +13,7 @@ import {
 
 type Port = `${string}.${string}`;
 
-type NodeOptions = Pick<NodeInstance, 'label' | 'config' | 'retry'> & {
+type NodeOptions = Pick<NodeInstance, 'label' | 'config'> & {
   values?: Record<string, Json>;
 };
 
@@ -24,7 +22,7 @@ const split = (port: Port) => {
   return [port.slice(0, dot), port.slice(dot + 1)] as const;
 };
 
-export const values = (fixed: Record<string, Json>): Record<string, InputBinding> =>
+const bindings = (fixed: Record<string, Json>) =>
   Object.fromEntries(Object.entries(fixed).map(([k, value]) => [k, { value }]));
 
 export const graph = (signature: Signature, variables: VariableDef[] = []) => {
@@ -37,7 +35,13 @@ export const graph = (signature: Signature, variables: VariableDef[] = []) => {
   const add = (id: string, type: string, { values: fixed, ...rest }: NodeOptions = {}) => {
     if (id.includes('.')) throw new Error(`Node ids cannot contain dots: ${id}`);
     if (def.nodes.some((n) => n.id === id)) throw new Error(`Duplicate node ${id}`);
-    def.nodes.push({ id, type, version: 1, ...rest, ...(fixed ? { inputs: values(fixed) } : {}) });
+    def.nodes.push({
+      id,
+      type,
+      version: 1,
+      ...rest,
+      ...(fixed ? { inputs: bindings(fixed) } : {})
+    });
     return id;
   };
   const wire = (from: Port, ...to: Port[]) => {
@@ -47,17 +51,12 @@ export const graph = (signature: Signature, variables: VariableDef[] = []) => {
       def.edges.push({ from: node, fromPin: pin, to: toNode, toPin });
     }
   };
-  const ret = (id: string, pin?: string, fixed?: Record<string, Json>) =>
-    add(id, RETURN_TYPE, {
-      ...(pin ? { config: { pin } } : {}),
-      ...(fixed ? { values: fixed } : {})
-    });
-  const input = (id: string, pin: string) => add(id, INPUT_TYPE, { config: { pin } });
+  const ret = (id: string, pin?: string) => add(id, RETURN_TYPE, pin ? { config: { pin } } : {});
   const trigger = (t: Trigger) => {
     const [entry] = def.nodes;
     if (entry) entry.config = { trigger: t };
   };
-  return { add, wire, ret, input, trigger, def };
+  return { add, wire, ret, trigger, def };
 };
 
 export type SeedTable = {
@@ -68,16 +67,6 @@ export type SeedTable = {
   definition: Json;
 };
 
-type Field = { name: string; type: ValueType; label?: string };
-
-type DecisionDefinition = {
-  inputs: Field[];
-  outputs: Field[];
-  rules: Json[];
-  otherwise: Record<string, Json>;
-  otherwiseLabel?: string;
-};
-
 type LookupDefinition = {
   type: ValueType;
   rows: { key: string; value: Json }[];
@@ -86,23 +75,9 @@ type LookupDefinition = {
 
 export const createTables = () => {
   const tables = new Map<string, SeedTable>();
-  const decision = (
-    key: string,
-    name: string,
-    description: string,
-    definition: DecisionDefinition
-  ): Json => {
-    tables.set(key, { key, name, kind: 'decide', description, definition: definition as Json });
-    return { inputs: definition.inputs, outputs: definition.outputs, table: { key } } as Json;
-  };
-  const lookup = (
-    key: string,
-    name: string,
-    description: string,
-    definition: LookupDefinition
-  ): Json => {
+  const lookup = (key: string, name: string, description: string, definition: LookupDefinition) => {
     tables.set(key, { key, name, kind: 'lookup', description, definition: definition as Json });
-    return { type: definition.type, table: { key } } as Json;
+    return { lookup: { type: definition.type, table: { key } } as Json, ref: { key } };
   };
-  return { decision, lookup, list: () => [...tables.values()] };
+  return { lookup, list: () => [...tables.values()] };
 };

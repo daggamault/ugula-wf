@@ -35,7 +35,7 @@ Pin, variable and field types are `ValueType`s, written as text by `formatType` 
 
 At run time a kind is plain text (`checkValue`); `isTextType` tells the types entered as text.
 
-The engine knows no kinds of its own beyond `run` (`STD_KINDS`); kind names only have to be camelCase (`a-z` first). Each domain declares the kinds it owns with their labels (`billingKinds`: `claim`, `coverage`, `document`, `facility`, `patient`, `payer`, `payerFile`, `task` and `carc`, `hcpcs`, `icd10`, `modifier`, `rarc`; `nemsisKinds`: `encounter`, `report` and `icd10`), and `valueKinds` in `libs/composition/catalog` merges them (`mergeKinds`). `createRegistry(nodes, graphs, kinds)` carries them, and `validateGraph` reports any graph pin, variable or node pin using a kind nobody declared (`unknownKinds`), so the API save and the seed gate catch typos. The editor names a kind by its label, or by its name in Title Case.
+The engine knows no kinds of its own beyond `run` (`STD_KINDS`); kind names only have to be camelCase (`a-z` first). Each domain declares the kinds it owns with their labels (`billingKinds`: `claim`, `patient`, `payer`, `task` and `hcpcs`, `icd10`, `modifier`; `nemsisKinds`: `encounter` and `report`), and `valueKinds` in `libs/composition/catalog` merges them (`mergeKinds`). `createRegistry(nodes, graphs, kinds)` carries them, and `validateGraph` reports any graph pin, variable or node pin using a kind nobody declared (`unknownKinds`), so the API save and the seed gate catch typos. The editor names a kind by its label, or by its name in Title Case.
 
 ## Nodes
 

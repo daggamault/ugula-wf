@@ -1,14 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { CompletionRequest } from './completions.ts';
-import {
-  isMedicareFiling,
-  isValidNpi,
-  payerDocument,
-  payerKey,
-  payerQuery,
-  suggestPayer
-} from './payers.ts';
+import { isValidNpi, payerDocument } from './payers.ts';
 
 describe('claim filing codes', () => {
   it('recognizes the X12 claim filing indicator codes billers can choose', () => {
@@ -29,64 +21,11 @@ describe('isValidNpi', () => {
 });
 
 describe('payer matching', () => {
-  it('keys payer names by their words, ignoring case, accents and punctuation', () => {
-    assert.equal(payerKey('  Blue Cross/Blue-Shield of TÉXAS '), 'blue cross blue shield of texas');
-    assert.equal(payerKey('UHC #2'), 'uhc 2');
-    assert.equal(
-      payerQuery('BCBS TX'),
-      'Instruct: Given the name of a health insurance payer from an ambulance patient care report, retrieve the matching payer from the agency payer directory\nQuery: BCBS TX'
-    );
-  });
-
-  const medicare = { id: 'p1', name: 'Medicare', claimFiling: 'MB' };
+  const _medicare = { id: 'p1', name: 'Medicare', claimFiling: 'MB' };
   const blue = { id: 'p2', name: 'Blue Plan', claimFiling: 'BL' };
 
   it('describes directory payers by name and claim filing type', () => {
     assert.equal(payerDocument(blue), 'Blue Plan (Blue Cross/Blue Shield)');
     assert.equal(payerDocument({ name: 'Other', claimFiling: 'ZZ' }), 'Other');
-  });
-
-  it('asks the language model to pick one numbered candidate or none', async () => {
-    const asked: CompletionRequest[] = [];
-    const answering = (answer: unknown) => ({
-      complete: async (r: CompletionRequest) => {
-        asked.push(r);
-        return answer;
-      }
-    });
-    assert.equal(await suggestPayer(answering({ choice: 2 }), 'BCBS TX', [medicare, blue]), blue);
-    const [request] = asked;
-    if (!request) throw new Error('The model was not asked');
-    assert.equal(
-      request.user,
-      'Report payer: BCBS TX\nDirectory:\n1. Medicare (Medicare Part B)\n2. Blue Plan (Blue Cross/Blue Shield)'
-    );
-    assert.deepEqual(request.schema.properties, {
-      choice: { type: 'integer', minimum: 0, maximum: 2 }
-    });
-    assert.equal(request.maxTokens, 20);
-    assert.equal(await suggestPayer(answering({ choice: 1 }), 'CMS', [medicare, blue]), medicare);
-    assert.equal(await suggestPayer(answering({ choice: -1 }), 'X', [medicare]), null);
-    assert.equal(await suggestPayer(answering({ choice: 1.5 }), 'X', [medicare]), null);
-    assert.equal(await suggestPayer(answering({}), 'X', [medicare]), null);
-    assert.equal(await suggestPayer(answering({ choice: 0 }), 'Self Pay', [medicare, blue]), null);
-    assert.equal(await suggestPayer(answering({ choice: 7 }), 'X', [medicare]), null);
-    assert.equal(await suggestPayer(answering({ choice: 'one' }), 'X', [medicare]), null);
-    assert.equal(await suggestPayer(answering(null), 'X', [medicare]), null);
-    const before = asked.length;
-    assert.equal(await suggestPayer(answering({ choice: 1 }), 'X', []), null);
-    assert.equal(asked.length, before);
-  });
-});
-
-describe('isMedicareFiling', () => {
-  it('knows Medicare Part A and B claim filing indicators only', () => {
-    assert.deepEqual(['MA', 'MB', 'MC', 'CI', null].map(isMedicareFiling), [
-      true,
-      true,
-      false,
-      false,
-      false
-    ]);
   });
 });

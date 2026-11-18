@@ -12,15 +12,6 @@ export const HOST_KEY_PATTERN = '^SHA256:[A-Za-z0-9+/]{43}$';
 
 export const MOCK_HOST_KEY = 'SHA256:VM159e2IEtdtiYxUoqIC5u7Z7D57F/k83MgfOvFrDdM';
 
-export const CLEARINGHOUSE_SIGNAL = 'clearinghouse';
-
-export const CLEARINGHOUSE_RECOVERED = 'recovered';
-
-export type ConnectionHealth = { lastPolledAt: Date | null; lastErrorAt: Date | null };
-
-export const isFailing = ({ lastPolledAt, lastErrorAt }: ConnectionHealth) =>
-  lastErrorAt !== null && (lastPolledAt === null || lastErrorAt > lastPolledAt);
-
 type ClearinghouseExtensions = { claims: string; eligibility: string; claimStatus: string };
 
 export const WAYSTAR_EXTENSIONS: ClearinghouseExtensions = {
@@ -29,7 +20,7 @@ export const WAYSTAR_EXTENSIONS: ClearinghouseExtensions = {
   claimStatus: '.CLS'
 };
 
-export type ClearinghouseSettings = {
+type ClearinghouseSettings = {
   host: string;
   port: number;
   hostKey: string;
@@ -84,94 +75,3 @@ export const VENDOR_PRESETS: Record<ClearinghouseVendor, VendorPreset> = {
     receiverId: null
   }
 };
-
-export type ClearinghouseFile = { path: string; name: string; size: number; modifiedAt: Date };
-
-export type RealtimeAnswer = { ok: true; text: string } | { ok: false; error: string };
-
-export type Clearinghouse = {
-  submitClaims: (baseName: string, x12: Uint8Array) => Promise<string>;
-  submitEligibility: (baseName: string, x12: Uint8Array) => Promise<string>;
-  submitClaimStatus: (baseName: string, x12: Uint8Array) => Promise<string>;
-  checkEligibility: ((x12: string) => Promise<RealtimeAnswer>) | null;
-  checkClaimStatus: ((x12: string) => Promise<RealtimeAnswer>) | null;
-  discoverCoverage: ((searches: string[]) => Promise<RealtimeAnswer[]>) | null;
-  inbox: <T>(work: (inbox: ClearinghouseInbox) => Promise<T>) => Promise<T>;
-  afterDownload: AfterDownload;
-};
-
-export type ClearinghouseInbox = {
-  list: () => Promise<ClearinghouseFile[]>;
-  download: (path: string) => Promise<Uint8Array>;
-  remove: (path: string) => Promise<void>;
-};
-
-export type BatchTransport = {
-  upload: (name: string, bytes: Uint8Array) => Promise<string>;
-  session: <T>(work: (inbox: ClearinghouseInbox) => Promise<T>) => Promise<T>;
-};
-
-type RealtimeReply =
-  | { ok: true; payloadType: string; payload: string }
-  | { ok: false; error: string };
-
-export type RealtimeTransport = (payloadType: string, payload: string) => Promise<RealtimeReply>;
-
-const CORE_PAYLOADS = {
-  eligibility: {
-    request: 'X12_270_Request_005010X279A1',
-    response: 'X12_271_Response_005010X279A1'
-  },
-  claimStatus: {
-    request: 'X12_276_Request_005010X212',
-    response: 'X12_277_Response_005010X212'
-  }
-} as const;
-
-const realtimeOf =
-  (send: RealtimeTransport, { request, response }: { request: string; response: string }) =>
-  async (x12: string): Promise<RealtimeAnswer> => {
-    const reply = await send(request, x12);
-    if (!reply.ok) return reply;
-    return reply.payloadType === response && reply.payload.trim()
-      ? { ok: true, text: reply.payload }
-      : { ok: false, error: `The clearinghouse answered ${reply.payloadType || 'nothing'}` };
-  };
-
-export const createClearinghouse = ({
-  batch,
-  realtime,
-  extensions,
-  afterDownload
-}: {
-  batch: BatchTransport;
-  realtime: RealtimeTransport | null;
-  extensions: ClearinghouseExtensions;
-  afterDownload: AfterDownload;
-}): Clearinghouse => {
-  const submit = (extension: string) => async (baseName: string, x12: Uint8Array) => {
-    const name = `${baseName}${extension}`;
-    await batch.upload(name, x12);
-    return name;
-  };
-  const eligibility = realtime ? realtimeOf(realtime, CORE_PAYLOADS.eligibility) : null;
-  return {
-    submitClaims: submit(extensions.claims),
-    submitEligibility: submit(extensions.eligibility),
-    submitClaimStatus: submit(extensions.claimStatus),
-    checkEligibility: eligibility,
-    checkClaimStatus: realtime ? realtimeOf(realtime, CORE_PAYLOADS.claimStatus) : null,
-    discoverCoverage: eligibility ? (searches) => Promise.all(searches.map(eligibility)) : null,
-    inbox: batch.session,
-    afterDownload
-  };
-};
-
-const EXCHANGE_FILES = { claims: '837P', eligibility: '270', claimStatus: '276' } as const;
-
-export const exchangeFileName = (
-  kind: keyof typeof EXCHANGE_FILES,
-  controlNumber: number,
-  id: string
-) =>
-  `${EXCHANGE_FILES[kind]}-${String(controlNumber).padStart(9, '0')}-${id.replaceAll('-', '').slice(0, 8)}`;

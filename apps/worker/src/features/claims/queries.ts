@@ -4,8 +4,6 @@ import { type Kysely, sql } from 'kysely';
 import { isUuid } from '../../shared/ids.ts';
 import { runAgency } from '../../shared/tenancy.ts';
 
-const uuidOrNull = (x: string | null) => (x && isUuid(x) ? x : null);
-
 const claimColumns = (c: ClaimInput) => ({
   patient_id: c.patientId,
   classification: c.classification,
@@ -25,6 +23,8 @@ export const createClaimStore = (db: Kysely<Database>): ClaimStore => ({
       if (!isUuid(claim.encounterId))
         throw new Error(`Encounter ${claim.encounterId} does not exist`);
       if (!isUuid(claim.patientId)) throw new Error(`Patient ${claim.patientId} does not exist`);
+      const unknown = claim.coverages.find((c) => c.payerId !== null && !isUuid(c.payerId));
+      if (unknown) throw new Error(`Payer ${unknown.payerId} does not exist`);
       const saved = await tx
         .insertInto('claims')
         .values({
@@ -67,7 +67,7 @@ export const createClaimStore = (db: Kysely<Database>): ClaimStore => ({
               claim_id: saved.id,
               position: i + 1,
               payer_name: c.payerName,
-              payer_id: uuidOrNull(c.payerId),
+              payer_id: c.payerId,
               member_id: c.memberId,
               group_id: c.groupId,
               relationship: c.relationship,

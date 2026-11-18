@@ -66,10 +66,7 @@ const connection: ClearinghouseConnection = {
   eligibility_extension: '.txt',
   claim_status_extension: '.txt',
   after_download: 'delete',
-  realtime_url: null,
-  last_polled_at: null,
-  last_error: null,
-  last_error_at: null
+  realtime_url: null
 };
 
 const textbox = (name: string) => screen.getByRole('textbox', { name }) as HTMLInputElement;

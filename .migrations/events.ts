@@ -1,4 +1,4 @@
-import { EVENT_TYPES } from '@ugula/billing';
+import { BILLING_EVENTS } from '@ugula/billing';
 import { type Database, EVENTS_CHANNEL } from '@ugula/db';
 import { EVENT_TYPE_PATTERN } from '@ugula/graph';
 import { NEMSIS_EVENTS } from '@ugula/nemsis';
@@ -91,7 +91,7 @@ const taskFunction = sql`
   create function emit_task_completed_event() returns trigger language plpgsql as $$
   begin
     insert into events (agency_id, type, payload)
-    values (new.agency_id, ${sql.lit(EVENT_TYPES.taskCompleted)}, jsonb_strip_nulls(jsonb_build_object(
+    values (new.agency_id, ${sql.lit(BILLING_EVENTS.taskCompleted)}, jsonb_strip_nulls(jsonb_build_object(
       'taskId', new.id,
       'queue', new.queue,
       'outcome', new.resolution ->> 'outcome'
@@ -146,7 +146,7 @@ const claimCreatedFunction = sql`
   create function emit_claim_created_event() returns trigger language plpgsql as $$
   begin
     insert into events (agency_id, type, payload)
-    values (new.agency_id, ${sql.lit(EVENT_TYPES.claimCreated)}, jsonb_build_object(
+    values (new.agency_id, ${sql.lit(BILLING_EVENTS.claimCreated)}, jsonb_build_object(
       'claimId', new.id,
       'encounterId', new.encounter_id
     ));

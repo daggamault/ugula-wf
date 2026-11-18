@@ -13,3 +13,4 @@ export { build277Status } from './mock-x277-status.ts';
 export { build835 } from './mock-x835.ts';
 export { build999 } from './mock-x999.ts';
 export * from './testing-samples.ts';
+export { build270 } from './x270.ts';

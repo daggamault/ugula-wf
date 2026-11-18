@@ -2,7 +2,6 @@ import {
   CLAIM_FILING_CODES,
   CORRECTION_METHODS,
   MAX_APPEAL_DAYS,
-  MAX_CONTROL_NUMBER,
   MAX_FILING_LIMIT_DAYS,
   PLAN_TYPES,
   US_STATE_PATTERN,
@@ -31,7 +30,6 @@ const buildBillingProfilesTable = (db: Kysely<Database>) =>
     .addColumn('receiver_name', 'text')
     .addColumn('time_zone', 'text', (col) => col.notNull())
     .addColumn('is_production', 'boolean', (col) => col.notNull().defaultTo(false))
-    .addColumn('next_control_number', 'integer', (col) => col.notNull().defaultTo(1))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addCheckConstraint('billing_profiles_npi_check', sql`npi ~ '^[0-9]{10}$'`)
     .addCheckConstraint('billing_profiles_tax_id_check', sql`tax_id ~ '^[0-9]{9}$'`)
@@ -45,10 +43,6 @@ const buildBillingProfilesTable = (db: Kysely<Database>) =>
       sql`time_zone ~ '^[A-Za-z_]+(/[A-Za-z0-9_+-]+)*$'`
     )
     .addCheckConstraint('billing_profiles_phone_check', sql`phone ~ '^[0-9]{10}$'`)
-    .addCheckConstraint(
-      'billing_profiles_next_control_number_check',
-      sql`next_control_number between 1 and ${sql.lit(MAX_CONTROL_NUMBER + 1)}`
-    )
     .addCheckConstraint(
       'billing_profiles_clearinghouse_check',
       sql`submitter_id ~ '^[A-Za-z0-9]{2,15}$' and receiver_id ~ '^[A-Za-z0-9]{2,15}$'`

@@ -2,6 +2,7 @@ import { CLAIM_STATUS_LABELS, CLAIM_STATUSES, nameKey } from '@ugula/billing';
 import { XIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { ClaimSummary } from '../../shared/claims/claim-detail.ts';
+import { ClaimStatusBadge } from '../../shared/claims/claim-status-badge.tsx';
 import { formatCents, formatDate } from '../../shared/format.ts';
 import { isOnPage, LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
@@ -17,7 +18,6 @@ import { type SearchField, SearchForm } from '../../shared/ui/search-form.tsx';
 import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
 import { type TableState, useTableState, withBack } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
-import { ClaimStatusBadge } from './claim-status-badge.tsx';
 import type { ClaimSearch, ClaimsClient } from './client.ts';
 
 type ClaimsPageProps = {

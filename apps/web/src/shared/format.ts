@@ -13,15 +13,6 @@ const calendarDay = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', ti
 export const formatDate = (day: string | null) =>
   day ? calendarDay.format(new Date(`${day.slice(0, 10)}T00:00:00Z`)) : '—';
 
-const monthLabel = new Intl.DateTimeFormat(undefined, {
-  month: 'long',
-  year: 'numeric',
-  timeZone: 'UTC'
-});
-
-export const formatMonth = (month: string) =>
-  monthLabel.format(new Date(`${month.slice(0, 7)}-01T00:00:00Z`));
-
 export const browserTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 export const patientName = (last: string | null, first: string | null) =>

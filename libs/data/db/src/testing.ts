@@ -19,7 +19,7 @@ export const createDummyDb = (): Db =>
     }
   });
 
-export type RowsFor = (query: CompiledQuery) => unknown[];
+type RowsFor = (query: CompiledQuery) => unknown[];
 
 export const createRecordingDb = (rowsFor: RowsFor = () => []) => {
   const queries: CompiledQuery[] = [];

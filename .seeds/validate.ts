@@ -22,7 +22,7 @@ import type { SeedGraph } from './graphs.ts';
 
 export const graphNodes = (): NodeDef[] => createNodeCatalog({ fetch });
 
-export const graphProblems = (graphs: SeedGraph[], nodes: NodeDef[]) => {
+const graphProblems = (graphs: SeedGraph[], nodes: NodeDef[]) => {
   const byRef = new Map(
     graphs.map((g) => [refKey({ type: g.key, version: g.version }), g.definition])
   );

@@ -1,4 +1,4 @@
-export const ADJUSTMENT_GROUPS = {
+const ADJUSTMENT_GROUPS = {
   CO: 'Contractual obligation',
   PR: 'Patient responsibility',
   OA: 'Other adjustment',
@@ -6,7 +6,7 @@ export const ADJUSTMENT_GROUPS = {
   CR: 'Correction or reversal'
 } as const;
 
-export type AdjustmentGroup = keyof typeof ADJUSTMENT_GROUPS;
+type AdjustmentGroup = keyof typeof ADJUSTMENT_GROUPS;
 
 export const isAdjustmentGroup = (x: unknown): x is AdjustmentGroup =>
   typeof x === 'string' && Object.hasOwn(ADJUSTMENT_GROUPS, x);

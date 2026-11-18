@@ -14,6 +14,7 @@
     "@ugula/catalog": "workspace:*",
     "@ugula/config": "workspace:*",
     "@ugula/graph": "workspace:*",
-    "@ugula/live": "workspace:*"
+    "@ugula/live": "workspace:*",
+    "@ugula/nemsis": "workspace:*"
   }
 }

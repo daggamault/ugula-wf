@@ -1,6 +1,6 @@
 import { dollarsToCents } from './numbers.ts';
 
-export type InboundKind = '835' | '999' | '277' | '271' | 'TA1' | '277S';
+type InboundKind = '835' | '999' | '277' | '271' | 'TA1' | '277S';
 
 export type X12File = {
   kind: InboundKind | null;

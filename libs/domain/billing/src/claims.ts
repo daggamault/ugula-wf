@@ -14,7 +14,7 @@ import {
   isOriginDestination,
   SELF
 } from './claim-details.ts';
-import { isCents, recordOf, textOrNull } from './values.ts';
+import { isCents, textOrNull } from './values.ts';
 
 export const CLAIM_STATUSES = ['needs_review'] as const;
 
@@ -34,7 +34,7 @@ export type ClaimCoverage = {
   insuredLastName: string | null;
 };
 
-export type ClaimChargeLine = {
+type ClaimChargeLine = {
   code: string;
   modifiers: string[];
   units: number;
@@ -65,77 +65,93 @@ const MODIFIER = new RegExp(MODIFIER_PATTERN);
 
 const ICD10 = new RegExp(ICD10_PATTERN);
 
-const listOf = (x: unknown) => (Array.isArray(x) ? x : []);
+type Maybe<T> = { [K in keyof T]: T[K] | null };
 
-const texts = (x: unknown) => listOf(x).flatMap((t) => textOrNull(t) ?? []);
+type LineValue = Maybe<Omit<ClaimChargeLine, 'modifiers'>> & {
+  modifiers: (string | null)[] | null;
+};
 
-const oneOf = <T extends string>(values: readonly T[], x: unknown, message: string): T => {
+type CoverageValue = Maybe<Omit<ClaimCoverage, 'relationship'>> & { relationship: string | null };
+
+export type ClaimValue = Maybe<
+  Omit<ClaimInput, 'classification' | 'level' | 'lines' | 'coverages' | 'diagnoses' | 'reasons'>
+> & {
+  classification: string | null;
+  level: string | null;
+  diagnoses: (string | null)[] | null;
+  coverages: (CoverageValue | null)[] | null;
+  lines: (LineValue | null)[] | null;
+  reasons: (string | null)[] | null;
+};
+
+const present = <T>(xs: readonly (T | null)[] | null) =>
+  (xs ?? []).flatMap((x) => (x === null ? [] : [x]));
+
+const texts = (xs: readonly (string | null)[] | null) =>
+  present(xs).flatMap((t) => textOrNull(t) ?? []);
+
+const oneOf = <T extends string>(values: readonly T[], x: string | null, message: string): T => {
   if (!values.includes(x as T)) throw new Error(message);
   return x as T;
 };
 
-const required = (x: unknown, message: string) => {
+const required = (x: string | null, message: string) => {
   const text = textOrNull(x);
   if (!text) throw new Error(message);
   return text;
 };
 
-const dateOf = (x: unknown) => {
+const dateOf = (x: string | null) => {
   const text = textOrNull(x);
   if (text === null) return null;
   if (!/^\d{4}-\d{2}-\d{2}/.test(text)) throw new Error(`The service date ${text} is not a date`);
   return text.slice(0, 10);
 };
 
-const milesOf = (x: unknown) => {
-  if (x === null || x === undefined) return null;
-  if (typeof x !== 'number' || !Number.isFinite(x) || x < 0) {
-    throw new Error('Loaded miles must be zero or more');
-  }
+const milesOf = (x: number | null) => {
+  if (x !== null && x < 0) throw new Error('Loaded miles must be zero or more');
   return x;
 };
 
-const readLine = (x: unknown, i: number): ClaimChargeLine => {
-  const r = recordOf(x);
-  const code = textOrNull(r.code)?.toUpperCase() ?? '';
+const readLine = (l: LineValue, i: number): ClaimChargeLine => {
+  const code = textOrNull(l.code)?.toUpperCase() ?? '';
   if (!HCPCS.test(code)) throw new Error(`Line ${i + 1} has no valid HCPCS code`);
-  const modifiers = texts(r.modifiers).map((m) => m.toUpperCase());
+  const modifiers = texts(l.modifiers).map((m) => m.toUpperCase());
   const bad = modifiers.find((m) => !MODIFIER.test(m));
   if (bad) throw new Error(`Line ${i + 1} (${code}) has an invalid modifier ${bad}`);
   if (modifiers.length > MAX_LINE_MODIFIERS) {
     throw new Error(`Line ${i + 1} (${code}) has more than ${MAX_LINE_MODIFIERS} modifiers`);
   }
-  const units = r.units;
-  if (typeof units !== 'number' || !Number.isFinite(units) || units <= 0) {
+  const units = l.units ?? 0;
+  if (units <= 0) {
     throw new Error(`Line ${i + 1} (${code}) needs a positive number of units`);
   }
-  if (!isCents(r.unitCents) || !isCents(r.totalCents)) {
+  if (!isCents(l.unitCents) || !isCents(l.totalCents)) {
     throw new Error(`Line ${i + 1} (${code}) has not been priced`);
   }
-  return { code, modifiers, units, unitCents: r.unitCents, totalCents: r.totalCents };
+  return { code, modifiers, units, unitCents: l.unitCents, totalCents: l.totalCents };
 };
 
-const readCoverage = (x: unknown, i: number): ClaimCoverage => {
-  const r = recordOf(x);
-  const payerName = textOrNull(r.payerName);
+const readCoverage = (c: CoverageValue, i: number): ClaimCoverage => {
+  const payerName = textOrNull(c.payerName);
   if (!payerName) throw new Error(`Payer ${i + 1} has no name`);
   return {
-    payerId: textOrNull(r.payerId),
+    payerId: textOrNull(c.payerId),
     payerName,
-    memberId: textOrNull(r.memberId),
-    groupId: textOrNull(r.groupId),
+    memberId: textOrNull(c.memberId),
+    groupId: textOrNull(c.groupId),
     relationship: oneOf(
       INSURED_RELATIONSHIPS,
-      textOrNull(r.relationship) ?? SELF,
+      textOrNull(c.relationship) ?? SELF,
       `Payer ${i + 1} has a relationship that is not an X12 code`
     ),
-    insuredFirstName: textOrNull(r.insuredFirstName),
-    insuredLastName: textOrNull(r.insuredLastName)
+    insuredFirstName: textOrNull(c.insuredFirstName),
+    insuredLastName: textOrNull(c.insuredLastName)
   };
 };
 
-const readDiagnoses = (x: unknown) => {
-  const codes = [...new Set(texts(x).map((c) => c.toUpperCase().replace('.', '')))];
+const readDiagnoses = (xs: (string | null)[] | null) => {
+  const codes = [...new Set(texts(xs).map((c) => c.toUpperCase().replace('.', '')))];
   const bad = codes.find((c) => !ICD10.test(c));
   if (bad) throw new Error(`Diagnosis ${bad} is not an ICD-10 code`);
   if (codes.length > DIAGNOSIS_LIMIT) {
@@ -144,7 +160,7 @@ const readDiagnoses = (x: unknown) => {
   return codes;
 };
 
-const readOriginDestination = (origin: unknown, destination: unknown) => {
+const readOriginDestination = (origin: string | null, destination: string | null) => {
   const o = textOrNull(origin)?.toUpperCase() ?? null;
   const d = textOrNull(destination)?.toUpperCase() ?? null;
   if (o === null && d === null) return { originCode: null, destinationCode: null };
@@ -154,30 +170,30 @@ const readOriginDestination = (origin: unknown, destination: unknown) => {
   return { originCode: o, destinationCode: d };
 };
 
-export const readClaim = (x: unknown): ClaimInput => {
-  const c = recordOf(x);
-  const lines = listOf(c.lines).map(readLine);
+export const readClaim = (c: ClaimValue): ClaimInput => {
+  const lines = present(c.lines).map(readLine);
   const totalCents = lines.reduce((sum, l) => sum + l.totalCents, 0);
-  if (c.totalCents !== null && c.totalCents !== undefined && c.totalCents !== totalCents) {
-    throw new Error(`The total ${String(c.totalCents)} is not the sum of the lines, ${totalCents}`);
+  const total = c.totalCents ?? null;
+  if (total !== null && total !== totalCents) {
+    throw new Error(`The total ${total} is not the sum of the lines, ${totalCents}`);
   }
-  if (typeof c.emergency !== 'boolean')
-    throw new Error('A claim needs to say if it is an emergency');
+  const emergency = c.emergency ?? null;
+  if (emergency === null) throw new Error('A claim needs to say if it is an emergency');
   return {
     encounterId: required(c.encounterId, 'A claim needs its encounter'),
     patientId: required(c.patientId, 'A claim needs its patient'),
     classification: oneOf(
       CLASSIFICATIONS,
       c.classification,
-      `${String(c.classification)} is not a classification`
+      `${c.classification} is not a classification`
     ),
     serviceDate: dateOf(c.serviceDate),
-    level: oneOf(SERVICE_LEVELS, c.level, `${String(c.level)} is not a level of service`),
-    emergency: c.emergency,
-    loadedMiles: milesOf(c.loadedMiles),
+    level: oneOf(SERVICE_LEVELS, c.level, `${c.level} is not a level of service`),
+    emergency,
+    loadedMiles: milesOf(c.loadedMiles ?? null),
     ...readOriginDestination(c.originCode, c.destinationCode),
     diagnoses: readDiagnoses(c.diagnoses),
-    coverages: listOf(c.coverages).map(readCoverage),
+    coverages: present(c.coverages).map(readCoverage),
     lines,
     totalCents,
     reasons: texts(c.reasons)

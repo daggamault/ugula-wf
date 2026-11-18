@@ -99,6 +99,15 @@ describe('createClaimStore', () => {
       createClaimStore(db).saveClaim('r1', { ...CLAIM, encounterId: 'e-1' }),
       /Encounter e-1 does not exist/
     );
+    await assert.rejects(
+      createClaimStore(db).saveClaim('r1', {
+        ...CLAIM,
+        coverages: [
+          { ...(CLAIM.coverages[0] as ClaimInput['coverages'][number]), payerId: 'pay-1' }
+        ]
+      }),
+      /Payer pay-1 does not exist/
+    );
     assert.equal(queries.filter((q) => !/^(begin|commit|rollback)/.test(q.sql)).length, 0);
   });
 });

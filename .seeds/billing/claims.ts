@@ -9,15 +9,12 @@ import {
   ENCOUNTER,
   exit,
   flow,
+  ID,
   joinLists,
   listOf,
   stage,
   T
 } from './shared.ts';
-
-const CLAIM_ID = { id: 'claim' } as const;
-
-const ENCOUNTER_ID = { id: 'encounter' } as const;
 
 const CLASSIFICATION_OUT = d(
   'classification',
@@ -26,7 +23,7 @@ const CLASSIFICATION_OUT = d(
   'What kind of trip the encounter was.'
 );
 
-const REASONS_OUT = d(
+const CLAIM_REASONS = d(
   'reasons',
   listOf('string'),
   'Reasons',
@@ -39,13 +36,13 @@ const buildClaim = (): GraphDef => {
     [
       d(
         'claimId',
-        CLAIM_ID,
+        ID.claim,
         'Claim',
         'The claim saved, ready for review, when the trip is billed.',
         true
       ),
       CLASSIFICATION_OUT,
-      REASONS_OUT
+      CLAIM_REASONS
     ],
     {
       saved: exit('Saved', 'The claim is saved and needs review.'),
@@ -56,15 +53,15 @@ const buildClaim = (): GraphDef => {
   g.add('classify', 'billing.trip-classification', { label: 'Trip Classification' });
   g.add('billable', 'std.flow.branch', { label: 'Billable?' });
   g.add('patient', 'billing.resolve-patient', { label: 'Resolve Patient' });
-  g.add('service', 'billing.determine-service', { label: 'Determine Service' });
-  g.add('diagnoses', 'billing.assign-diagnoses', { label: 'Assign Diagnoses' });
+  g.add('service', 'billing.service', { label: 'Service' });
+  g.add('diagnoses', 'billing.diagnoses', { label: 'Diagnoses' });
   g.add('places', 'billing.origin-and-destination', { label: 'Origin and Destination' });
   g.add('payers', 'billing.determine-payers', { label: 'Determine Payers' });
   g.add('primary', 'std.list.first', { label: 'Primary Coverage' });
   g.add('primaryPayer', 'coverage.break', { label: 'Primary Payer' });
   g.add('charges', 'billing.assign-charges', { label: 'Assign Charges' });
   g.add('claim', 'claim.make', { label: 'Claim' });
-  g.add('save', 'claim.save', { label: 'Save the Claim' });
+  g.add('save', 'claim.save', { label: 'Save Claim' });
   g.ret('notBilled', 'notBillable');
   g.ret('created', 'saved');
   g.ret('replaced', 'saved');
@@ -115,15 +112,15 @@ const buildClaim = (): GraphDef => {
 
 const fromEncounter = (event: string) => {
   const g = flow(
-    [d('encounterId', ENCOUNTER_ID, 'Encounter', 'The encounter saved.')],
+    [d('encounterId', ID.encounter, 'Encounter', 'The encounter saved.')],
     [
-      d('claimId', CLAIM_ID, 'Claim', 'The claim saved, when the trip is billed.', true),
+      d('claimId', ID.claim, 'Claim', 'The claim saved, when the trip is billed.', true),
       CLASSIFICATION_OUT,
-      REASONS_OUT
+      CLAIM_REASONS
     ]
   );
   g.trigger({ kind: 'event', event, where: {} });
-  g.add('read', 'encounter.read', { label: 'Read the Encounter' });
+  g.add('read', 'encounter.read', { label: 'Read Encounter' });
   g.add('build', 'billing.build-claim', { label: 'Build Claim' });
   g.ret('billed');
   g.ret('notBilled');
@@ -155,8 +152,8 @@ export const claimGraphs: SeedGraph[] = [
     fromEncounter('encounter.created')
   ),
   asWorkflow(
-    'billing.encounter-revised',
-    'Encounter Revised',
+    'billing.revised-encounter-to-claim',
+    'Revised Encounter to Claim',
     'When a changed copy of a PCR revises an encounter, builds its claim again and saves it over the one under review.',
     fromEncounter('encounter.revised')
   )
