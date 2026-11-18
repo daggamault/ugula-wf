@@ -193,7 +193,7 @@ describe('searchClaims', () => {
     await searchClaims(db, 't-1', { ...PAGE, sort: 'status', dir: 'asc' });
     assert.equal(
       listOf(queries)[0]?.sql,
-      `${CLAIM_IDS} order by array_position(array['needs_review', 'approved', 'on_hold']::text[], c.status::text) ` +
+      `${CLAIM_IDS} order by array_position(array['needs_review', 'approved', 'on_hold', 'submitted']::text[], c.status::text) ` +
         'asc nulls last, "c"."id" asc limit $2 offset $3'
     );
   });
@@ -219,17 +219,18 @@ describe('findClaim', () => {
     const { db, queries } = createRecordingDb(() => [claim]);
     assert.deepEqual(await findClaim(db, 't-1', 'c1'), claim);
     assert.equal(queries.length, 1);
-    assert.ok(queries[0]?.sql.endsWith('where "c"."agency_id" = $2 and "c"."id" = $3'));
-    assert.deepEqual(queries[0]?.parameters, [1, 't-1', 'c1']);
+    assert.ok(queries[0]?.sql.endsWith('where "c"."agency_id" = $3 and "c"."id" = $4'));
+    assert.deepEqual(queries[0]?.parameters, [1, 1, 't-1', 'c1']);
   });
 
-  it('reads the encounter, its latest import, coverages, lines and diagnoses', async () => {
+  it('reads the encounter, its latest import and 837P sent, coverages, lines and diagnoses', async () => {
     const { db, queries } = createRecordingDb(() => []);
     assert.equal(await findClaim(db, 't-1', 'c1'), undefined);
     const sql = queries[0]?.sql ?? '';
     for (const part of [
       '"e"."data" as "encounter"',
       'inner join "imports" as "i" on "i"."id" = "ir"."import_id" where "ir"."encounter_id" = "e"."id"',
+      'from "claim_submissions" as "s" where "s"."claim_id" = "c"."id" and "s"."sent_at" is not null order by "s"."sent_at" desc',
       '"cc"."relationship", "cc"."insured_first_name", "cc"."insured_last_name" from "claim_coverages" as "cc"',
       '"l"."modifiers", "l"."units", "l"."unit_cents", "l"."total_cents" from "claim_lines" as "l" where "l"."claim_id" = "c"."id" order by "l"."position"',
       'array((select "d"."code" from "claim_diagnoses" as "d" where "d"."claim_id" = "c"."id" order by "d"."position")) as "diagnoses"'

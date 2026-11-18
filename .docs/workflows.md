@@ -1,6 +1,6 @@
 # Workflows
 
-How billing is built on the engine: a few events start workflows, workflows are stages, stages are rules, and rules are primitives wired on the canvas. Only a handful of service nodes touch the outside world, and they all speak in typed records. Scope today is one path, from a NEMSIS XML file to a claim that needs review; everything later in the claim's life (submission, remittance, denials, patient balances) is rebuilt on the same model afterwards.
+How billing is built on the engine: a few events start workflows, workflows are stages, stages are rules, and rules are primitives wired on the canvas. Only a handful of service nodes touch the outside world, and they all speak in typed records. Scope today is one path, from a NEMSIS XML file to a reviewed claim sent to the clearinghouse as an 837P; everything later in the claim's life (acknowledgments, remittance, denials, patient balances) is rebuilt on the same model afterwards.
 
 ## Principles
 
@@ -21,7 +21,7 @@ How billing is built on the engine: a few events start workflows, workflows are 
 | Events     | The workflow's start, shown as the event it waits for (On PCR File Received, On Encounter Created) with the event's fields as pins, or On Schedule                                                                                            |
 | Records    | Break and Make for Encounter, Times, Odometer, Person, Address, Scene, Destination, Payment, Insurance, Medication, Procedure, Vital Signs, Signature, Crew Member, Attachment, Claim, Coverage, Charge Line, Patient, Patient Address, Payer |
 | Primitives | Constant, Contains, Equal, compare, Is Null, And/Or/Not, Select, Choose Value, math, text, time, lists (Keep Items Where, Run Rule for Each, Find Item Where), Lookup Table, Branch, Switch, For Each, Sequence                               |
-| Services   | Read PCR File, Read PCR, Save Encounter, Read Encounter, Find Patient, Save Patient, Read Patient, Find Payer, Read Payer, Find Fee, Save Claim, Read Claim, Check Claim, Record Claim Review, Check Diagnoses, Search Diagnoses              |
+| Services   | Read PCR File, Read PCR, Save Encounter, Read Encounter, Find Patient, Save Patient, Read Patient, Find Payer, Read Payer, Find Fee, Save Claim, Read Claim, Check Claim, Record Claim Review, Send Claim, Check Diagnoses, Search Diagnoses  |
 | Endings    | Return, Fail                                                                                                                                                                                                                                  |
 | Graphs     | Every rule, stage and workflow, called like a node                                                                                                                                                                                            |
 
@@ -57,6 +57,7 @@ How billing is built on the engine: a few events start workflows, workflows are 
 | `encounter.created` | encounter, PCR number           | Save Encounter stores a PCR number for the first time |
 | `encounter.revised` | encounter, PCR number, revision | Save Encounter stores a changed copy of a PCR         |
 | `claim.created`     | claim, encounter                | Save Claim stores a new claim                         |
+| `claim.approved`    | claim, encounter, revision      | A biller approves a claim                             |
 | `claim.edited`      | claim, encounter, revision      | A biller saves a correction to a claim                |
 | `task.completed`    | task, queue, outcome            | A biller completes a task                             |
 
@@ -138,6 +139,12 @@ Read Encounter (Not Found stops at **Encounter Missing**, a Fail for inspection)
 | Unable to Sign                                | rule  | A release for billing the patient could not sign (unconscious, impaired, restrained, combative and so on), per signature                                                                                                                                                                                                                                                                                                             |
 | Facility Signature                            | rule  | Signed by a healthcare provider, per signature                                                                                                                                                                                                                                                                                                                                                                                       |
 | Dialysis Diagnosis                            | rule  | End-stage renal disease or dependence on dialysis (N18.6, Z99.2 and below), per diagnosis                                                                                                                                                                                                                                                                                                                                            |
+
+### Send Claim (on `claim.approved`)
+
+Send Claim uploads the approved claim to the agency's clearinghouse as an 837P billed to its first payer and marks it Sent: Sent, Self Pay (nothing to send) or Not Approved (revised since). A claim that lacks something stops at **Not Ready to Send** for a person to fix and retry. See [Clearinghouse](clearinghouse.md#sending-claims).
+
+When a revised PCR arrives for a claim already sent, Save Claim keeps the claim as sent (Already Sent), and Encounter to Claim gives a **Correct the Sent Claim** task (permission `claims:update`) instead of a review.
 
 ### Edited Claim to Review (on `claim.edited`)
 

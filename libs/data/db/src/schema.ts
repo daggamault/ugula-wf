@@ -506,6 +506,18 @@ export type ClaimsTable = {
   updated_at: Timestamp;
 };
 
+type ClaimSubmissionsTable = {
+  id: Generated<string>;
+  agency_id: string;
+  claim_id: string;
+  revision: number;
+  control_number: number;
+  file_name: string;
+  content: string;
+  created_at: Timestamp;
+  sent_at: NullableTimestamp;
+};
+
 type EncountersTable = {
   id: Generated<string>;
   number: GeneratedAlways<string>;
@@ -714,6 +726,7 @@ export type Database = {
   claim_diagnoses: ClaimDiagnosesTable;
   clearinghouse_connections: ClearinghouseConnectionsTable;
   billing_profiles: BillingProfilesTable;
+  claim_submissions: ClaimSubmissionsTable;
   payers: PayersTable;
   payer_aliases: PayerAliasesTable;
   payer_suggestions: PayerSuggestionsTable;

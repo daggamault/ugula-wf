@@ -92,6 +92,14 @@ const fakeStores = () => {
           outcome: saved.length > 1 ? 'replaced' : 'created'
         };
       },
+      sendClaim: async (_, id) => {
+        const last = saved.at(-1);
+        if (id !== 'c-1' || !last) return { outcome: 'notApproved' };
+        if (!last.coverages.length) return { outcome: 'selfPay' };
+        return last.diagnoses.length
+          ? { outcome: 'sent', fileName: 'S000000007.CLP', controlNumber: 7 }
+          : { outcome: 'notReady', issues: ['The claim has no diagnosis'] };
+      },
       checkClaim: async (_, id) =>
         id === 'c-1' ? (saved.at(-1)?.coverages.length ? [] : ['The claim has no payer']) : null,
       reviewClaim: async (_, review) => {
@@ -247,6 +255,27 @@ const CLAIM = {
   coverages: [{ payerName: 'Medicare', relationship: '18' }],
   lines: [{ code: 'A0429', units: 1, unitCents: 50000, totalCents: 50000 }]
 };
+
+describe('Send Claim', () => {
+  it('sends an approved claim, or says why it did not', async () => {
+    const { stores } = fakeStores();
+    await run(stores, 'claim.save', { claim: { ...CLAIM, diagnoses: ['R079'] } });
+    const sent = await run(stores, 'claim.send', { claimId: 'c-1' });
+    assert.deepEqual(
+      [sent.pin, sent.outputs.fileName, sent.outputs.controlNumber],
+      ['sent', 'S000000007.CLP', 7]
+    );
+    await run(stores, 'claim.save', { claim: CLAIM });
+    const lacking = await run(stores, 'claim.send', { claimId: 'c-1' });
+    assert.deepEqual(
+      [lacking.pin, lacking.outputs.issues],
+      ['notReady', ['The claim has no diagnosis']]
+    );
+    await run(stores, 'claim.save', { claim: { ...CLAIM, coverages: [] } });
+    assert.equal((await run(stores, 'claim.send', { claimId: 'c-1' })).pin, 'selfPay');
+    assert.equal((await run(stores, 'claim.send', { claimId: 'c-9' })).pin, 'notApproved');
+  });
+});
 
 describe('Check Claim', () => {
   it('says whether a saved claim can be sent, and what it lacks', async () => {

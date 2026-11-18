@@ -5,7 +5,8 @@ import type { Intent } from '../ui/intent.ts';
 const INTENTS: Record<ClaimStatus, Intent> = {
   needs_review: 'warning',
   approved: 'success',
-  on_hold: 'danger'
+  on_hold: 'danger',
+  submitted: 'info'
 };
 
 export const ClaimStatusBadge = ({ status }: { status: ClaimStatus }) => (

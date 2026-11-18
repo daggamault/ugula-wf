@@ -24,7 +24,8 @@ describe('ClaimStatusBadge', () => {
     assert.deepEqual(Object.fromEntries(CLAIM_STATUSES.map((s) => [s, badge(s).label])), {
       needs_review: 'Needs Review',
       approved: 'Approved',
-      on_hold: 'On Hold'
+      on_hold: 'On Hold',
+      submitted: 'Sent'
     });
   });
 
@@ -36,7 +37,8 @@ describe('ClaimStatusBadge', () => {
     assert.deepEqual(Object.fromEntries(CLAIM_STATUSES.map((s) => [s, tintOf(s)])), {
       needs_review: 'text-warning-text',
       approved: 'text-success',
-      on_hold: 'text-danger'
+      on_hold: 'text-danger',
+      submitted: 'text-info'
     });
   });
 });

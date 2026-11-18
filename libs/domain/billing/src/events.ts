@@ -2,6 +2,7 @@ import type { EventDef, PinSpec } from '@ugula/graph';
 
 export const BILLING_EVENTS = {
   claimCreated: 'claim.created',
+  claimApproved: 'claim.approved',
   claimEdited: 'claim.edited',
   taskCompleted: 'task.completed'
 } as const;
@@ -21,6 +22,16 @@ export const billingEvents: EventDef[] = [
     payload: [
       p('claimId', { id: 'claim' }, 'Claim', 'The claim saved.'),
       p('encounterId', { id: 'encounter' }, 'Encounter', 'The encounter the claim bills.')
+    ]
+  },
+  {
+    type: BILLING_EVENTS.claimApproved,
+    label: 'Claim Approved',
+    description: 'A biller approved a claim, so it is ready for the clearinghouse.',
+    payload: [
+      p('claimId', { id: 'claim' }, 'Claim', 'The claim approved.'),
+      p('encounterId', { id: 'encounter' }, 'Encounter', 'The encounter the claim bills.'),
+      p('revision', 'integer', 'Revision', 'The revision approved.')
     ]
   },
   {

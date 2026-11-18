@@ -1,4 +1,5 @@
 import { createNodeCatalog } from '@ugula/catalog';
+import { parseKeyring } from '@ugula/clearinghouse';
 import {
   createDb,
   dispatchEvents,
@@ -16,6 +17,7 @@ import { type Config, parseConfig } from './config.ts';
 import { createFeeStore } from './features/charges/queries.ts';
 import { announceClaims } from './features/claims/announce.ts';
 import { createClaimStore } from './features/claims/queries.ts';
+import { createClaimSender } from './features/claims/send.ts';
 import { createDiagnosisStore } from './features/diagnoses/queries.ts';
 import { announceEncounters } from './features/encounters/announce.ts';
 import { createEncounterStore } from './features/encounters/queries.ts';
@@ -126,7 +128,23 @@ if (import.meta.main) {
           patients: createPatientStore(db),
           payers: createPayerStore(db),
           fees: createFeeStore(db),
-          claims: announceClaims(createClaimStore(db, boss), announce),
+          claims: announceClaims(
+            createClaimStore(
+              db,
+              boss,
+              createClaimSender({
+                db,
+                keyring: config.CLEARINGHOUSE_SECRET_KEY
+                  ? parseKeyring(
+                      config.CLEARINGHOUSE_SECRET_KEY,
+                      config.CLEARINGHOUSE_PREVIOUS_SECRET_KEYS
+                    )
+                  : null,
+                now
+              })
+            ),
+            announce
+          ),
           diagnoses: createDiagnosisStore(db, createEmbedder({ url: config.EMBEDDINGS_URL, fetch }))
         }
       }),

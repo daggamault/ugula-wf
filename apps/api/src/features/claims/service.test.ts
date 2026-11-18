@@ -190,11 +190,18 @@ describe('editing a claim', () => {
     assert.deepEqual(events, [{ agencyId: 't-1', event: { kind: 'claim', id: 'c1' } }]);
   });
 
-  it('refuses an edit of a claim changed since it was opened, or of none', async () => {
+  it('refuses an edit of a claim changed since it was opened, already sent, or of none', async () => {
     const stale = await editing().service.edit('t-1', 'u-1', 'c1', { ...EDIT, revision: 1 });
     assert.equal(stale.ok ? null : stale.failure.code, 'conflict');
     const missing = await editing(null).service.edit('t-1', 'u-1', 'c1', EDIT);
     assert.equal(missing.ok ? null : missing.failure.code, 'not_found');
+    const sent = await editing({ ...CURRENT, status: 'submitted' }).service.edit(
+      't-1',
+      'u-1',
+      'c1',
+      EDIT
+    );
+    assert.match(sent.ok ? '' : sent.failure.message, /already sent to the clearinghouse/);
   });
 
   it('says what is wrong with an edit it cannot save, and saves nothing', async () => {

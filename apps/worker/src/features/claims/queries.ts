@@ -37,7 +37,11 @@ const issuesOf = async (db: Kysely<Database>, runId: string, claimId: string) =>
   return run ? ((await checkClaim(db, run.agency_id, claimId))?.issues ?? null) : null;
 };
 
-export const createClaimStore = (db: Kysely<Database>, boss: RunQueueClient): ClaimStore => ({
+export const createClaimStore = (
+  db: Kysely<Database>,
+  boss: RunQueueClient,
+  sendClaim: ClaimStore['sendClaim']
+): ClaimStore => ({
   findClaim: async (runId, claimId) => {
     if (!isUuid(claimId)) return null;
     const c = await db
@@ -177,20 +181,32 @@ export const createClaimStore = (db: Kysely<Database>, boss: RunQueueClient): Cl
           ...claimColumns(claim)
         })
         .onConflict((oc) =>
-          oc.columns(['agency_id', 'encounter_id']).doUpdateSet({
-            patient_id: claim.patientId,
-            ...patient,
-            ...claimColumns(claim),
-            status: 'needs_review',
-            revision: sql`claims.revision + 1`,
-            reviewed_by: null,
-            reviewed_at: null,
-            review_note: null,
-            updated_at: sql`now()`
-          })
+          oc
+            .columns(['agency_id', 'encounter_id'])
+            .doUpdateSet({
+              patient_id: claim.patientId,
+              ...patient,
+              ...claimColumns(claim),
+              status: 'needs_review',
+              revision: sql`claims.revision + 1`,
+              reviewed_by: null,
+              reviewed_at: null,
+              review_note: null,
+              updated_at: sql`now()`
+            })
+            .where('claims.status', '<>', 'submitted')
         )
         .returning(['id', 'agency_id', 'revision', sql<boolean>`xmax = 0`.as('inserted')])
-        .executeTakeFirstOrThrow();
+        .executeTakeFirst();
+      if (!saved) {
+        const sent = await tx
+          .selectFrom('claims')
+          .select(['id', 'revision'])
+          .where('agency_id', '=', runAgency(tx, runId))
+          .where('encounter_id', '=', claim.encounterId)
+          .executeTakeFirstOrThrow();
+        return { id: sent.id, revision: sent.revision, outcome: 'alreadySent' as const };
+      }
       if (!saved.inserted) {
         await cancelStaleReviews(tx, boss, saved.agency_id, claim.encounterId, runId);
       }
@@ -202,6 +218,7 @@ export const createClaimStore = (db: Kysely<Database>, boss: RunQueueClient): Cl
       };
     }),
   checkClaim: (runId, claimId) => issuesOf(db, runId, claimId),
+  sendClaim,
   reviewClaim: async (runId, review) => {
     if (!isUuid(review.claimId)) throw new Error(`Claim ${review.claimId} does not exist`);
     if (!isUuid(review.reviewedBy)) throw new Error(`User ${review.reviewedBy} does not exist`);

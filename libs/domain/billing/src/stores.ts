@@ -26,12 +26,22 @@ export type PayerStore = {
   matchPayer: (runId: string, name: string) => Promise<MatchedPayer>;
 };
 
-type SavedClaim = { id: string; revision: number; outcome: 'created' | 'replaced' };
+type SavedClaim = {
+  id: string;
+  revision: number;
+  outcome: 'created' | 'replaced' | 'alreadySent';
+};
+
+export type SentClaim =
+  | { outcome: 'sent'; fileName: string; controlNumber: number }
+  | { outcome: 'selfPay' | 'notApproved' }
+  | { outcome: 'notReady'; issues: string[] };
 
 export type ClaimStore = {
   findClaim: (runId: string, claimId: string) => Promise<StoredClaim | null>;
   saveClaim: (runId: string, claim: ClaimInput) => Promise<SavedClaim>;
   checkClaim: (runId: string, claimId: string) => Promise<string[] | null>;
+  sendClaim: (runId: string, claimId: string) => Promise<SentClaim>;
   reviewClaim: (
     runId: string,
     review: ClaimReview

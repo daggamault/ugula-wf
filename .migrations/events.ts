@@ -9,7 +9,8 @@ export const EVENT_FUNCTIONS = [
   'emit_task_completed_event',
   'emit_encounter_created_event',
   'emit_encounter_revised_event',
-  'emit_claim_created_event'
+  'emit_claim_created_event',
+  'emit_claim_approved_event'
 ] as const;
 
 const buildEventsTable = (db: Kysely<Database>) =>
@@ -159,6 +160,25 @@ const claimCreatedTrigger = sql`
   after insert on claims
   for each row execute function emit_claim_created_event()`;
 
+const claimApprovedFunction = sql`
+  create function emit_claim_approved_event() returns trigger language plpgsql as $$
+  begin
+    insert into events (agency_id, type, payload, created_by_id)
+    values (new.agency_id, ${sql.lit(BILLING_EVENTS.claimApproved)}, jsonb_build_object(
+      'claimId', new.id,
+      'encounterId', new.encounter_id,
+      'revision', new.revision
+    ), new.reviewed_by);
+    return null;
+  end;
+  $$`;
+
+const claimApprovedTrigger = sql`
+  create trigger claims_emit_approved
+  after update of status on claims
+  for each row when (new.status = 'approved' and old.status is distinct from 'approved')
+  execute function emit_claim_approved_event()`;
+
 export const createEventEmitters = async (db: Kysely<Database>) => {
   for (const statement of [
     taskFunction,
@@ -168,7 +188,9 @@ export const createEventEmitters = async (db: Kysely<Database>) => {
     encounterRevisedFunction,
     encounterRevisedTrigger,
     claimCreatedFunction,
-    claimCreatedTrigger
+    claimCreatedTrigger,
+    claimApprovedFunction,
+    claimApprovedTrigger
   ]) {
     await statement.execute(db);
   }

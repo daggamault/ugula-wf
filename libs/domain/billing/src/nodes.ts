@@ -308,7 +308,7 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
       title: 'Save Claim',
       category: 'Claim',
       description:
-        'Saves the claim for its encounter as Needs Review, for a biller to review. A claim already saved for the encounter is replaced, gets a new revision and needs review again, even when it was approved. A new claim emits Claim Created.',
+        'Saves the claim for its encounter as Needs Review, for a biller to review. A claim already saved for the encounter is replaced, gets a new revision and needs review again, even when it was approved; a claim already sent to the clearinghouse is kept as it was sent. A new claim emits Claim Created.',
       level: 'basic',
       keywords: ['store', 'claim', 'create', 'review'],
       effect: true,
@@ -322,7 +322,12 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
       ],
       exits: {
         created: { label: 'Created', description: 'The encounter had no claim yet.' },
-        replaced: { label: 'Replaced', description: 'The claim already saved was replaced.' }
+        replaced: { label: 'Replaced', description: 'The claim already saved was replaced.' },
+        alreadySent: {
+          label: 'Already Sent',
+          description:
+            'The claim was already sent to the clearinghouse, so it was kept as sent; a change now needs a corrected claim.'
+        }
       },
       compute: async ({ claim }, _, ctx) => {
         const saved = await storesOf().claims.saveClaim(ctx.runId, readClaim(claim as ClaimValue));
@@ -374,6 +379,64 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
         const issues = await storesOf().claims.checkClaim(ctx.runId, claimId);
         if (issues === null) throw new Error(`Claim ${claimId} was not found`);
         return { exit: issues.length ? 'notReady' : 'ready', outputs: { issues } };
+      }
+    }),
+    branchNode({
+      type: 'claim.send',
+      title: 'Send Claim',
+      category: 'Claim',
+      description:
+        "Sends an approved claim to the agency's clearinghouse as an 837P file, billed to its first payer, and marks it Sent. A claim the patient pays has no payer to send to.",
+      level: 'basic',
+      keywords: ['claim', 'send', 'submit', '837', 'clearinghouse', 'sftp'],
+      effect: true,
+      inputs: [pin('claimId', CLAIM_ID, { label: 'Claim', description: 'The claim to send.' })],
+      outputs: [
+        pin('fileName', 'string', {
+          optional: true,
+          label: 'File Name',
+          description: 'The 837P file uploaded, when sent.'
+        }),
+        pin('controlNumber', 'integer', {
+          optional: true,
+          label: 'Control Number',
+          description: 'The interchange control number of the file, when sent.'
+        }),
+        pin(
+          'issues',
+          { list: 'string' },
+          { description: 'What the claim lacks to be sent, when it is not ready.' }
+        )
+      ],
+      exits: {
+        sent: { label: 'Sent', description: 'The 837P is with the clearinghouse.' },
+        selfPay: {
+          label: 'Self Pay',
+          description: 'The claim has no payer, so the patient is billed and nothing is sent.'
+        },
+        notReady: {
+          label: 'Not Ready',
+          description: 'The claim lacks something the 837P needs; the issues say what.'
+        },
+        notApproved: {
+          label: 'Not Approved',
+          description:
+            'The claim is not approved, or was already sent, such as when it was revised after it was approved.'
+        }
+      },
+      compute: async ({ claimId }, _, ctx) => {
+        const sent = await storesOf().claims.sendClaim(ctx.runId, claimId);
+        switch (sent.outcome) {
+          case 'sent':
+            return {
+              exit: 'sent',
+              outputs: { fileName: sent.fileName, controlNumber: sent.controlNumber, issues: [] }
+            };
+          case 'notReady':
+            return { exit: 'notReady', outputs: { issues: sent.issues } };
+          default:
+            return { exit: sent.outcome, outputs: { issues: [] } };
+        }
       }
     }),
     branchNode({

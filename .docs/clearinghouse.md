@@ -1,6 +1,10 @@
 # Clearinghouse
 
-What exists today is the agency connection, the X12 builders and readers the mock uses, and the mock itself. No workflow exchanges files yet: the operations port, its SFTP and real-time transports, and submission, acknowledgments, eligibility, claim status and remittance are rebuilt on the [workflow](workflows.md) model next, each started from an event.
+What exists today is the agency connection, the X12 builders and readers the mock uses, the mock itself, and claim submission: **Send Claim** uploads each approved claim as an 837P over SFTP. Acknowledgments, eligibility, claim status and remittance are rebuilt on the [workflow](workflows.md) model next, each started from an event.
+
+## Sending claims
+
+Approving a claim emits `claim.approved`, which starts **Send Claim**. Its Send Claim node (worker `features/claims/send.ts`) locks the claim, and while it is still approved builds one 837P for it, billed to its first payer, from the claim as billed, its directory payer and the billing profile. Each file gets the next interchange control number of the agency (ISA13, GS06 and BHT03) and is named `<submitter ID><control number, 9 digits><837P extension>` (`SUB01000000042.CLP`), with no other periods. The file is kept in `claim_submissions` before it is uploaded, so a run retried after a failed upload sends the same file under the same number. The worker opens the connection password with `CLEARINGHOUSE_SECRET_KEY`, checks the server presents the pinned host key, writes the file to the upload folder and marks the claim **Sent**. A claim the patient pays is not sent; a claim missing something, or an agency with no active connection, stops the run for a person to fix and retry. A claim already sent is never rebuilt: a revised PCR leaves it as sent and asks a biller to correct it with the payer (Correct the Sent Claim), and it can no longer be edited.
 
 ## What is kept
 
@@ -73,4 +77,4 @@ Each agency's billing profile submitter ID must be the ID the clearinghouse addr
   - `.277` (claim status, 005010X212) answers each 276: in process (A2) for an accepted claim, paid (F1) once its 835 went out, rejected (A3), or not found (A4) for a claim it never saw.
 - `POST /core/realtime` takes a CAQH CORE multipart envelope (Basic auth, `PayloadType` `X12_270_Request_005010X279A1` or `X12_276_Request_005010X212`) and returns the 271 or 277 in the same envelope.
 
-The answers come from the Waystar mock in `@ugula/billing/testing`. No workflow uploads to it yet.
+The answers come from the Waystar mock in `@ugula/billing/testing`. To send claims to it in development, set the agency's connection to the mock preset in Settings with the `CLEARINGHOUSE_SFTP_USERNAME` and `CLEARINGHOUSE_SFTP_PASSWORD` of `.env`, and give the billing profile a submitter ID.

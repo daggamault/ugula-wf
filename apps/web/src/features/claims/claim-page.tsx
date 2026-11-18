@@ -73,7 +73,7 @@ export const ClaimView = ({
             <UserIcon aria-hidden="true" className="size-4" />
             Patient
           </ButtonLink>
-          {can('claims:update') ? (
+          {can('claims:update') && claim.status !== 'submitted' ? (
             <ButtonLink to={`${path}/edit`} variant="outline">
               <PencilIcon aria-hidden="true" className="size-4" />
               Edit Claim

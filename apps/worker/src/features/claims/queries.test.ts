@@ -67,6 +67,8 @@ const queue = () => {
 
 const STALE_RUN = '0195f2a4-0000-7000-8000-000000000009';
 
+const notSent = async () => ({ outcome: 'notApproved' as const });
+
 const PATIENT_ROW = {
   patient_first_name: 'Ada',
   patient_last_name: 'Lovelace',
@@ -131,7 +133,7 @@ describe('createClaimStore', () => {
         ]
       }
     ]);
-    const store = createClaimStore(db, queue().boss);
+    const store = createClaimStore(db, queue().boss, notSent);
     assert.deepEqual(await store.findClaim('r1', CLAIM_ID), {
       ...CLAIM,
       id: CLAIM_ID,
@@ -153,7 +155,7 @@ describe('createClaimStore', () => {
 
   it('finds no claim outside the run agency', async () => {
     const { db } = createRecordingDb(() => []);
-    assert.equal(await createClaimStore(db, queue().boss).findClaim('r1', CLAIM_ID), null);
+    assert.equal(await createClaimStore(db, queue().boss, notSent).findClaim('r1', CLAIM_ID), null);
   });
 
   it('saves the claim for its encounter and replaces its lines, payers and diagnoses', async () => {
@@ -164,7 +166,7 @@ describe('createClaimStore', () => {
           ? [PATIENT_ROW]
           : []
     );
-    assert.deepEqual(await createClaimStore(db, queue().boss).saveClaim('r1', CLAIM), {
+    assert.deepEqual(await createClaimStore(db, queue().boss, notSent).saveClaim('r1', CLAIM), {
       id: CLAIM_ID,
       revision: 1,
       outcome: 'created'
@@ -202,7 +204,7 @@ describe('createClaimStore', () => {
   it('refuses a claim for a patient outside the run agency', async () => {
     const { db } = createRecordingDb(() => []);
     await assert.rejects(
-      createClaimStore(db, queue().boss).saveClaim('r1', CLAIM),
+      createClaimStore(db, queue().boss, notSent).saveClaim('r1', CLAIM),
       new RegExp(`Patient ${PATIENT} does not exist`)
     );
   });
@@ -218,7 +220,7 @@ describe('createClaimStore', () => {
             : []
     );
     const { boss, jobs } = queue();
-    await createClaimStore(db, boss).saveClaim('r1', CLAIM);
+    await createClaimStore(db, boss, notSent).saveClaim('r1', CLAIM);
     const stale = queries.find((q) => q.sql.startsWith('select "r"."id" from "workflow_runs"'));
     assert.match(stale?.sql ?? '', /"r"."status" = \$\d+ and r.inputs ->> 'encounterId' = \$\d+/);
     assert.match(stale?.sql ?? '', /"t"."permission" = \$\d+/);
@@ -236,7 +238,7 @@ describe('createClaimStore', () => {
           : []
     );
     const { boss, jobs } = queue();
-    await createClaimStore(db, boss).saveClaim('r1', CLAIM);
+    await createClaimStore(db, boss, notSent).saveClaim('r1', CLAIM);
     assert.ok(!queries.some((q) => q.sql.includes('"workflow_runs" as "r"')));
     assert.deepEqual(jobs, []);
   });
@@ -249,7 +251,7 @@ describe('createClaimStore', () => {
           ? [PATIENT_ROW]
           : []
     );
-    const saved = await createClaimStore(db, queue().boss).saveClaim('r1', {
+    const saved = await createClaimStore(db, queue().boss, notSent).saveClaim('r1', {
       ...CLAIM,
       lines: [],
       coverages: [],
@@ -271,7 +273,7 @@ describe('createClaimStore', () => {
     };
     const recorded = createRecordingDb(() => [{ id: CLAIM_ID }]);
     assert.equal(
-      await createClaimStore(recorded.db, queue().boss).reviewClaim('r1', review),
+      await createClaimStore(recorded.db, queue().boss, notSent).reviewClaim('r1', review),
       'recorded'
     );
     const [update] = recorded.queries;
@@ -283,11 +285,11 @@ describe('createClaimStore', () => {
     assert.deepEqual(update?.parameters.slice(0, 3), ['on_hold', USER, 'Need the PCS']);
     const superseded = createRecordingDb(() => []);
     assert.equal(
-      await createClaimStore(superseded.db, queue().boss).reviewClaim('r1', review),
+      await createClaimStore(superseded.db, queue().boss, notSent).reviewClaim('r1', review),
       'superseded'
     );
     await assert.rejects(
-      createClaimStore(superseded.db, queue().boss).reviewClaim('r1', {
+      createClaimStore(superseded.db, queue().boss, notSent).reviewClaim('r1', {
         ...review,
         reviewedBy: 'u-1'
       }),
@@ -319,7 +321,7 @@ describe('createClaimStore', () => {
           ? [unaddressed]
           : []
     );
-    const store = createClaimStore(db, queue().boss);
+    const store = createClaimStore(db, queue().boss, notSent);
     assert.deepEqual(await store.checkClaim('r1', CLAIM_ID), [
       'The patient address has no street, city, state or ZIP code'
     ]);
@@ -336,18 +338,40 @@ describe('createClaimStore', () => {
     assert.ok(!queries.some((q) => q.sql.startsWith('update')));
   });
 
+  it('keeps a claim already sent as it was sent', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.startsWith('insert into "claims"')
+        ? []
+        : isPatientRead(q.sql)
+          ? [PATIENT_ROW]
+          : q.sql.startsWith('select "id", "revision" from "claims"')
+            ? [{ id: CLAIM_ID, revision: 3 }]
+            : []
+    );
+    assert.deepEqual(await createClaimStore(db, queue().boss, notSent).saveClaim('r1', CLAIM), {
+      id: CLAIM_ID,
+      revision: 3,
+      outcome: 'alreadySent'
+    });
+    assert.match(
+      queries.find((q) => q.sql.startsWith('insert into "claims"'))?.sql ?? '',
+      /where "claims"\."status" <> \$\d+ returning/
+    );
+    assert.ok(!queries.some((q) => q.sql.startsWith('delete')));
+  });
+
   it('refuses ids that are not ids before touching the database', async () => {
     const { db, queries } = createRecordingDb();
     await assert.rejects(
-      createClaimStore(db, queue().boss).saveClaim('r1', { ...CLAIM, patientId: 'p-1' }),
+      createClaimStore(db, queue().boss, notSent).saveClaim('r1', { ...CLAIM, patientId: 'p-1' }),
       /Patient p-1 does not exist/
     );
     await assert.rejects(
-      createClaimStore(db, queue().boss).saveClaim('r1', { ...CLAIM, encounterId: 'e-1' }),
+      createClaimStore(db, queue().boss, notSent).saveClaim('r1', { ...CLAIM, encounterId: 'e-1' }),
       /Encounter e-1 does not exist/
     );
     await assert.rejects(
-      createClaimStore(db, queue().boss).saveClaim('r1', {
+      createClaimStore(db, queue().boss, notSent).saveClaim('r1', {
         ...CLAIM,
         coverages: [
           { ...(CLAIM.coverages[0] as ClaimInput['coverages'][number]), payerId: 'pay-1' }

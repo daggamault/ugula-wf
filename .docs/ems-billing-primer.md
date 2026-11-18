@@ -70,7 +70,7 @@ What the app does today is in [Workflows](workflows.md); everything else is rebu
 | Claim checks: signature, PCS, prior authorization, timely filing                                 | Built: Claim Checks                                           |
 | Claim checks: ABN and transport reason by payer                                                  | To rebuild                                                    |
 | Eligibility (270/271) and insurance discovery                                                    | To rebuild; the X12 and clearinghouse foundations exist       |
-| 837P submission and acknowledgments (TA1, 999, 277CA)                                            | To rebuild; the X12 builders and readers exist                |
+| 837P submission and acknowledgments (TA1, 999, 277CA)                                            | Submission built: Send Claim; acknowledgments to rebuild      |
 | Claim status (276/277)                                                                           | To rebuild                                                    |
 | 835 posting, denial routing by CARC, corrected claims, appeals                                   | To rebuild; the 835 reader exists                             |
 | QL and GM modifiers; A0888 non-covered miles; air base rates and mileage                         | Built: Line Modifiers, Covered Miles, Vehicles table          |

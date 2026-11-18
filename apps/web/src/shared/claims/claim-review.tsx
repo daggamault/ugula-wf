@@ -7,10 +7,17 @@ import { ClaimStatusBadge } from './claim-status-badge.tsx';
 
 type Reviewed = Pick<
   ClaimDetail,
-  'status' | 'revision' | 'reviewed_at' | 'reviewed_by' | 'review_note'
+  | 'status'
+  | 'revision'
+  | 'reviewed_at'
+  | 'reviewed_by'
+  | 'review_note'
+  | 'sent_at'
+  | 'sent_file_name'
+  | 'sent_control_number'
 >;
 
-const DECIDED = { approved: 'Approved By', on_hold: 'Held By' } as const;
+const DECIDED = { approved: 'Approved By', on_hold: 'Held By', submitted: 'Approved By' } as const;
 
 export const ClaimReviewPanel = ({ claim }: { claim: Reviewed }) => (
   <SectionPanel title="Review">
@@ -30,6 +37,18 @@ export const ClaimReviewPanel = ({ claim }: { claim: Reviewed }) => (
           <Detail label="Note">{claim.review_note ?? emptyValue}</Detail>
         </>
       )}
+      {claim.sent_at ? (
+        <>
+          <Detail label="Sent">{formatDateTime(claim.sent_at)}</Detail>
+          <Detail label="837P File">
+            {claim.sent_file_name}
+            <span className="text-surface-fg-muted text-xs tabular-nums">
+              {' '}
+              control {claim.sent_control_number}
+            </span>
+          </Detail>
+        </>
+      ) : null}
     </DetailList>
   </SectionPanel>
 );

@@ -530,7 +530,11 @@ const buildClaim = (): GraphDef => {
     ],
     {
       saved: exit('Saved', 'The claim is saved and needs review.'),
-      notBillable: exit('Not Billable', 'The trip is not billed, so no claim was made.')
+      notBillable: exit('Not Billable', 'The trip is not billed, so no claim was made.'),
+      alreadySent: exit(
+        'Already Sent',
+        'The claim was already sent, so it was kept as sent; the change needs a corrected claim.'
+      )
     }
   );
   breakRecord(
@@ -624,6 +628,7 @@ const buildClaim = (): GraphDef => {
   g.ret('notBilled', 'notBillable');
   g.ret('created', 'saved');
   g.ret('replaced', 'saved');
+  g.ret('kept', 'alreadySent');
   g.wire(
     'entry.encounter',
     'classify.encounter',
@@ -711,8 +716,9 @@ const buildClaim = (): GraphDef => {
   g.wire(reasons, 'claim.reasons');
   g.wire('charges.charged', 'save.exec');
   g.wire(`claim.${CLAIM.name}`, 'save.claim');
-  for (const outcome of ['created', 'replaced']) {
-    g.wire(`save.${outcome}`, `${outcome}.exec`);
+  g.wire('save.alreadySent', 'kept.exec');
+  for (const outcome of ['created', 'replaced', 'kept']) {
+    if (outcome !== 'kept') g.wire(`save.${outcome}`, `${outcome}.exec`);
     g.wire('save.claimId', `${outcome}.claimId`);
     g.wire('save.revision', `${outcome}.revision`);
     g.wire('settle.classification', `${outcome}.classification`);
@@ -748,6 +754,26 @@ const fromEncounter = (event: string) => {
   const billed = Object.keys(REVIEW_OUTCOMES);
   for (const outcome of billed) g.ret(outcome);
   g.ret('notBilled');
+  g.ret('alreadySent');
+  g.add('sentChanged', 'std.human.task', {
+    label: 'Correct the Sent Claim',
+    note: 'The PCR changed after its claim went out, so a biller decides what to tell the payer.',
+    config: {
+      title: 'Correct the Sent Claim',
+      queue: QUEUE,
+      permission: 'claims:update',
+      instructions:
+        'The PCR changed after its claim was sent to the clearinghouse, so the claim was kept as it was sent. Compare the revised encounter with the claim, and if what was billed must change, send the payer a corrected claim. Note what you did.',
+      fields: [{ name: 'note', type: 'string', label: 'What Was Done', required: ['done'] }],
+      outcomes: ['done'],
+      hints: { done: 'The payer has what it needs.' }
+    }
+  });
+  g.wire('build.alreadySent', 'sentChanged.exec');
+  g.wire('pcr.pcrNumber', 'sentChanged.subject');
+  g.wire('build.reasons', 'sentChanged.context');
+  g.wire('sentChanged.done', 'alreadySent.exec');
+  g.wire('build.claimId', 'alreadySent.claimId');
   g.wire('entry.exec', 'read.exec');
   g.wire('entry.encounterId', 'read.encounterId');
   g.add('missing', 'std.flow.fail', {
@@ -773,10 +799,47 @@ const fromEncounter = (event: string) => {
     g.wire(`review.${outcome}`, `${outcome}.exec`);
     g.wire('build.claimId', `${outcome}.claimId`);
   }
-  for (const ret of [...billed, 'notBilled']) {
+  for (const ret of [...billed, 'notBilled', 'alreadySent']) {
     g.wire('build.classification', `${ret}.classification`);
     g.wire('build.reasons', `${ret}.reasons`);
   }
+  return g.def;
+};
+
+const sendApproved = () => {
+  const g = flow(
+    [
+      d('claimId', ID.claim, 'Claim', 'The claim a biller approved.'),
+      d('encounterId', ID.encounter, 'Encounter', 'The encounter the claim bills.'),
+      d('revision', 'integer', 'Revision', 'The revision approved.')
+    ],
+    [
+      d('claimId', ID.claim, 'Claim', 'The claim approved.'),
+      d('fileName', 'string', 'File Name', 'The 837P file sent, when one was.', true)
+    ]
+  );
+  g.trigger({ kind: 'event', event: 'claim.approved', where: {} });
+  g.add('send', 'claim.send', {
+    label: 'Send Claim',
+    note: 'Uploads the 837P to the clearinghouse and marks the claim Sent.'
+  });
+  g.add('notReady', 'std.flow.fail', {
+    label: 'Not Ready to Send',
+    note: 'Stops for a person when the claim changed after approval; retry once it is fixed.',
+    values: {
+      message:
+        'The claim lacks something the 837P needs; its page lists what. Fix it, then retry this run.'
+    }
+  });
+  g.wire('entry.exec', 'send.exec');
+  g.wire('entry.claimId', 'send.claimId');
+  g.wire('send.notReady', 'notReady.exec');
+  for (const outcome of ['sent', 'selfPay', 'notApproved']) {
+    g.ret(outcome);
+    g.wire(`send.${outcome}`, `${outcome}.exec`);
+    g.wire('entry.claimId', `${outcome}.claimId`);
+  }
+  g.wire('send.fileName', 'sent.fileName');
   return g.def;
 };
 
@@ -874,6 +937,12 @@ export const claimGraphs: SeedGraph[] = [
     'Revised Encounter to Claim',
     'When a changed copy of a PCR revises an encounter, builds its claim again, saves it over the one before as a new revision and has a biller review it again, even when the one before was approved.',
     fromEncounter('encounter.revised')
+  ),
+  asWorkflow(
+    'billing.send-claim',
+    'Send Claim',
+    'When a biller approves a claim, sends it to the clearinghouse as an 837P billed to its first payer and marks it Sent. A claim the patient pays is not sent.',
+    sendApproved()
   ),
   asWorkflow(
     'billing.edited-claim-review',

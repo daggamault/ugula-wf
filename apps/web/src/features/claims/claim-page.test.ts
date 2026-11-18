@@ -46,7 +46,7 @@ describe('ClaimView', () => {
     assert.ok(!renderView().includes('Not ready to send'));
   });
 
-  it('offers to edit the claim only to a biller who may correct claims', () => {
+  it('offers to edit the claim only to a biller who may correct claims, until it is sent', () => {
     const view = (permissions: Permission[]) =>
       renderToStaticMarkup(
         createElement(AccessProvider, {
@@ -64,6 +64,21 @@ describe('ClaimView', () => {
       );
     assert.ok(view(['claims:read', 'claims:update']).includes('href="/claims/c1/edit"'));
     assert.ok(!view(['claims:read']).includes('Edit Claim'));
+    const sent = renderToStaticMarkup(
+      createElement(AccessProvider, {
+        access: {
+          agencyId: 'a1',
+          agencyName: 'North EMS',
+          organizationId: 'o1',
+          organizationName: 'Acme',
+          userId: 'u1',
+          isOrganizationAdmin: false,
+          permissions: ['claims:read', 'claims:update']
+        },
+        children: createElement(ClaimView, { claim: { ...claim, status: 'submitted' }, codes: {} })
+      })
+    );
+    assert.ok(!sent.includes('Edit Claim'));
   });
 
   it('leaves out a patient number the patient does not have', () => {

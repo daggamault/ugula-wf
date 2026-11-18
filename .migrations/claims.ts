@@ -7,6 +7,7 @@ import {
   HCPCS_PATTERN,
   ICD10_PATTERN,
   INSURED_RELATIONSHIPS,
+  MAX_CONTROL_NUMBER,
   MAX_LINE_MODIFIERS,
   MODIFIER_PATTERN,
   NOTE_LENGTH,
@@ -205,6 +206,37 @@ const buildClaimDiagnosesTable = (db: Kysely<Database>) =>
     )
     .addCheckConstraint('claim_diagnoses_code_check', sql`code ~ ${sql.lit(ICD10_PATTERN)}`);
 
+const buildClaimSubmissionsTable = (db: Kysely<Database>) =>
+  db.schema
+    .createTable('claim_submissions')
+    .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
+    .addColumn('agency_id', 'uuid', (col) => col.notNull())
+    .addColumn('claim_id', 'uuid', (col) => col.notNull())
+    .addColumn('revision', 'integer', (col) => col.notNull())
+    .addColumn('control_number', 'integer', (col) => col.notNull())
+    .addColumn('file_name', 'text', (col) => col.notNull())
+    .addColumn('content', 'text', (col) => col.notNull())
+    .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
+    .addColumn('sent_at', 'timestamptz')
+    .addForeignKeyConstraint(
+      'claim_submissions_claim_id_fkey',
+      ['agency_id', 'claim_id'],
+      'claims',
+      ['agency_id', 'id'],
+      (fk) => fk.onDelete('cascade').onUpdate('cascade')
+    )
+    .addUniqueConstraint('claim_submissions_claim_id_revision_unique', ['claim_id', 'revision'])
+    .addUniqueConstraint('claim_submissions_agency_id_control_number_unique', [
+      'agency_id',
+      'control_number'
+    ])
+    .addCheckConstraint(
+      'claim_submissions_control_number_check',
+      sql`control_number between 1 and ${sql.lit(MAX_CONTROL_NUMBER)}`
+    )
+    .addCheckConstraint('claim_submissions_file_name_check', sql`file_name <> ''`)
+    .addCheckConstraint('claim_submissions_revision_check', sql`revision >= 1`);
+
 const buildClaimsIndexes = (db: Kysely<Database>) => [
   db.schema
     .createIndex('idx_claims_agency_status')
@@ -230,5 +262,6 @@ export const createClaimsTables = async (db: Kysely<Database>) => {
   await buildClaimCoveragesTable(db).execute();
   await buildClaimCoveragesPayerForeignKey().execute(db);
   await buildClaimDiagnosesTable(db).execute();
+  await buildClaimSubmissionsTable(db).execute();
   for (const index of buildClaimsIndexes(db)) await index.execute();
 };

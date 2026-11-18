@@ -21,12 +21,12 @@ A user belongs to at most one organization. Email addresses are unique and store
 - Permissions are `resource:action` strings defined once in `libs/domain/access/src/permissions.ts` and checked by a database `CHECK` constraint.
 - Roles are custom per agency (`roles`, `role_permissions`). Every agency starts with the built-in roles below (`BUILT_IN_ROLES` in `@ugula/access`), which it can change afterwards. Whatever creates an agency calls `saveBuiltInRoles` from `@ugula/db` in the same transaction; seeding calls it too and so resets the built-in roles to their definitions.
 
-| Built-in role   | Holds                                                                                                                                               |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Admin           | Every permission                                                                                                                                    |
-| Billing Manager | Everything on patients, imports, claims, tasks, payers, facilities, fees and runs; reading settings, users, roles and workflows; `workflows:update` |
-| Biller          | Create, read and update on patients, imports, claims and tasks; correct claims (`claims:update`) and approve them for the clearinghouse (`claims:approve`); reading everything else    |
-| Viewer          | Reading everything                                                                                                                                  |
+| Built-in role   | Holds                                                                                                                                                                               |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Admin           | Every permission                                                                                                                                                                    |
+| Billing Manager | Everything on patients, imports, claims, tasks, payers, facilities, fees and runs; reading settings, users, roles and workflows; `workflows:update`                                 |
+| Biller          | Create, read and update on patients, imports, claims and tasks; correct claims (`claims:update`) and approve them for the clearinghouse (`claims:approve`); reading everything else |
+| Viewer          | Reading everything                                                                                                                                                                  |
 
 - A membership (`memberships`) gives one user one role in one agency. Composite foreign keys make it impossible to join an agency or role outside your organization.
 

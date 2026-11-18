@@ -116,7 +116,8 @@ export type {
   DiagnosisStore,
   FeeStore,
   PatientStore,
-  PayerStore
+  PayerStore,
+  SentClaim
 } from './stores.ts';
 export {
   type ClaimSubmission,
@@ -125,4 +126,4 @@ export {
   submissionIssues,
   x837ClaimOf
 } from './submission.ts';
-export { build837, type Submitter } from './x837.ts';
+export { build837, MAX_CONTROL_NUMBER, type Submitter } from './x837.ts';

@@ -21,14 +21,15 @@ import {
 import { readAddress } from './patients.ts';
 import { isCents, textOrNull } from './values.ts';
 
-export const CLAIM_STATUSES = ['needs_review', 'approved', 'on_hold'] as const;
+export const CLAIM_STATUSES = ['needs_review', 'approved', 'on_hold', 'submitted'] as const;
 
 export type ClaimStatus = (typeof CLAIM_STATUSES)[number];
 
 export const CLAIM_STATUS_LABELS: Record<ClaimStatus, string> = {
   needs_review: 'Needs Review',
   approved: 'Approved',
-  on_hold: 'On Hold'
+  on_hold: 'On Hold',
+  submitted: 'Sent'
 };
 
 export const CLAIM_DECISIONS = ['approved', 'on_hold'] as const;

@@ -88,6 +88,12 @@ export const createClaimService = ({ db, boss, publish }: ClaimServiceDeps) => (
         .execute(async (tx) => {
           const current = await findEditableClaim(tx, agencyId, id);
           if (!current) return notFound;
+          if (current.status === 'submitted') {
+            return fail(
+              'conflict',
+              'This claim was already sent to the clearinghouse, so it can no longer be edited; the payer needs a corrected claim.'
+            );
+          }
           if (current.revision !== edit.revision) {
             return fail(
               'conflict',

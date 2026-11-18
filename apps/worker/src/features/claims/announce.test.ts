@@ -17,6 +17,10 @@ const announcing = (reviewOutcome: 'recorded' | 'superseded' | 'notReady') => {
   const inner: ClaimStore = {
     findClaim: async () => null,
     checkClaim: async () => null,
+    sendClaim: async (_, id) =>
+      id === 'c1'
+        ? { outcome: 'sent', fileName: 'S000000001.CLP', controlNumber: 1 }
+        : { outcome: 'selfPay' },
     saveClaim: async () => ({ id: 'c1', revision: 1, outcome: 'created' }),
     reviewClaim: async () => reviewOutcome
   };
@@ -34,6 +38,13 @@ describe('announceClaims', () => {
       revision: 1,
       outcome: 'created'
     });
+    assert.deepEqual(announced, [{ kind: 'claim', id: 'c1' }]);
+  });
+
+  it('announces a claim sent, and not one that was not', async () => {
+    const { store, announced } = announcing('recorded');
+    assert.equal((await store.sendClaim('r1', 'c1')).outcome, 'sent');
+    assert.equal((await store.sendClaim('r1', 'c2')).outcome, 'selfPay');
     assert.deepEqual(announced, [{ kind: 'claim', id: 'c1' }]);
   });
 

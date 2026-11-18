@@ -83,6 +83,9 @@ export type ClaimDetail = ClaimSummary & {
   reviewed_by: string | null;
   import_id: string | null;
   import_file_name: string | null;
+  sent_file_name: string | null;
+  sent_control_number: number | null;
+  sent_at: string | null;
   encounter_revision: number;
   encounter: ClaimEncounter;
   classification: Classification;

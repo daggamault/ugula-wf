@@ -4,6 +4,7 @@ import {
   posInt,
   redisEnvEntries,
   s3EnvEntries,
+  secretKeyEnvEntries,
   urlString
 } from '@ugula/config';
 import * as v from 'valibot';
@@ -21,6 +22,7 @@ const configSchema = v.object({
   ...dbEnvEntries,
   ...redisEnvEntries,
   ...s3EnvEntries,
+  ...secretKeyEnvEntries,
   EMBEDDINGS_URL: urlString,
   WORKER_RUN_CONCURRENCY: v.optional(posInt, '8'),
   WORKER_MAX_EVENT_LOOP_UTILIZATION: v.optional(utilization, '0.9'),

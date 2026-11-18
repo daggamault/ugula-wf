@@ -126,6 +126,18 @@ export const findClaim = (db: Db, agencyId: string, id: string) =>
           .as('i'),
       (join) => join.onTrue()
     )
+    .leftJoinLateral(
+      (eb) =>
+        eb
+          .selectFrom('claim_submissions as s')
+          .select(['s.file_name', 's.control_number', 's.sent_at'])
+          .whereRef('s.claim_id', '=', 'c.id')
+          .where('s.sent_at', 'is not', null)
+          .orderBy('s.sent_at', 'desc')
+          .limit(1)
+          .as('s'),
+      (join) => join.onTrue()
+    )
     .leftJoin('users as reviewer', 'reviewer.id', 'c.reviewed_by')
     .select((eb) => [
       'c.revision',
@@ -136,6 +148,9 @@ export const findClaim = (db: Db, agencyId: string, id: string) =>
       ),
       'i.id as import_id',
       'i.file_name as import_file_name',
+      's.file_name as sent_file_name',
+      's.control_number as sent_control_number',
+      's.sent_at',
       'e.revision as encounter_revision',
       'e.data as encounter',
       'c.classification',

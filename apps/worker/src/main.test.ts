@@ -14,6 +14,7 @@ describe('worker createWorker', () => {
       DB_NAME: 'ugula',
       WORKER_RUN_CONCURRENCY: 8,
       WORKER_MAX_EVENT_LOOP_UTILIZATION: 0.9,
+      CLEARINGHOUSE_PREVIOUS_SECRET_KEYS: [],
       REDIS_HOST: 'localhost',
       REDIS_PORT: 6379,
       REDIS_PASSWORD: 'secret',

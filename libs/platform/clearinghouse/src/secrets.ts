@@ -14,7 +14,7 @@ const VERSION = 'v1';
 
 type SecretKey = { id: string; bytes: Buffer };
 
-type SecretKeyring = { current: SecretKey; keys: ReadonlyMap<string, SecretKey> };
+export type SecretKeyring = { current: SecretKey; keys: ReadonlyMap<string, SecretKey> };
 
 const parseSecretKey = (base64: string): SecretKey => {
   const bytes = Buffer.from(base64, 'base64');

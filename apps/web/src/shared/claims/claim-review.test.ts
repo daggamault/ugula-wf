@@ -41,6 +41,22 @@ describe('ClaimReviewPanel', () => {
     assert.deepEqual(shown[4], ['Note', '—']);
   });
 
+  it('shows when a claim was sent, and the file that carried it', () => {
+    show({
+      status: 'submitted',
+      reviewed_by: 'Dana Biller',
+      reviewed_at: '2026-10-02T15:04:00Z',
+      sent_at: '2026-10-02T15:05:00Z',
+      sent_file_name: 'SUB01000000042.CLP',
+      sent_control_number: 42
+    });
+    const shown = details();
+    assert.deepEqual(shown[0], ['Status', 'Sent']);
+    assert.deepEqual(shown[2], ['Approved By', 'Dana Biller']);
+    assert.deepEqual(shown.at(-1), ['837P File', 'SUB01000000042.CLP control 42']);
+    assert.equal(shown.at(-2)?.[0], 'Sent');
+  });
+
   it('shows why a claim is on hold', () => {
     show({
       status: 'on_hold',
