@@ -663,10 +663,20 @@ const cleanText = (raw: string) =>
     )
   ].join(' - ');
 
+const NOT_VALUES = new Set(['7701001', '7701003', '7701005']);
+
+const APPROXIMATE = '8801029';
+
+const isNotValue = (x: unknown) =>
+  isRecord(x) &&
+  (Object.hasOwn(x, '@NV') || (Object.hasOwn(x, '@PN') && String(x['@PN']) !== APPROXIMATE));
+
 const textOf = (x: unknown): string | null => {
+  if (isNotValue(x)) return null;
   const raw = isRecord(x) ? x['#text'] : x;
-  if (typeof raw === 'number') return String(raw);
-  return typeof raw === 'string' && cleanText(raw) ? cleanText(raw) : null;
+  const text =
+    typeof raw === 'number' ? String(raw) : typeof raw === 'string' ? cleanText(raw) : '';
+  return text && !NOT_VALUES.has(text) ? text : null;
 };
 
 const find = (x: unknown, key: string): unknown => {

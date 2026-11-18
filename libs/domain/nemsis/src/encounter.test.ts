@@ -288,6 +288,34 @@ describe('toEncounter', () => {
     assert.equal(company(' Highmark ~ PPO Blue '), 'Highmark - PPO Blue');
     assert.equal(company(' ~ '), null);
   });
+
+  it('reads no value where the report gives a not value, as an attribute or as text', () => {
+    const e = toEncounter({
+      eSituation: {
+        'eSituation.11': { '@NV': '7701003', '#text': 'R07.9' },
+        'eSituation.09': '7701001'
+      },
+      eDisposition: { 'eDisposition.30': ' 7701005 ' }
+    });
+    assert.deepEqual(
+      [e.primaryImpression, e.primarySymptom, e.transportDisposition],
+      [null, null, null]
+    );
+  });
+
+  it('leaves out pertinent negatives, keeping only approximate values', () => {
+    const e = toEncounter({
+      eSituation: {
+        'eSituation.10': [{ '@PN': '8801031', '#text': 'R07.9' }, 'R06.02'],
+        'eSituation.11': { '@PN': '8801019', '#text': 'I21.9' }
+      },
+      ePatient: { 'ePatient.AgeGroup': { 'ePatient.15': { '@PN': '8801029', '#text': '80' } } }
+    });
+    assert.deepEqual(
+      [e.otherSymptoms, e.primaryImpression, (e.patient as Record<string, unknown>).age],
+      [['R06.02'], null, 80]
+    );
+  });
 });
 
 describe('attachments', () => {
