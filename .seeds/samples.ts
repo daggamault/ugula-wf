@@ -24,7 +24,7 @@ const SAMPLES = '.xmls';
 const NOW = new Date('2026-11-17T00:00:00Z');
 
 const A0998_CHECK =
-  'Medicare is billed first for treatment without transport (A0998), which Medicare does not pay: bill the patient or another payer, or expect a denial';
+  'Medicare is billed first for care without transport (A0998), which Medicare does not pay: bill the patient or another payer, or expect a denial';
 
 const COVERAGE_CHECK =
   'The payment method names an insurer, but the report gives no insurance: find the coverage before billing the patient';
