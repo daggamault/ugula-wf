@@ -110,6 +110,7 @@ describe('text nodes', () => {
       (await run(type, inputs, config)).outputs;
     assert.deepEqual(await out('std.text.upper', { text: 'ab' }), { result: 'AB' });
     assert.deepEqual(await out('std.text.lower', { text: 'AB' }), { result: 'ab' });
+    assert.deepEqual(await out('std.text.lower', { text: null }), { result: null });
     assert.deepEqual(await out('std.text.trim', { text: ' a\n' }), { result: 'a' });
     assert.deepEqual(await out('std.text.length', { text: 'abc' }), { length: 3 });
     assert.deepEqual(await out('std.text.split', { text: 'a,b' }), { parts: ['a', 'b'] });

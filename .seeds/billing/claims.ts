@@ -19,6 +19,7 @@ import {
   joinLists,
   listOf,
   n,
+  not,
   PAYMENT,
   QUEUE,
   stage,
@@ -322,6 +323,144 @@ const settleMiles = (): GraphDef => {
   return g.def;
 };
 
+const PLACES = [
+  { value: 'D', label: 'Diagnostic or Therapeutic Site (D)' },
+  { value: 'E', label: 'Residential, Domiciliary or Custodial Facility (E)' },
+  { value: 'G', label: 'Hospital-Based Dialysis Facility (G)' },
+  { value: 'H', label: 'Hospital (H)' },
+  { value: 'I', label: 'Transfer Between Ambulances (I)' },
+  { value: 'J', label: 'Freestanding Dialysis Facility (J)' },
+  { value: 'N', label: 'Skilled Nursing Facility (N)' },
+  { value: 'P', label: "Physician's Office (P)" },
+  { value: 'R', label: 'Residence (R)' },
+  { value: 'S', label: 'Scene of an Accident or Acute Event (S)' },
+  { value: 'X', label: 'Stop at a Physician on the Way to a Hospital (X)' }
+];
+
+const settlePlaces = (): GraphDef => {
+  const g = stage(
+    [
+      d('classification', CODE.classification, 'Classification', 'What kind of trip it was.'),
+      d('originCode', CODE.place, 'Origin', 'The origin letter the rules found, if any.', true),
+      d('destinationCode', CODE.place, 'Destination', 'The destination letter, if any.', true),
+      d('complete', 'boolean', 'Both Known', 'Whether the rules found both letters.'),
+      d('subject', 'string', 'Subject', 'What the trip is, such as the PCR number.', true),
+      d('reasons', listOf('string'), 'Reasons', 'Why the letters are what they are.')
+    ],
+    [
+      d('originCode', CODE.place, 'Origin', 'The origin letter, when billed.', true),
+      d('destinationCode', CODE.place, 'Destination', 'The destination letter, when billed.', true)
+    ],
+    { settled: exit('Settled', 'A transport has both letters, from the report or a biller.') },
+    [
+      { name: 'origin', type: CODE.place, default: null },
+      { name: 'destination', type: CODE.place, default: null }
+    ]
+  );
+  g.add('foundOrigin', 'std.var.set', {
+    label: 'Remember the Origin Found',
+    note: 'Starts from the letters the rules found.',
+    config: { name: 'origin' }
+  });
+  g.add('foundDestination', 'std.var.set', {
+    label: 'Remember the Destination Found',
+    note: 'Starts from the letters the rules found.',
+    config: { name: 'destination' }
+  });
+  g.add('missing', 'std.flow.branch', {
+    label: 'Transport Without Both Letters',
+    note: 'Every transport line needs the origin and destination modifier.'
+  });
+  allOf(
+    g,
+    'needsPlaces',
+    n('Transport Without Both Letters', 'Transported, and a letter unknown.'),
+    [
+      isIn(
+        g,
+        'transported',
+        n('Transported', 'Only transports need the modifier.'),
+        'tripClassification',
+        'entry.classification',
+        codes(
+          g,
+          'transportKinds',
+          n('Kinds of Transport', 'Emergency and scheduled.'),
+          'tripClassification',
+          TRANSPORTS
+        )
+      ),
+      not(
+        g,
+        'incomplete',
+        n('A Letter Unknown', 'The rules could not find both.'),
+        'entry.complete'
+      )
+    ]
+  );
+  g.add('ask', 'std.human.task', {
+    label: 'Set the Origin and Destination',
+    note: 'A biller reads where the trip started and ended.',
+    config: {
+      title: 'Set the Origin and Destination',
+      queue: QUEUE,
+      instructions:
+        'The report does not say clearly what kind of place the patient was picked up at or taken to. Read the scene, destination and narrative, and choose both letters of the origin and destination modifier.',
+      fields: [
+        { name: 'origin', type: CODE.place, label: 'Origin', options: PLACES, required: ['set'] },
+        {
+          name: 'destination',
+          type: CODE.place,
+          label: 'Destination',
+          options: PLACES,
+          required: ['set']
+        }
+      ],
+      outcomes: ['set'],
+      hints: { set: 'Bill the modifier these letters make.' }
+    }
+  });
+  g.add('setOrigin', 'std.var.set', {
+    label: 'Remember the Origin Chosen',
+    note: 'The biller’s letter replaces the rules’.',
+    config: { name: 'origin' }
+  });
+  g.add('setDestination', 'std.var.set', {
+    label: 'Remember the Destination Chosen',
+    note: 'The biller’s letter replaces the rules’.',
+    config: { name: 'destination' }
+  });
+  g.add('origin', 'std.var.get', {
+    label: 'Origin',
+    note: 'Found or chosen.',
+    config: { name: 'origin' }
+  });
+  g.add('destination', 'std.var.get', {
+    label: 'Destination',
+    note: 'Found or chosen.',
+    config: { name: 'destination' }
+  });
+  g.ret('return', 'settled');
+  g.wire('origin.value', 'return.originCode');
+  g.wire('destination.value', 'return.destinationCode');
+  g.wire('entry.exec', 'foundOrigin.exec');
+  g.wire('entry.originCode', 'foundOrigin.value');
+  g.wire('foundOrigin.then', 'foundDestination.exec');
+  g.wire('entry.destinationCode', 'foundDestination.value');
+  g.wire('foundDestination.then', 'missing.exec');
+  g.wire('needsPlaces.result', 'missing.condition');
+  g.wire('missing.false', 'return.exec');
+  g.wire('missing.true', 'ask.exec');
+  g.wire('entry.subject', 'ask.subject');
+  g.wire('entry.reasons', 'ask.context');
+  g.wire('ask.set', 'setOrigin.exec');
+  g.wire('ask.origin', 'setOrigin.value');
+  g.wire('setOrigin.then', 'setDestination.exec');
+  g.wire('ask.destination', 'setDestination.value');
+  g.wire('setDestination.then', 'return.exec');
+  return g.def;
+};
+
 const buildClaim = (): GraphDef => {
   const g = stage(
     [d('encounter', T.encounter, 'Encounter', 'The encounter to bill.')],
@@ -353,6 +492,10 @@ const buildClaim = (): GraphDef => {
   g.add('miles', 'billing.settle-miles', {
     label: 'Settle the Miles',
     note: 'A biller enters the miles when a transport has none.'
+  });
+  g.add('setPlaces', 'billing.settle-places', {
+    label: 'Settle the Origin and Destination',
+    note: 'A biller sets the letters when a transport is missing one.'
   });
   g.add('patient', 'billing.resolve-patient', { label: 'Resolve Patient' });
   g.add('service', 'billing.service-details', { label: 'Service Details' });
@@ -397,7 +540,13 @@ const buildClaim = (): GraphDef => {
   g.wire('service.loadedMiles', 'miles.loadedMiles');
   g.wire('trip.pcrNumber', 'miles.subject');
   g.wire('service.reasons', 'miles.reasons');
-  g.wire('miles.settled', 'patient.exec');
+  g.wire('miles.settled', 'setPlaces.exec');
+  g.wire('settle.classification', 'setPlaces.classification');
+  for (const pin of ['originCode', 'destinationCode', 'complete', 'reasons']) {
+    g.wire(`places.${pin}`, `setPlaces.${pin}`);
+  }
+  g.wire('trip.pcrNumber', 'setPlaces.subject');
+  g.wire('setPlaces.settled', 'patient.exec');
   g.wire('patient.resolved', 'payers.exec');
   g.wire('payers.determined', 'charges.exec');
   g.wire('payers.coverages', 'primary.list', 'claim.coverages');
@@ -419,7 +568,7 @@ const buildClaim = (): GraphDef => {
   }
   g.wire('miles.loadedMiles', 'charges.loadedMiles', 'claim.loadedMiles');
   for (const pin of ['originCode', 'destinationCode']) {
-    g.wire(`places.${pin}`, `charges.${pin}`, `claim.${pin}`);
+    g.wire(`setPlaces.${pin}`, `charges.${pin}`, `claim.${pin}`);
   }
   g.wire('trip.id', 'claim.encounterId');
   g.wire('patient.patientId', 'claim.patientId');
@@ -508,6 +657,12 @@ export const claimGraphs: SeedGraph[] = [
     'Settle the Miles',
     'Keeps the loaded miles the rules found, or asks a biller to enter them when a transport has none, since a transport claim needs its mileage.',
     settleMiles()
+  ),
+  asStage(
+    'billing.settle-places',
+    'Settle the Origin and Destination',
+    'Keeps the origin and destination letters the rules found, or asks a biller to set both when a transport is missing one, since every transport line needs the modifier.',
+    settlePlaces()
   ),
   asStage(
     'billing.build-claim',

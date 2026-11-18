@@ -47,9 +47,14 @@ const textNode = (key: string, title: string, description: string, fn: (s: strin
     description,
     level: 'basic',
     keywords: ['text'],
-    inputs: [pin('text', 'string', TEXT)],
-    outputs: [pin('result', 'string', { description: 'The changed text.' })],
-    compute: ({ text }) => ({ result: fn(text as string) })
+    inputs: [pin('text', 'string', { optional: true, description: 'The text to work on.' })],
+    outputs: [
+      pin('result', 'string', {
+        optional: true,
+        description: 'The changed text, or nothing when the text is empty.'
+      })
+    ],
+    compute: ({ text }) => ({ result: text === null ? null : fn(text) })
   });
 
 const testNode = (key: string, title: string, fn: (s: string, part: string) => boolean) =>

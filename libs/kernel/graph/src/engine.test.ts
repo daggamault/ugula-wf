@@ -504,13 +504,13 @@ describe('engine', () => {
 
   it('faults on bad data with clear messages', async () => {
     const def = graph(
-      { outputs: [pin('x', 'string')] },
-      [n('upper', 'std.text.upper'), n('ret', RETURN_TYPE)],
-      [e('entry', 'exec', 'ret', 'exec'), e('upper', 'result', 'ret', 'x')]
+      { outputs: [pin('x', { list: 'string' })] },
+      [n('split', 'std.text.split'), n('ret', RETURN_TYPE)],
+      [e('entry', 'exec', 'ret', 'exec'), e('split', 'parts', 'ret', 'x')]
     );
     const { state } = await run(def);
-    assert.equal(state.fault?.error.message, 'Input "text" of "upper" is required');
-    assert.equal(state.fault?.error.node, 'upper');
+    assert.equal(state.fault?.error.message, 'Input "text" of "split" is required');
+    assert.equal(state.fault?.error.node, 'split');
 
     const notYet = graph(
       { outputs: [pin('x', 'any')] },

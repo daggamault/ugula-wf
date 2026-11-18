@@ -1,7 +1,9 @@
 import type { GraphDef, PinSpec, ValueType } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import {
+  ADDRESS,
   allOf,
+  anyOf,
   asRule,
   asStage,
   type Builder,
@@ -31,6 +33,7 @@ import {
   node,
   not,
   orZero,
+  PERSON,
   type Port,
   reasonsOf,
   rule,
@@ -57,7 +60,7 @@ const UNPRICED: ValueType = {
 const DESTINATION_LETTERS = codeTable(
   'billing.destination-letters',
   'Destination Letters',
-  'The destination letter of the origin and destination modifier for each type of destination (eDisposition.21).',
+  'The destination letter of the origin and destination modifier for each type of destination (eDisposition.21). Types left out, such as mental health or rehabilitation facilities, are for a biller to set.',
   CODE.place,
   {
     '4221001': 'R',
@@ -70,6 +73,7 @@ const DESTINATION_LETTERS = codeTable(
     '4221029': 'E',
     '4221033': 'E',
     '4221015': 'I',
+    '4221017': 'I',
     '4221025': 'J',
     '4221027': 'D',
     '4221041': 'N'
@@ -81,7 +85,22 @@ type Origin = { id: string; letter: string; label: string; holds: (g: Builder) =
 const pickedUpAt =
   (id: string, label: string, prefix: string) =>
   (g: Builder): Port =>
-    startsWith(g, id, label, 'entry.pickupType', prefix);
+    anyOf(g, id, n(label, `Location type ${prefix}, with or without the dot, NEMSIS eScene.09.`), [
+      startsWith(
+        g,
+        `${id}Dotted`,
+        n(`${label}: ${prefix}`, 'Written with the dot.'),
+        'entry.pickupType',
+        prefix
+      ),
+      startsWith(
+        g,
+        `${id}Plain`,
+        n(`${label}: ${prefix.replace('.', '')}`, 'Written without the dot.'),
+        'entry.pickupType',
+        prefix.replace('.', '')
+      )
+    ]);
 
 const leaving =
   (id: string, label: string, services: readonly string[]) =>
@@ -89,10 +108,16 @@ const leaving =
     isIn(
       g,
       id,
-      label,
+      n(label, 'The type of service, NEMSIS eResponse.05, which is always given.'),
       'serviceType',
       'entry.serviceType',
-      codes(g, `${id}Codes`, `${label}: Services`, 'serviceType', services)
+      codes(
+        g,
+        `${id}Codes`,
+        n(`${label}: Services`, 'Services that start here.'),
+        'serviceType',
+        services
+      )
     );
 
 const ORIGINS: Origin[] = [
@@ -119,6 +144,18 @@ const ORIGINS: Origin[] = [
     letter: 'P',
     label: "Picked Up at a Physician's Office",
     holds: pickedUpAt('atOffice', "Picked Up at a Physician's Office", 'Y92.53')
+  },
+  {
+    id: 'street',
+    letter: 'S',
+    label: 'Picked Up on a Street or Highway',
+    holds: pickedUpAt('onStreet', 'Picked Up on a Street or Highway', 'Y92.4')
+  },
+  {
+    id: 'homeAddress',
+    letter: 'R',
+    label: 'Picked Up at the Home Address',
+    holds: () => 'entry.atHome'
   },
   {
     id: 'interfacility',
@@ -156,6 +193,12 @@ const originLetter = (): GraphDef => {
         'Service Type',
         'The type of service requested, NEMSIS eResponse.05.',
         true
+      ),
+      d(
+        'atHome',
+        'boolean',
+        'At the Home Address',
+        'Whether the pickup address is the home address.'
       )
     ],
     [
@@ -167,22 +210,32 @@ const originLetter = (): GraphDef => {
   const letter = firstSet(
     g,
     'letter',
-    'First Origin That Holds',
+    n(
+      'First Origin That Holds',
+      'The location type first, then the home address, then the type of service.'
+    ),
     CODE.place,
     held.map((o) =>
-      select(g, `${o.id}Letter`, `${o.letter} When ${o.label}`, CODE.place, o.when, fixed(o.letter))
+      select(
+        g,
+        `${o.id}Letter`,
+        n(`${o.letter} When ${o.label}`, `Origin ${o.letter}.`),
+        CODE.place,
+        o.when,
+        fixed(o.letter)
+      )
     )
   );
   const reason = firstSet(
     g,
     'reason',
-    'Why That Origin',
+    n('Why That Origin', 'The reason of the origin chosen.'),
     'string',
     held.map((o) =>
       select(
         g,
         `${o.id}Reason`,
-        `Reason When ${o.label}`,
+        n(`Reason When ${o.label}`, 'Says why.'),
         'string',
         o.when,
         fixed(`Origin ${o.letter}: ${o.label.toLowerCase()}`)
@@ -193,6 +246,20 @@ const originLetter = (): GraphDef => {
   g.wire(letter, 'return.letter');
   g.wire(reason, 'return.reason');
   return g.def;
+};
+
+const sameText = (g: Builder, id: string, label: string, a: Port, b: Port): Port => {
+  node(g, `${id}A`, 'std.text.lower', n(`${label}: First`, 'Compares without case.'), { text: a });
+  node(g, `${id}B`, 'std.text.lower', n(`${label}: Second`, 'Compares without case.'), { text: b });
+  node(
+    g,
+    id,
+    'std.logic.equal',
+    n(label, 'The same text, ignoring case.'),
+    { a: `${id}A.result`, b: `${id}B.result` },
+    { type: 'string' }
+  );
+  return `${id}.result`;
 };
 
 const originAndDestination = (): GraphDef => {
@@ -213,23 +280,76 @@ const originAndDestination = (): GraphDef => {
         'The destination letter, or nothing when either is unknown.',
         true
       ),
-      d('reasons', listOf('string'), 'Reasons', 'Why the origin letter was chosen.')
+      d('complete', 'boolean', 'Both Known', 'Whether both letters are known.'),
+      d('reasons', listOf('string'), 'Reasons', 'Why the letters were chosen, or which is unknown.')
     ]
   );
-  breakRecord(g, 'trip', 'Encounter', ENCOUNTER, 'entry.encounter');
-  breakRecord(g, 'pickup', 'Pickup', SCENE, 'trip.pickup');
-  breakRecord(g, 'destination', 'Destination', DESTINATION, 'trip.destination');
-  node(g, 'origin', 'billing.origin-letter', 'Origin Letter', {
+  breakRecord(
+    g,
+    'trip',
+    n('Encounter', 'Where the trip started and ended.'),
+    ENCOUNTER,
+    'entry.encounter'
+  );
+  breakRecord(g, 'pickup', n('Pickup', 'Where the patient was picked up.'), SCENE, 'trip.pickup');
+  breakRecord(
+    g,
+    'pickupAddress',
+    n('Pickup Address', 'The street of the pickup.'),
+    ADDRESS,
+    'pickup.address'
+  );
+  breakRecord(g, 'patient', n('Patient', 'Where the patient lives.'), PERSON, 'trip.patient');
+  breakRecord(
+    g,
+    'homeAddress',
+    n('Home Address', 'The street the patient lives on.'),
+    ADDRESS,
+    'patient.address'
+  );
+  breakRecord(
+    g,
+    'destination',
+    n('Destination', 'Where the patient was taken.'),
+    DESTINATION,
+    'trip.destination'
+  );
+  const known = (id: string, label: string, value: Port) =>
+    not(
+      g,
+      id,
+      n(label, 'Given in the report.'),
+      isMissing(g, `${id}Missing`, n(`${label}: Missing`, 'Empty.'), value)
+    );
+  const atHome = allOf(
+    g,
+    'atHome',
+    n('Picked Up at Home', 'The pickup street and ZIP are the home ones.'),
+    [
+      known('pickupStreetKnown', 'Pickup Street Known', 'pickupAddress.line'),
+      sameText(g, 'sameStreet', 'Same Street', 'pickupAddress.line', 'homeAddress.line'),
+      sameText(g, 'sameZip', 'Same ZIP', 'pickupAddress.postalCode', 'homeAddress.postalCode')
+    ]
+  );
+  node(g, 'origin', 'billing.origin-letter', n('Origin Letter', 'Where the trip started.'), {
     pickupType: 'pickup.type',
-    serviceType: 'trip.serviceType'
+    serviceType: 'trip.serviceType',
+    atHome
   });
-  lookup(g, 'destinationLetter', 'Destination Letter', DESTINATION_LETTERS, 'destination.type');
-  const both = allOf(g, 'both', 'Both Letters Known', [
-    not(g, 'originKnown', 'Origin Known', isMissing(g, 'noOrigin', 'No Origin', 'origin.letter')),
+  lookup(
+    g,
+    'destinationLetter',
+    n('Destination Letter', 'From the Destination Letters table.'),
+    DESTINATION_LETTERS,
+    'destination.type'
+  );
+  const originKnown = known('originKnown', 'Origin Known', 'origin.letter');
+  const both = allOf(g, 'both', n('Both Letters Known', 'A modifier needs both letters.'), [
+    originKnown,
     'destinationLetter.found'
   ]);
   const whenBoth = (id: string, label: string, type: PinSpec['type'], value: Port) =>
-    select(g, id, label, type, both, value, fixed(null));
+    select(g, id, n(label, 'Only when both letters are known.'), type, both, value, fixed(null));
   g.ret('return');
   g.wire(
     whenBoth('originCode', 'Origin When Both Known', CODE.place, 'origin.letter'),
@@ -244,10 +364,38 @@ const originAndDestination = (): GraphDef => {
     ),
     'return.destinationCode'
   );
+  g.wire(both, 'return.complete');
   g.wire(
-    makeList(g, 'reasons', 'Origin Reason', 'string', [
-      whenBoth('reasonApplied', 'Reason When Both Known', 'string', 'origin.reason')
-    ]),
+    joinLists(
+      g,
+      'reasons',
+      n('Place Reasons', 'Why the origin, and which letter is unknown.'),
+      'string',
+      [
+        makeList(g, 'originReason', n('Origin Reason', 'Left out when unknown.'), 'string', [
+          whenBoth('reasonApplied', 'Reason When Both Known', 'string', 'origin.reason')
+        ]),
+        reasonsOf(g, 'unknown', n('Unknown Letters', 'Says which letter a biller must set.'), [
+          {
+            id: 'noOrigin',
+            label: 'Origin Unknown',
+            reason: 'The report does not say what kind of place the patient was picked up at',
+            holds: not(g, 'originUnknown', n('Origin Unknown', 'No origin letter.'), originKnown)
+          },
+          {
+            id: 'noDestination',
+            label: 'Destination Unknown',
+            reason: 'The report does not say what kind of place the patient was taken to',
+            holds: not(
+              g,
+              'destinationUnknown',
+              n('Destination Unknown', 'No destination letter.'),
+              'destinationLetter.found'
+            )
+          }
+        ])
+      ]
+    ),
     'return.reasons'
   );
   return g.def;
