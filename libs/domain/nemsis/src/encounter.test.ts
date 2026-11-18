@@ -65,28 +65,47 @@ describe('toEncounter', () => {
     assert.deepEqual(e.odometer, { begin: null, scene: 0, destination: 11.6, end: null });
     assert.equal((e.times as Record<string, unknown>).atScene, '2026-09-14T07:52:00-04:00');
     assert.deepEqual(e.patient, {
+      patientId: null,
       firstName: 'Jane',
       middleName: null,
       lastName: 'Doe',
+      suffix: null,
       birthDate: '1950-02-03',
+      ssn: null,
       age: 76,
       ageUnits: null,
       sex: null,
       gender: null,
+      races: [],
       phone: null,
+      email: null,
+      driversLicenseState: null,
+      driversLicenseNumber: null,
       weightKg: 81.6,
       address: {
         line: '12 Oak St',
         city: 'Fairview',
         county: null,
         state: '42',
-        postalCode: '16505'
+        postalCode: '16505',
+        country: null
       }
     });
     assert.deepEqual(e.pickup, {
       name: null,
+      code: null,
       type: '2209011',
-      address: { line: '9 Elm St', city: 'Fairview', county: null, state: null, postalCode: null }
+      address: {
+        line: '9 Elm St',
+        city: 'Fairview',
+        county: null,
+        state: null,
+        postalCode: null,
+        country: null
+      },
+      room: null,
+      mileMarker: null,
+      gps: null
     });
     assert.deepEqual(
       [(e.destination as { name: string }).name, (e.destination as { type: string }).type],
@@ -96,12 +115,14 @@ describe('toEncounter', () => {
       ((e.destination as { address: { city: string } }).address as { city: string }).city,
       'Erie'
     );
-    assert.deepEqual(e.medications, [
-      { givenAt: null, code: '7242', route: '9927023', dosage: 0.5, dosageUnits: null }
-    ]);
-    assert.deepEqual(e.procedures, [
-      { performedAt: '2026-09-14T08:10:00-04:00', code: '392230005' }
-    ]);
+    assert.deepEqual(
+      (e.medications as Record<string, unknown>[]).map((m) => [m.code, m.route, m.dosage]),
+      [['7242', '9927023', 0.5]]
+    );
+    assert.deepEqual(
+      (e.procedures as Record<string, unknown>[]).map((p) => [p.performedAt, p.code]),
+      [['2026-09-14T08:10:00-04:00', '392230005']]
+    );
     const payment = e.payment as Record<string, unknown>;
     assert.deepEqual(
       [payment.method, payment.transportReason, payment.ambulanceConditions, payment.serviceLevel],
@@ -129,6 +150,94 @@ describe('toEncounter', () => {
       [null, null, [], [], [], []]
     );
     assert.deepEqual(Object.keys(e).sort(), ENCOUNTER.fields.map((f) => f.name).sort());
+  });
+
+  it('marks care given before this unit arrived, so billing can leave it out', () => {
+    const e = toEncounter({
+      eMedications: {
+        'eMedications.MedicationGroup': [
+          { 'eMedications.02': '9923003', 'eMedications.03': '7242' },
+          { 'eMedications.02': '9923001', 'eMedications.03': '4337', 'eMedications.10': '9905019' }
+        ]
+      },
+      eProcedures: {
+        'eProcedures.ProcedureGroup': {
+          'eProcedures.02': '9923003',
+          'eProcedures.03': '392230005',
+          'eProcedures.05': '2'
+        }
+      },
+      eVitals: {
+        'eVitals.VitalGroup': {
+          'eVitals.02': '9923001',
+          'eVitals.CardiacRhythmGroup': { 'eVitals.03': ['9901051', '9901053'] }
+        }
+      }
+    });
+    assert.deepEqual(
+      (e.medications as Record<string, unknown>[]).map((m) => [m.code, m.priorToCare, m.givenBy]),
+      [
+        ['7242', '9923003', null],
+        ['4337', '9923001', '9905019']
+      ]
+    );
+    assert.deepEqual(
+      (e.procedures as Record<string, unknown>[]).map((p) => [p.priorToCare, p.attempts]),
+      [['9923003', 2]]
+    );
+    assert.deepEqual(
+      (e.vitals as Record<string, unknown>[]).map((v) => [v.priorToCare, v.cardiacRhythm]),
+      [['9923001', ['9901051', '9901053']]]
+    );
+  });
+
+  it('reads each insurance company address, relative, employer and supply', () => {
+    const e = toEncounter(
+      {
+        ePayment: {
+          'ePayment.InsuranceGroup': [
+            { 'ePayment.10': 'MEDICARE', 'ePayment.13': '1192443', 'ePayment.57': 'MB' },
+            { 'ePayment.10': 'AETNA', 'ePayment.15': '06156', 'ePayment.60': '1950-02-03' }
+          ],
+          'ePayment.ClosestRelativeGroup': {
+            'ePayment.23': 'Doe',
+            'ePayment.24': 'John',
+            'ePayment.32': '2632011'
+          },
+          'ePayment.33': 'Acme Steel',
+          'ePayment.35': 'Erie',
+          'ePayment.SupplyItemGroup': [
+            { 'ePayment.55': 'Oxygen', 'ePayment.56': '1' },
+            { 'ePayment.55': 'Cervical Collar', 'ePayment.56': '2' }
+          ]
+        }
+      },
+      { '1192443': 'Fairview' }
+    );
+    const insurances = e.insurances as Record<string, Record<string, unknown>>[];
+    assert.deepEqual(
+      insurances.map((i) => [
+        i.companyName,
+        i.payerType,
+        i.insuredBirthDate,
+        i.companyAddress?.city
+      ]),
+      [
+        ['MEDICARE', 'MB', null, 'Fairview'],
+        ['AETNA', null, '1950-02-03', null]
+      ]
+    );
+    assert.equal(insurances[1]?.companyAddress?.postalCode, '06156');
+    assert.deepEqual(
+      (e.relatives as Record<string, unknown>[]).map((r) => [r.firstName, r.relationship]),
+      [['John', '2632011']]
+    );
+    assert.equal((e.payment as Record<string, unknown>).employer, 'Acme Steel');
+    assert.equal((e.employerAddress as Record<string, unknown>).city, 'Erie');
+    assert.deepEqual(e.supplies, [
+      { name: 'Oxygen', quantity: 1 },
+      { name: 'Cervical Collar', quantity: 2 }
+    ]);
   });
 
   it('keeps an unknown place code out of the city', () => {
@@ -195,6 +304,14 @@ describe('placeCodesOf', () => {
   it('collects each place code once', () => {
     assert.deepEqual(placeCodesOf(report()), ['1192443']);
     assert.deepEqual(placeCodesOf({}), []);
+    assert.deepEqual(
+      placeCodesOf({
+        ePayment: {
+          'ePayment.InsuranceGroup': [{ 'ePayment.13': '1' }, { 'ePayment.13': '2' }]
+        }
+      }),
+      ['1', '2']
+    );
   });
 });
 
@@ -213,9 +330,11 @@ describe('encounter models', () => {
         'Destination',
         'Payment',
         'Insurance',
+        'Closest Relative or Guardian',
         'Medication',
         'Procedure',
         'Vital Signs',
+        'Supply',
         'Signature',
         'Crew Member',
         'Attachment'

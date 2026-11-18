@@ -603,15 +603,53 @@ const ALS2_PROCEDURES = [
 
 const resultOut = (description: string) => [d('result', 'boolean', 'Result', description)];
 
+const YES = '9923003';
+
+const byThisUnit = (): GraphDef => {
+  const g = rule(
+    [
+      codeIn(
+        'priorToCare',
+        KIND.yesNo,
+        'Before This Unit Arrived',
+        'Whether the care was given before this unit arrived.'
+      ),
+      codeIn('byAnotherUnit', KIND.yesNo, 'By Another Unit', 'Whether another unit gave the care.')
+    ],
+    resultOut('Whether this unit gave the care, so it counts toward the level of service.')
+  );
+  g.ret('return');
+  g.wire(
+    not(
+      g,
+      'byThisUnit',
+      'Given by This Unit',
+      anyOf(g, 'elsewhere', 'Given Elsewhere', [
+        isCode(g, 'before', 'Before This Unit Arrived', KIND.yesNo, 'entry.priorToCare', YES),
+        isCode(g, 'other', 'By Another Unit', KIND.yesNo, 'entry.byAnotherUnit', YES)
+      ])
+    ),
+    'return.result'
+  );
+  return g.def;
+};
+
+const careByThisUnit = (g: Builder, record: string) => {
+  g.add('thisUnit', 'billing.by-this-unit', { label: 'Given by This Unit' });
+  wireFields(g, record, 'thisUnit', ['priorToCare', 'byAnotherUnit']);
+  return 'thisUnit.result' as const;
+};
+
 const ivMedication = (): GraphDef => {
   const g = rule(
     [d('medication', T.medication, 'Medication', 'One medication the crew gave.')],
-    resultOut('Whether it was given IV or IO and is not an IV solution.')
+    resultOut('Whether this unit gave it IV or IO and it is not an IV solution.')
   );
   breakRecord(g, 'medication', 'Medication', MEDICATION, 'entry.medication');
   g.ret('return');
   g.wire(
-    allOf(g, 'ivMedication', 'Given IV or IO, Not a Solution', [
+    allOf(g, 'ivMedication', 'Given IV or IO by This Unit, Not a Solution', [
+      careByThisUnit(g, 'medication'),
       isIn(
         g,
         'ivRoute',
@@ -642,19 +680,22 @@ const ivMedication = (): GraphDef => {
 const als2Procedure = (): GraphDef => {
   const g = rule(
     [d('procedure', T.procedure, 'Procedure', 'One procedure the crew performed.')],
-    resultOut('Whether the procedure is one CMS names for ALS2.')
+    resultOut('Whether this unit performed it and it is one CMS names for ALS2.')
   );
   breakRecord(g, 'procedure', 'Procedure', PROCEDURE, 'entry.procedure');
   g.ret('return');
   g.wire(
-    isIn(
-      g,
-      'als2',
-      'ALS2 Procedure',
-      KIND.snomed,
-      'procedure.code',
-      codes(g, 'als2Codes', 'ALS2 Procedures', KIND.snomed, ALS2_PROCEDURES)
-    ),
+    allOf(g, 'als2ByThisUnit', 'ALS2 Procedure by This Unit', [
+      careByThisUnit(g, 'procedure'),
+      isIn(
+        g,
+        'als2',
+        'ALS2 Procedure',
+        KIND.snomed,
+        'procedure.code',
+        codes(g, 'als2Codes', 'ALS2 Procedures', KIND.snomed, ALS2_PROCEDURES)
+      )
+    ]),
     'return.result'
   );
   return g.def;
@@ -1162,15 +1203,21 @@ export const serviceGraphs: SeedGraph[] = [
     tripClassification()
   ),
   asRule(
+    'billing.by-this-unit',
+    'By This Unit',
+    'Whether this unit gave the care, not another unit and not before this unit arrived. Only care this unit gave counts toward the level of service.',
+    byThisUnit()
+  ),
+  asRule(
     'billing.iv-medication',
     'IV Medication',
-    'Whether one medication counts toward the level of service: given IV or IO, and not an IV solution such as saline or dextrose.',
+    'Whether one medication counts toward the level of service: given by this unit, IV or IO, and not an IV solution such as saline or dextrose.',
     ivMedication()
   ),
   asRule(
     'billing.als2-procedure',
     'ALS2 Procedure',
-    'Whether one procedure is one CMS names for ALS2: manual defibrillation or cardioversion, endotracheal intubation, a central venous line, cardiac pacing, chest decompression, a surgical airway or an intraosseous line.',
+    'Whether one procedure counts toward ALS2: performed by this unit and one CMS names for ALS2: manual defibrillation or cardioversion, endotracheal intubation, a central venous line, cardiac pacing, chest decompression, a surgical airway or an intraosseous line.',
     als2Procedure()
   ),
   asRule(
