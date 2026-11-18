@@ -4,7 +4,7 @@ import { fail } from '../errors.ts';
 import { createEvaluator, parseExpr } from '../expr.ts';
 import { MAX_RANGE, sortKey } from '../expr-functions.ts';
 import { deepEqual, getPath, groupBy, isTruthy, toText } from '../json.ts';
-import { jsonSchema, valueTypeSchema } from '../schemas.ts';
+import { jsonSchema, type TypeConfig, typeConfig, valueTypeSchema } from '../schemas.ts';
 import type { Json, NodeDef, PinSpec, Values, ValueType } from '../types.ts';
 import { type ExpressionConfig, expressionConfig, identifierPins, oneLine } from './expression.ts';
 import { CONDITION_OPS, holds, tableRefSchema, unresolved } from './tables.ts';
@@ -17,9 +17,20 @@ const LIST_IN = pin('list', ANY_LIST, {
   description: 'The list to work on; an empty list when missing.'
 });
 const LIST_OUT = pin('list', ANY_LIST, { description: 'The resulting list.' });
+const VALUES_OUT = pin('list', ANY_LIST, { description: 'The resulting list.' });
 const ITEM_OUT = pin('item', 'any', { description: 'The item, or nothing.' });
 const RESULT = pin('result', 'boolean', { description: 'True or false.' });
 const ITEM_IN = pin('item', 'any', { optional: true, description: 'The item.' });
+const OTHER_IN = pin('other', ANY_LIST, { description: 'The list to add after it.' });
+
+const ITEM_PINS: ReadonlySet<PinSpec> = new Set([ITEM_IN, ITEM_OUT]);
+
+const LIST_PINS: ReadonlySet<PinSpec> = new Set([LIST_IN, LIST_OUT, OTHER_IN]);
+
+const ofType = (pins: PinSpec[], type: ValueType) =>
+  pins.map((p) =>
+    ITEM_PINS.has(p) ? { ...p, type } : LIST_PINS.has(p) ? { ...p, type: { list: type } } : p
+  );
 
 const listNode = (
   key: string,
@@ -29,15 +40,16 @@ const listNode = (
   outputs: PinSpec[],
   compute: (inputs: Values) => Values
 ) =>
-  pureNode({
+  pureNode<TypeConfig>({
     type: `std.list.${key}`,
     title,
     category: CATEGORY,
     description,
     level: 'basic',
     keywords: ['list'],
-    inputs: [LIST_IN, ...inputs],
-    outputs,
+    config: typeConfig,
+    inputs: ({ type }) => ofType([LIST_IN, ...inputs], type),
+    outputs: ({ type }) => ofType(outputs, type),
     compute
   });
 
@@ -167,7 +179,7 @@ export const listNodes: NodeDef[] = [
     'concat',
     'Concat',
     "Joins two lists into one, with the first list's items first.",
-    [pin('other', ANY_LIST, { description: 'The list to add after it.' })],
+    [OTHER_IN],
     [LIST_OUT],
     (x) => ({ list: [...items(x), ...(x.other as Json[])] })
   ),
@@ -221,7 +233,7 @@ export const listNodes: NodeDef[] = [
     'Flatten',
     'Turns a list of lists into a single list.',
     [],
-    [LIST_OUT],
+    [VALUES_OUT],
     (x) => ({
       list: items(x).flatMap((x) => (Array.isArray(x) ? x : [x]))
     })
@@ -231,7 +243,7 @@ export const listNodes: NodeDef[] = [
     'Pluck Field',
     'Gives the value at a path, such as code or payer.name, of every item.',
     [pin('field', 'string', { description: 'Where the value is in each item.' })],
-    [LIST_OUT],
+    [VALUES_OUT],
     (x) => ({ list: items(x).map((item) => fieldOf(item, x.field ?? null)) })
   ),
   listNode(

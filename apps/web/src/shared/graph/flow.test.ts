@@ -299,6 +299,28 @@ describe('connect', () => {
       assert.deepEqual(configOf(listed, 'list1'), { type: 'number' });
     });
 
+    it('take the item type of a list wire into a list primitive', () => {
+      const withContains: GraphDef = {
+        ...typed,
+        signature: {
+          ...typed.signature,
+          inputs: [{ name: 'codes', type: { list: 'string' } }, ...typed.signature.inputs]
+        },
+        nodes: [...typed.nodes, { id: 'has1', type: 'std.list.contains', version: 1 }]
+      };
+      const got = connect(withContains, catalog, link('entry', 'codes', 'has1', 'list'));
+      assert.deepEqual(configOf(got, 'has1'), { type: 'string' });
+    });
+
+    it('take the value type of the wire into a comparison', () => {
+      const withEqual: GraphDef = {
+        ...typed,
+        nodes: [...typed.nodes, { id: 'eq1', type: 'std.logic.equal', version: 1 }]
+      };
+      const got = connect(withEqual, catalog, link('entry', 'x', 'eq1', 'b'));
+      assert.deepEqual(configOf(got, 'eq1'), { type: 'number' });
+    });
+
     it('keep a type that was already chosen', () => {
       const kept = connect(typed, catalog, link('entry', 'x', 'pick1', 'option1'));
       assert.deepEqual(configOf(kept, 'pick1'), { type: 'string' });

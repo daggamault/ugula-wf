@@ -11,6 +11,36 @@ const run = async (type: string, inputs: Values) => {
 };
 
 describe('logic nodes', () => {
+  it('type the compared and chosen pins by the type chosen', () => {
+    const code = { code: 'hcpcs' } as const;
+    const signatureOf = (type: string) => {
+      const def = logicNodes.find((d) => d.type === type);
+      if (!def || typeof def.signature !== 'function') throw new Error(type);
+      return def.signature(
+        { type: code },
+        {
+          graph: {
+            signature: { execIn: [], execOut: [], inputs: [], outputs: [] },
+            variables: [],
+            nodes: [],
+            edges: []
+          }
+        }
+      );
+    };
+    for (const type of ['std.logic.equal', 'std.logic.not-equal', 'std.logic.greater']) {
+      assert.deepEqual(
+        signatureOf(type).inputs.map((p) => p.type),
+        [code, code]
+      );
+    }
+    assert.deepEqual(signatureOf('std.logic.select').outputs[0]?.type, code);
+    assert.deepEqual(
+      signatureOf('std.logic.coalesce').inputs.map((p) => p.type),
+      [code, code]
+    );
+  });
+
   it('compares values', async () => {
     assert.equal(await run('std.logic.equal', { a: { x: [1] }, b: { x: [1] } }), true);
     assert.equal(await run('std.logic.equal', { a: 1, b: '1' }), false);

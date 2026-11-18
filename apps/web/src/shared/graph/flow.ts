@@ -197,18 +197,59 @@ const itemOf = (type: ValueType) => (typeof type === 'object' && 'list' in type 
 
 const recordOf = (type: ValueType) => (typeof type === 'object' && 'object' in type ? type : null);
 
-const ADOPTIONS: Readonly<Record<string, Adoption>> = {
-  'std.object.get-field': { pins: /^record$/, key: 'record', from: recordOf },
-  'std.object.set-field': { pins: /^record$/, key: 'record', from: recordOf },
-  'std.list.make': { pins: /^item\d+$/, key: 'type', from: (t) => t },
-  'std.list.join': { pins: /^list\d+$/, key: 'type', from: itemOf },
-  'std.logic.choose': { pins: /^(option\d+|case\d+|otherwise)$/, key: 'type', from: (t) => t },
-  'std.flow.reroute': { pins: /^value$/, key: 'type', from: (t) => t }
+const self = (type: ValueType) => type;
+
+const byValue = (pins: RegExp): Adoption[] => [{ pins, key: 'type', from: self }];
+
+const byList: Adoption[] = [
+  { pins: /^(list|other)$/, key: 'type', from: itemOf },
+  { pins: /^item$/, key: 'type', from: self }
+];
+
+const LIST_NODES = [
+  'length',
+  'get',
+  'first',
+  'last',
+  'append',
+  'concat',
+  'slice',
+  'contains',
+  'index-of',
+  'reverse',
+  'unique',
+  'flatten',
+  'pluck',
+  'compact',
+  'sort-by-field'
+];
+
+const COMPARE_NODES = [
+  'equal',
+  'not-equal',
+  'greater',
+  'greater-or-equal',
+  'less',
+  'less-or-equal'
+];
+
+const ADOPTIONS: Readonly<Record<string, readonly Adoption[]>> = {
+  'std.object.get-field': [{ pins: /^record$/, key: 'record', from: recordOf }],
+  'std.object.set-field': [{ pins: /^record$/, key: 'record', from: recordOf }],
+  'std.list.make': byValue(/^item\d+$/),
+  'std.list.join': [{ pins: /^list\d+$/, key: 'type', from: itemOf }],
+  'std.logic.choose': byValue(/^(option\d+|case\d+|otherwise)$/),
+  'std.logic.coalesce': byValue(/^(value|fallback)$/),
+  'std.logic.select': byValue(/^(whenTrue|whenFalse)$/),
+  'std.flow.reroute': byValue(/^value$/),
+  ...Object.fromEntries(COMPARE_NODES.map((k) => [`std.logic.${k}`, byValue(/^(a|b)$/)])),
+  ...Object.fromEntries(LIST_NODES.map((k) => [`std.list.${k}`, byList]))
 };
 
 const adopt = (inst: NodeInstance, pin: string, type: ValueType | undefined): NodeInstance => {
-  const rule = Object.hasOwn(ADOPTIONS, inst.type) ? ADOPTIONS[inst.type] : undefined;
-  if (!rule || !type || type === 'any' || !rule.pins.test(pin)) return inst;
+  const rules = Object.hasOwn(ADOPTIONS, inst.type) ? ADOPTIONS[inst.type] : undefined;
+  const rule = rules?.find((r) => r.pins.test(pin));
+  if (!rule || !type || type === 'any') return inst;
   const config = (inst.config ?? {}) as Record<string, Json>;
   const current = config[rule.key];
   const adopted = rule.from(type);

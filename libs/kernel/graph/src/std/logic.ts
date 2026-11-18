@@ -1,6 +1,7 @@
 import { pin, pureNode } from '../define.ts';
 import { fail } from '../errors.ts';
 import { deepEqual } from '../json.ts';
+import { type TypeConfig, typeConfig } from '../schemas.ts';
 import type { Json, NodeDef } from '../types.ts';
 
 const CATEGORY = 'Logic';
@@ -23,19 +24,43 @@ const compareNode = (
   phrase: string,
   fn: (a: number | string, b: number | string) => boolean
 ) =>
-  pureNode({
+  pureNode<TypeConfig>({
     type: `std.logic.${key}`,
     title,
     category: CATEGORY,
     description: `True when the first value is ${phrase} the second. Text compares alphabetically, and dates compare by time.`,
     level: 'basic',
     keywords: ['compare', 'condition'],
-    inputs: [pin('a', 'any', A), pin('b', 'any', B)],
+    config: typeConfig,
+    inputs: ({ type }) => [pin('a', type, A), pin('b', type, B)],
     outputs: [RESULT],
     compute: ({ a, b }) => {
       const [x, y] = comparable(title, a ?? null, b ?? null);
       return { result: fn(x, y) };
     }
+  });
+
+const equalNode = (
+  key: string,
+  title: string,
+  description: string,
+  keywords: string[],
+  fn: (same: boolean) => boolean
+) =>
+  pureNode<TypeConfig>({
+    type: `std.logic.${key}`,
+    title,
+    category: CATEGORY,
+    description,
+    level: 'basic',
+    keywords,
+    config: typeConfig,
+    inputs: ({ type }) => [
+      pin('a', type, { optional: true, ...A }),
+      pin('b', type, { optional: true, ...B })
+    ],
+    outputs: [RESULT],
+    compute: ({ a, b }) => ({ result: fn(deepEqual(a ?? null, b ?? null)) })
   });
 
 const boolNode = (
@@ -57,28 +82,20 @@ const boolNode = (
   });
 
 export const logicNodes: NodeDef[] = [
-  pureNode({
-    type: 'std.logic.equal',
-    title: 'Equal',
-    category: CATEGORY,
-    description: 'True when both values are the same, including lists and records.',
-    level: 'basic',
-    keywords: ['compare', 'same', 'equals'],
-    inputs: [pin('a', 'any', { optional: true, ...A }), pin('b', 'any', { optional: true, ...B })],
-    outputs: [RESULT],
-    compute: ({ a, b }) => ({ result: deepEqual(a ?? null, b ?? null) })
-  }),
-  pureNode({
-    type: 'std.logic.not-equal',
-    title: 'Not Equal',
-    category: CATEGORY,
-    description: 'True when the two values differ.',
-    level: 'basic',
-    keywords: ['compare', 'different'],
-    inputs: [pin('a', 'any', { optional: true, ...A }), pin('b', 'any', { optional: true, ...B })],
-    outputs: [RESULT],
-    compute: ({ a, b }) => ({ result: !deepEqual(a ?? null, b ?? null) })
-  }),
+  equalNode(
+    'equal',
+    'Equal',
+    'True when both values are the same, including lists and records.',
+    ['compare', 'same', 'equals'],
+    (same) => same
+  ),
+  equalNode(
+    'not-equal',
+    'Not Equal',
+    'True when the two values differ.',
+    ['compare', 'different'],
+    (same) => !same
+  ),
   compareNode('greater', 'Greater Than', 'greater than', (a, b) => a > b),
   compareNode('greater-or-equal', 'Greater or Equal', 'at least', (a, b) => a >= b),
   compareNode('less', 'Less Than', 'less than', (a, b) => a < b),
@@ -108,39 +125,43 @@ export const logicNodes: NodeDef[] = [
     outputs: [RESULT],
     compute: ({ value }) => ({ result: value === null })
   }),
-  pureNode({
+  pureNode<TypeConfig>({
     type: 'std.logic.coalesce',
     title: 'Coalesce',
     category: CATEGORY,
     description: 'Gives the value, or the fallback when the value is empty.',
     level: 'basic',
     keywords: ['default', 'fallback', 'first'],
-    inputs: [
-      pin('value', 'any', { optional: true, description: 'The value to use when it is there.' }),
-      pin('fallback', 'any', { optional: true, description: 'The value to use otherwise.' })
+    config: typeConfig,
+    inputs: ({ type }) => [
+      pin('value', type, { optional: true, description: 'The value to use when it is there.' }),
+      pin('fallback', type, { optional: true, description: 'The value to use otherwise.' })
     ],
-    outputs: [pin('result', 'any', { description: 'The value, or the fallback.' })],
+    outputs: ({ type }) => [pin('result', type, { description: 'The value, or the fallback.' })],
     compute: ({ value, fallback }) => ({ result: value ?? fallback ?? null })
   }),
-  pureNode({
+  pureNode<TypeConfig>({
     type: 'std.logic.select',
     title: 'Select',
     category: CATEGORY,
     description: 'Gives one value when the condition is true and another when it is false.',
     level: 'basic',
     keywords: ['if', 'choose', 'pick'],
-    inputs: [
+    config: typeConfig,
+    inputs: ({ type }) => [
       pin('condition', 'boolean', { description: 'Which value to give.' }),
-      pin('whenTrue', 'any', {
+      pin('whenTrue', type, {
         optional: true,
+        label: 'When True',
         description: 'The value when the condition is true.'
       }),
-      pin('whenFalse', 'any', {
+      pin('whenFalse', type, {
         optional: true,
+        label: 'When False',
         description: 'The value when the condition is false.'
       })
     ],
-    outputs: [pin('result', 'any', { description: 'The chosen value.' })],
+    outputs: ({ type }) => [pin('result', type, { description: 'The chosen value.' })],
     compute: ({ condition, whenTrue, whenFalse }) => ({
       result: (condition ? whenTrue : whenFalse) ?? null
     })

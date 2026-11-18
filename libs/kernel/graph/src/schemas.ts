@@ -49,6 +49,10 @@ export const valueTypeSchema: v.GenericSchema<ValueType> = v.lazy(() =>
   ])
 );
 
+export const typeConfig = v.object({ type: v.optional(valueTypeSchema, 'any') });
+
+export type TypeConfig = v.InferOutput<typeof typeConfig>;
+
 const pinSpecSchema: v.GenericSchema<PinSpec> = v.strictObject({
   name,
   type: valueTypeSchema,

@@ -139,6 +139,25 @@ describe('reading list nodes', () => {
     });
     assert.deepEqual(await out('std.list.index-of', { list: [1], item: '1' }), { index: -1 });
   });
+
+  it('type the list and item pins by the type chosen, and pluck and flatten give any list', async () => {
+    const code = { code: 'hcpcs' } as const;
+    const contains = await run(
+      'std.list.contains',
+      { list: ['A0425'], item: 'A0425' },
+      { type: code }
+    );
+    assert.deepEqual(
+      contains.signature.inputs.map((p) => p.type),
+      [{ list: code }, code]
+    );
+    const first = await run('std.list.first', { list: [] }, { type: code });
+    assert.deepEqual(first.signature.outputs[0]?.type, code);
+    const concat = await run('std.list.concat', { list: [], other: [] }, { type: code });
+    assert.deepEqual(concat.signature.inputs[1]?.type, { list: code });
+    const pluck = await run('std.list.pluck', { list: [], field: 'a' }, { type: code });
+    assert.deepEqual(pluck.signature.outputs[0]?.type, { list: 'any' });
+  });
 });
 
 describe('building list nodes', () => {
