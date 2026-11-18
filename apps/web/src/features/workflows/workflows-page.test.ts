@@ -279,14 +279,10 @@ describe('WorkflowsPage', () => {
     assert.ok(!screen.queryByRole('form', { name: 'Create Workflow' }));
   });
 
-  it('offers the customization map', async () => {
+  it('labels the workflow search', async () => {
     const { client } = fakeClient();
     showPage(client);
     await screen.findByRole('table');
-    assert.equal(
-      screen.getByRole('link', { name: 'Customization Map' }).getAttribute('href'),
-      '/workflows/customized'
-    );
     assert.equal(document.querySelector('search')?.getAttribute('aria-label'), 'Search Workflows');
   });
 

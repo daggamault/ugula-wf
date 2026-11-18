@@ -3,7 +3,6 @@ import { describe, it } from 'node:test';
 import { createDummyDb, createRecordingDb } from '@ugula/db/testing';
 import { type RawBuilder, sql } from 'kysely';
 import {
-  buildEffective,
   canEditScope,
   findDraftOf,
   findEffectiveIn,
@@ -14,7 +13,6 @@ import {
   findVersionById,
   findVersionOf,
   isStaleIn,
-  listEffective,
   lockOwner,
   nextVersionOf,
   overriddenByIn,
@@ -121,25 +119,6 @@ describe('scope expressions', () => {
 });
 
 describe('effective rows', () => {
-  it('lists the row in effect for every visible key by key', async () => {
-    const row = { id: 'g1', key: 'acme.flow', name: 'Flow', scope: 'agency' };
-    const { db, queries } = createRecordingDb(() => [row]);
-    assert.deepEqual(await listEffective(db, 'graphs', S), [row]);
-    assert.equal(
-      flat(queries[0]?.sql),
-      `select e.id, e.key, e.name, case when "e"."agency_id" is not null then 'agency' else 'system' end as scope from (select distinct k.key from "graphs" k where ( "k"."agency_id" is null or ("k"."is_active" and "k"."agency_id" = $1::uuid) )) keys join "graphs" e on e.id = ( select ( select ev."graph_id" from "graph_versions" ev where ev.id = ( select v.id from graphs g join graph_versions v on v.graph_id = g.id left join lateral ( select bg.id, bv.contract from graphs bg left join graph_versions bv on bv.graph_id = bg.id and bv.version = ( select v.version from graphs g join graph_versions v on v.graph_id = g.id where g.key = "ek"."key" and g.is_active and v.published_at is not null and ("g"."agency_id" is null or "g"."agency_id" = $2::uuid) order by g.agency_id is not null, v.version desc limit 1) and bv.published_at is not null where bg.key = g.key and bg.agency_id is null ) base on true where g.key = "ek"."key" and g.is_active and v.published_at is not null and ("g"."agency_id" is null or "g"."agency_id" = $3::uuid) and case when base.id is null or base.id = g.id then v.version = ( select v.version from graphs g join graph_versions v on v.graph_id = g.id where g.key = "ek"."key" and g.is_active and v.published_at is not null and ("g"."agency_id" is null or "g"."agency_id" = $4::uuid) order by g.agency_id is not null, v.version desc limit 1) else v.contract = base.contract end order by g.agency_id is null, v.version desc limit 1 ) ) from (select "keys"."key" as key) ek ) order by e.key`
-    );
-    assert.deepEqual(queries[0]?.parameters, ['a-1', 'a-1', 'a-1', 'a-1']);
-  });
-
-  it('builds the same listing over data tables', () => {
-    const q = buildEffective('data_tables', S).compile(createDummyDb());
-    assert.equal(
-      flat(q.sql),
-      `select e.id, e.key, e.name, case when "e"."agency_id" is not null then 'agency' else 'system' end as scope from (select distinct k.key from "data_tables" k where ( "k"."agency_id" is null or ("k"."is_active" and "k"."agency_id" = $1::uuid) )) keys join "data_tables" e on e.id = ( select ( select ev."table_id" from "data_table_versions" ev where ev.id = ( select v.id from data_tables t join data_table_versions v on v.table_id = t.id left join lateral ( select sv.contract from data_tables st join data_table_versions sv on sv.table_id = st.id where st.key = t.key and st.agency_id is null and sv.published_at is not null order by sv.version desc limit 1 ) base on true where t.key = "ek"."key" and t.is_active and v.published_at is not null and ( t.agency_id is null or ( t.agency_id = $2::uuid and (base.contract is null or v.contract = base.contract) ) ) order by t.agency_id is null, v.version desc limit 1 ) ) from (select "keys"."key" as key) ek ) order by e.key`
-    );
-  });
-
   it('finds the graph in effect for a key as runs resolve it', async () => {
     const { db, queries } = createRecordingDb(() => [{ id: 'g1', scope: 'agency' }]);
     assert.deepEqual(await findEffectiveIn(db, 'graphs', S, 'acme.flow'), {

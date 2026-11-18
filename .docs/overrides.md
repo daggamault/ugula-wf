@@ -75,7 +75,7 @@ An override must keep the signature of the system graph it replaces: the same ex
 - **Canvas:** on a copy, nodes added or changed against the version it was copied from (type, version, settings, inputs, label or note) get a custom outline and a **Custom** chip; new wires are drawn in the custom color; **Show Removed** adds the base's removed nodes as dashed ghosts. In any graph, a subworkflow or table node whose key your agency overrides gets the outline too.
 - **Inspector:** a **Changed From Base** section lists each changed property with a custom dot, `Base: value` and **Reset to Base**; changed input pins carry the dot. Table nodes link to their table and say when it is customized.
 - **Base Updated:** a copy whose base has a newer version, or which is stale, shows a warning and a **Compare** panel: Base Then, Base Now (what the base changed) and Yours (what you changed), in plain words, with **Keep Mine** and **Start From Base** (danger confirm).
-- **Lists:** Workflows and Tables show the scope (Standard for built-ins, Custom for the agency's own), **Has Custom Copy** and **Base Updated** badges, and filter by **Kind** and **Scope**. The **Customization Map** (`/workflows/customized`) shows each workflow's call tree with customized branches and tables highlighted, linking to each copy.
+- **Lists:** Workflows and Tables show the scope (Standard for built-ins, Custom for the agency's own), **Has Custom Copy** and **Base Updated** badges, and filter by **Kind** and **Scope**.
 
 ## Scope resolution in SQL
 

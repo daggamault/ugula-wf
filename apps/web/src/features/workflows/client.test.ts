@@ -58,15 +58,13 @@ describe('createWorkflowsClient graphs', () => {
     assert.deepEqual(calls, [get('/api/graphs/nodes')]);
   });
 
-  it('reads the customization map, a workflow, its comparison and a version', async () => {
+  it('reads a workflow, its comparison and a version', async () => {
     const { client, calls } = recording({ id: 'g' });
     const signal = new AbortController().signal;
-    assert.deepEqual(await client.map(signal), { id: 'g' });
-    await client.find('a/b', signal);
+    assert.deepEqual(await client.find('a/b', signal), { id: 'g' });
     await client.compare('a/b', signal);
     await client.version('a/b', 3);
     assert.deepEqual(calls, [
-      get('/api/graphs/map', true),
       get('/api/graphs/a%2Fb', true),
       get('/api/graphs/a%2Fb/compare', true),
       get('/api/graphs/a%2Fb/versions/3')

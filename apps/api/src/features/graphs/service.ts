@@ -36,10 +36,8 @@ import {
   findNewestPublished,
   findSystem,
   findVersionOf,
-  listEffective,
   lockOwner,
   nextVersionOf,
-  type Scope,
   scopeIds,
   setActive,
   touch
@@ -53,7 +51,6 @@ import {
   insertDraft,
   insertGraph,
   listDependents,
-  listEffectiveGraphs,
   listPublishedNodes,
   listVersions,
   publishVersion,
@@ -101,31 +98,6 @@ const forbidden = () => fail('forbidden', 'You do not have permission to change 
 
 export const roleFor = (kind: GraphKind, role: GraphRole | undefined): GraphRole =>
   kind === 'workflow' ? 'workflow' : role && role !== 'workflow' ? role : 'rule';
-
-type MapGraph = {
-  id: string;
-  key: string;
-  name: string;
-  kind: GraphKind;
-  role: GraphRole;
-  scope: Scope;
-  definition: GraphDef;
-};
-
-export const customizationMap = (graphs: readonly MapGraph[]) => {
-  const keys = new Set(graphs.map((g) => g.key));
-  return graphs.map(({ definition, ...g }) => ({
-    ...g,
-    children: [
-      ...new Set(
-        [...graphRefs(definition), ...workflowRefs(definition)]
-          .map((r) => r.type)
-          .filter((k) => k !== g.key && keys.has(k))
-      )
-    ],
-    tables: tableRefs(definition)
-  }));
-};
 
 const TABLE_KINDS = { decide: 'decision', lookup: 'lookup' } as const;
 
@@ -189,14 +161,6 @@ export const createGraphService = ({
       ok(await searchGraphs(db, scopeIds(access), filters)),
     nodes: async (access: AgencyAccess) =>
       ok({ nodes: await listPublishedNodes(db, scopeIds(access)) }),
-    map: async (access: AgencyAccess) => {
-      const ids = scopeIds(access);
-      const [graphs, tables] = await Promise.all([
-        listEffectiveGraphs(db, ids),
-        listEffective(db, 'data_tables', ids)
-      ]);
-      return ok({ graphs: customizationMap(graphs), tables });
-    },
     find: async (access: AgencyAccess, id: string) => {
       const graph = await findGraph(db, scopeIds(access), id);
       if (!graph) return notFound;

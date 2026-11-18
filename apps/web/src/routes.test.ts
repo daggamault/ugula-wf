@@ -24,7 +24,6 @@ import { TasksPage } from './features/tasks/tasks-page.tsx';
 import { InvitePage } from './features/users/invite-page.tsx';
 import { UserPage } from './features/users/user-page.tsx';
 import { UsersPage } from './features/users/users-page.tsx';
-import { CustomizationMapPage } from './features/workflows/customization-map-page.tsx';
 import { TablePage } from './features/workflows/table-page.tsx';
 import { TablesPage } from './features/workflows/tables-page.tsx';
 import { WorkflowsPage } from './features/workflows/workflows-page.tsx';
@@ -68,7 +67,6 @@ describe('resolveRoute', () => {
   it('opens the page each path names', () => {
     const pages: [string, unknown][] = [
       ['/workflows', WorkflowsPage],
-      ['/workflows/customized', CustomizationMapPage],
       ['/tables', TablesPage],
       ['/tables/t1', TablePage],
       ['/runs', RunsPage],
@@ -192,11 +190,6 @@ describe('resolveRoute', () => {
     assert.deepEqual(props('/workflows/g1', 'trail=g0:2,bad').trail, [
       { graphId: 'g0', version: 2 }
     ]);
-  });
-
-  it('reads the customization map filter', () => {
-    assert.equal(props('/workflows/customized', 'all=shown').showAll, true);
-    assert.equal(props('/workflows/customized', 'all=yes').showAll, false);
   });
 
   it('reads the claim tab and falls back to the overview', () => {

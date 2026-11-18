@@ -37,11 +37,10 @@ import { InvitePage } from './features/users/invite-page.tsx';
 import { UserPage } from './features/users/user-page.tsx';
 import { INVITATIONS_PATH, USERS_PATH, UsersPage } from './features/users/users-page.tsx';
 import type { WorkflowsClient } from './features/workflows/client.ts';
-import { CustomizationMapPage } from './features/workflows/customization-map-page.tsx';
 import { TablePage } from './features/workflows/table-page.tsx';
 import { TABLES_PATH, TablesPage } from './features/workflows/tables-page.tsx';
 import { parseTrail } from './features/workflows/trail.ts';
-import { CUSTOMIZED_PATH, WorkflowsPage } from './features/workflows/workflows-page.tsx';
+import { WorkflowsPage } from './features/workflows/workflows-page.tsx';
 import type { AgenciesClient } from './shared/access.tsx';
 import type { CodesClient } from './shared/codes.ts';
 import type { Live } from './shared/live.ts';
@@ -96,12 +95,6 @@ const routes: readonly Route[] = [
   {
     pattern: '/workflows',
     render: (_, __, c) => <WorkflowsPage client={c.workflows} live={c.live} />
-  },
-  {
-    pattern: CUSTOMIZED_PATH,
-    render: (_, q, c) => (
-      <CustomizationMapPage client={c.workflows} live={c.live} showAll={q.get('all') === 'shown'} />
-    )
   },
   {
     pattern: TABLES_PATH,

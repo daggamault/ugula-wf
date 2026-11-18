@@ -1,12 +1,12 @@
 import { type EventDef, entryTrigger, TRIGGER_KIND_LABELS, triggerSummary } from '@ugula/graph';
-import { MapIcon, PlusIcon } from 'lucide-react';
+import { PlusIcon } from 'lucide-react';
 import { useContext, useState } from 'react';
 import { eventLabel } from '../../shared/graph/catalog.ts';
 import { WorkflowEventsContext } from '../../shared/graph/pins.ts';
 import { type Live, useReconnect } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
-import { Button, ButtonLink } from '../../shared/ui/button.tsx';
+import { Button } from '../../shared/ui/button.tsx';
 import { emptyValue } from '../../shared/ui/empty-state.tsx';
 import { Highlight } from '../../shared/ui/highlight.tsx';
 import { EditLink, RowActions, RunLink } from '../../shared/ui/icon-button.tsx';
@@ -25,8 +25,6 @@ type WorkflowsPageProps = {
 };
 
 export const WORKFLOWS_PATH = '/workflows';
-
-export const CUSTOMIZED_PATH = `${WORKFLOWS_PATH}/customized`;
 
 export const GRAPH_TABLE = {
   sorts: { name: 'asc', kind: 'desc', updated: 'desc' },
@@ -120,16 +118,10 @@ export const WorkflowsPage = ({ client, live }: WorkflowsPageProps) => {
     <Page
       title="Workflows"
       actions={
-        <>
-          <ButtonLink to={CUSTOMIZED_PATH} variant="outline">
-            <MapIcon aria-hidden="true" className="size-4" />
-            Customization Map
-          </ButtonLink>
-          <Button onClick={() => setCreating(true)}>
-            <PlusIcon aria-hidden="true" className="size-4" />
-            {addLabel}
-          </Button>
-        </>
+        <Button onClick={() => setCreating(true)}>
+          <PlusIcon aria-hidden="true" className="size-4" />
+          {addLabel}
+        </Button>
       }
     >
       {isCreating ? (

@@ -9,7 +9,6 @@ import {
   insertDraft,
   insertGraph,
   listDependents,
-  listEffectiveGraphs,
   listPublishedNodes,
   listVersions,
   publishVersion,
@@ -265,25 +264,6 @@ describe('graph reads', () => {
     const { db, queries } = createRecordingDb();
     assert.deepEqual(await findVisibleTableKinds(db, S, []), []);
     assert.equal(queries.length, 0);
-    await db.destroy();
-  });
-
-  it('resolves the effective graph of every visible key', async () => {
-    const graph = { id: 'g1', key: 'a.b', name: 'B', kind: 'node', role: 'rule', scope: 'system' };
-    const { db, queries } = createRecordingDb(() => [graph]);
-    assert.deepEqual(await listEffectiveGraphs(db, S), [graph]);
-    const sql = flat(queries[0]?.sql);
-    assert.ok(
-      sql.startsWith(
-        `select g.id, g.key, g.name, g.kind, g.role, case when "g"."agency_id" is not null then 'agency' else 'system' end as scope, v.definition from (select distinct k.key from graphs k where ${visibleTo('k', 1)}) keys cross join lateral (select ( select v.id from graphs g`
-      )
-    );
-    assert.ok(
-      sql.endsWith(
-        'as id) r join graph_versions v on v.id = r.id join graphs g on g.id = v.graph_id order by g.key'
-      )
-    );
-    assert.deepEqual(queries[0]?.parameters, ['a-1', 'a-1', 'a-1', 'a-1']);
     await db.destroy();
   });
 });

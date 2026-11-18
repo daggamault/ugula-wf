@@ -78,20 +78,7 @@ export type GraphDetails = { name: string; description: string };
 
 export type NewGraph = GraphDetails & { kind: GraphKind };
 
-export type MapGraph = {
-  id: string;
-  key: string;
-  name: string;
-  kind: GraphKind;
-  role: GraphRole;
-  scope: GraphScope;
-  children: string[];
-  tables: string[];
-};
-
 export type EffectiveTable = { id: string; key: string; name: string; scope: GraphScope };
-
-export type CustomizationMap = { graphs: MapGraph[]; tables: EffectiveTable[] };
 
 export type TableKind = 'decide' | 'lookup';
 
@@ -125,7 +112,6 @@ export const createWorkflowsClient = (api: Api) => ({
   search: (query: string, signal?: AbortSignal) =>
     api.get<Page<GraphSummary>>(`/api/graphs?${query}`, signal),
   nodes: async () => (await api.get<{ nodes: PublishedNode[] }>('/api/graphs/nodes')).nodes,
-  map: (signal?: AbortSignal) => api.get<CustomizationMap>('/api/graphs/map', signal),
   find: (id: string, signal?: AbortSignal) => api.get<GraphDetail>(graphPathOf(id), signal),
   compare: (id: string, signal?: AbortSignal) =>
     api.get<GraphComparison>(`${graphPathOf(id)}/compare`, signal),

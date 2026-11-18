@@ -98,14 +98,6 @@ export const canEditScope = (access: AgencyAccess, scope: Scope, tier: EditTier)
 
 export const scopeIds = (access: AgencyAccess): ScopeIds => ({ agencyId: access.agencyId });
 
-type Effective = { id: string; key: string; name: string; scope: Scope };
-
-export const buildEffective = (table: ScopedTable, s: ScopeIds) => sql<Effective>`
-  select e.id, e.key, e.name, ${scopeOf('e')} as scope
-  from (select distinct k.key from ${sql.table(table)} k where ${visible('k', s)}) keys
-  join ${sql.table(table)} e on e.id = ${effectiveIdOf(table, sql.ref('keys.key'), s)}
-  order by e.key`;
-
 const ALIAS = { graphs: 'g', data_tables: 't' } as const;
 
 export const findEffectiveIn = (db: Db, table: ScopedTable, s: ScopeIds, key: string) => {
@@ -116,9 +108,6 @@ export const findEffectiveIn = (db: Db, table: ScopedTable, s: ScopeIds, key: st
     .where(sql.ref(`${a}.id`), '=', effectiveIdOf(table, sql`${key}::text`, s))
     .executeTakeFirst();
 };
-
-export const listEffective = async (db: Db, table: ScopedTable, s: ScopeIds) =>
-  (await buildEffective(table, s).execute(db)).rows;
 
 export const findScoped = (db: Db, table: ScopedTable, s: ScopeIds, key: string) =>
   db

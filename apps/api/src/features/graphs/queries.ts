@@ -1,4 +1,4 @@
-import { type Db, type GraphKind, type GraphRole, resolvedGraph } from '@ugula/db';
+import type { Db, GraphKind, GraphRole } from '@ugula/db';
 import { contractOf, type GraphDef } from '@ugula/graph';
 import { sql } from 'kysely';
 import { type FacetedPage, facetCounts, whereFacets } from '../../shared/facets.ts';
@@ -344,24 +344,3 @@ export const findVisibleTableKinds = async (db: Db, s: ScopeIds, keys: string[])
         .where(visible('t', s))
         .execute()
     : [];
-
-type EffectiveGraph = {
-  id: string;
-  key: string;
-  name: string;
-  kind: GraphKind;
-  role: GraphRole;
-  scope: Scope;
-  definition: GraphDef;
-};
-
-const buildEffectiveGraphs = (s: ScopeIds) => sql<EffectiveGraph>`
-  select g.id, g.key, g.name, g.kind, g.role, ${scopeOf('g')} as scope, v.definition
-  from (select distinct k.key from graphs k where ${visible('k', s)}) keys
-  cross join lateral (select ${resolvedGraph(s.agencyId, sql.ref('keys.key'))} as id) r
-  join graph_versions v on v.id = r.id
-  join graphs g on g.id = v.graph_id
-  order by g.key`;
-
-export const listEffectiveGraphs = async (db: Db, s: ScopeIds) =>
-  (await buildEffectiveGraphs(s).execute(db)).rows;

@@ -43,7 +43,7 @@ const post = (path: string, body?: unknown) =>
   request(path, { method: 'POST', ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
 
 describe('graph routes', () => {
-  it('serve lists, the node catalog, the customization map and validation', async () => {
+  it('serve lists, the node catalog and validation', async () => {
     assert.deepEqual(
       await (await request('/?q=match&kind=node&scope=agency,system&sort=kind')).json(),
       {
@@ -64,13 +64,6 @@ describe('graph routes', () => {
     );
     assert.equal((await request('/?kind=nope')).status, 400);
     assert.deepEqual(await (await request('/nodes')).json(), { nodes: [{ key: 'demo.x' }] });
-    const map = await request('/map');
-    assert.equal(map.status, 200);
-    assert.deepEqual(await map.json(), {
-      graphs: [{ key: 'acme.flow', children: [] }],
-      tables: []
-    });
-    assert.deepEqual(calls.at(-1), [access]);
     const valid = await post('/validate', { definition });
     assert.equal(valid.status, 200);
     assert.deepEqual(await valid.json(), { issues: [] });

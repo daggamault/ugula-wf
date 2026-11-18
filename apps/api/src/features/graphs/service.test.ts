@@ -13,7 +13,7 @@ import {
 import type { CompiledQuery } from 'kysely';
 import type { Scope } from '../../shared/scopes.ts';
 import { testAccess } from '../../shared/testing.ts';
-import { createGraphService, customizationMap, roleFor, templateFor } from './service.ts';
+import { createGraphService, roleFor, templateFor } from './service.ts';
 
 const nodes = createStdNodes({ fetch });
 
@@ -230,40 +230,7 @@ describe('graph templates and scopes', () => {
   });
 });
 
-describe('customization map', () => {
-  it('lists each graph with the visible graphs it calls and the tables it uses', () => {
-    const tableNode = {
-      id: 't',
-      type: 'std.table.decide',
-      version: 1,
-      config: { inputs: [], outputs: [], table: { key: 'acme.rates' } }
-    };
-    const map = customizationMap([
-      {
-        id: 'g1',
-        key: 'acme.flow',
-        name: 'Flow',
-        kind: 'workflow',
-        role: 'workflow',
-        scope: 'system',
-        definition: { ...usesComposite, nodes: [...usesComposite.nodes, tableNode] }
-      },
-      {
-        id: 'g2',
-        key: 'acme.thing',
-        name: 'Thing',
-        kind: 'node',
-        role: 'rule',
-        scope: 'agency',
-        definition: composite
-      }
-    ]);
-    assert.deepEqual(map[0]?.children, ['acme.thing']);
-    assert.deepEqual(map[0]?.tables, ['acme.rates']);
-    assert.deepEqual(map[1]?.children, []);
-    assert.equal(map[1]?.scope, 'agency');
-  });
-
+describe('table nodes', () => {
   it('reports table nodes whose table the agency cannot see', async () => {
     const { service } = createWorld({ graphs: [] });
     const def: GraphDef = {
@@ -407,65 +374,6 @@ describe('graph service reads', () => {
     assert.ok(queries.every((q) => !q.sql.includes('graphs') || q.parameters.includes('t-1')));
     assert.deepEqual(await service.nodes(admin), { ok: true, value: { nodes: [] } });
     assert.ok(queries.at(-1)?.parameters.every((p) => p === 't-1'));
-  });
-
-  it('maps every effective graph to the graphs it calls, with the effective tables', async () => {
-    const graphRow = {
-      id: 'g1',
-      key: 'acme.flow',
-      name: 'Flow',
-      kind: 'workflow',
-      role: 'workflow',
-      scope: 'agency',
-      definition: usesComposite
-    };
-    const thingRow = {
-      ...graphRow,
-      id: 'g2',
-      key: 'acme.thing',
-      name: 'Thing',
-      kind: 'node',
-      role: 'rule'
-    };
-    const table = { id: 't1', key: 'acme.rates', name: 'Rates', scope: 'system' };
-    const { db, queries } = createRecordingDb((q) => {
-      const sql = q.sql.trimStart();
-      if (sql.startsWith('select g.id, g.key'))
-        return [graphRow, { ...thingRow, definition: composite }];
-      if (sql.startsWith('select e.id, e.key')) return [table];
-      return [];
-    });
-    const service = createGraphService({ db, nodes, kinds: STD_KINDS, events: [] });
-    assert.deepEqual(await service.map(admin), {
-      ok: true,
-      value: {
-        graphs: [
-          {
-            id: 'g1',
-            key: 'acme.flow',
-            name: 'Flow',
-            kind: 'workflow',
-            role: 'workflow',
-            scope: 'agency',
-            children: ['acme.thing'],
-            tables: []
-          },
-          {
-            id: 'g2',
-            key: 'acme.thing',
-            name: 'Thing',
-            kind: 'node',
-            role: 'rule',
-            scope: 'agency',
-            children: [],
-            tables: []
-          }
-        ],
-        tables: [table]
-      }
-    });
-    assert.equal(queries.length, 2);
-    assert.ok(queries.every((q) => q.parameters.includes('t-1')));
   });
 
   it('reports graphs hidden from the agency as not found without writing', async () => {
