@@ -1,9 +1,13 @@
 import type { GraphDef } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import {
+  allOf,
+  anyOf,
   asRule,
   asStage,
   breakRecord,
+  CODE,
+  type Criterion,
   choiceRule,
   choicesFor,
   code,
@@ -14,18 +18,25 @@ import {
   exit,
   firstSet,
   fixed,
+  greaterThan,
   ID,
   INSURANCE,
+  isCode,
   isIn,
+  isMissing,
+  isZero,
   joinLists,
   keepWhere,
   listOf,
   lookup,
   node,
   not,
+  PAYMENT,
   QUEUE,
+  reasonsOf,
   rule,
   stage,
+  startsWith,
   T
 } from './shared.ts';
 
@@ -45,6 +56,61 @@ const INSURANCE_IN = d(
 );
 
 const resultOut = (description: string) => d('result', 'boolean', 'Result', description);
+
+const PAYER_TYPE = 'payerType';
+
+const PRIMARY_TO_MEDICARE = ['WC', 'AM', 'LM'];
+
+const MEDICARE_TYPES = ['MA', 'MB', '16'];
+
+const PAYMENT_METHOD = 'paymentMethod';
+
+const INSURER_METHODS = ['2601001', '2601003', '2601005', '2601009', '2601013'];
+
+const MEDICARE_METHOD = '2601005';
+
+const WORK_RELATED = '9922005';
+
+const primaryToMedicare = (): GraphDef => {
+  const g = rule(
+    [INSURANCE_IN],
+    [
+      resultOut(
+        "Whether the insurance is workers' compensation, automobile medical or liability, which pay before Medicare."
+      )
+    ]
+  );
+  breakRecord(g, 'insurance', 'Insurance', INSURANCE, 'entry.insurance');
+  g.ret('return');
+  g.wire(
+    isIn(
+      g,
+      'primary',
+      'Pays Before Medicare',
+      PAYER_TYPE,
+      'insurance.payerType',
+      codes(
+        g,
+        'primaryTypes',
+        "Workers' Compensation, Automobile Medical and Liability",
+        PAYER_TYPE,
+        PRIMARY_TO_MEDICARE
+      )
+    ),
+    'return.result'
+  );
+  return g.def;
+};
+
+const transportAccidentCause = (): GraphDef => {
+  const g = rule(
+    [d('cause', code('icd10'), 'Cause of Injury', 'One cause of injury, as an ICD-10 code.')],
+    [resultOut('Whether the cause is a transport accident, ICD-10 V00 to V99.')]
+  );
+  g.ret('return');
+  g.wire(startsWith(g, 'transport', 'Transport Accident', 'entry.cause', 'V'), 'return.result');
+  return g.def;
+};
 
 const hasPriority = (): GraphDef => {
   const g = rule(
@@ -105,9 +171,17 @@ const billingOrder = (): GraphDef => {
         'insurances',
         listOf(T.insurance),
         'Insurances in Billing Order',
-        'The primary insurance, then the secondary, then the tertiary, then any other, each in report order.'
+        "Workers' compensation, automobile medical and liability payers first, as they pay before Medicare; then the primary insurance, the secondary, the tertiary and any other, each in report order and each once."
       )
     ]
+  );
+  keepWhere(
+    g,
+    'beforeMedicare',
+    'Payers Before Medicare',
+    'billing.primary-to-medicare',
+    'insurance',
+    'entry.insurances'
   );
   for (const r of PRIORITIES) {
     keepWhere(g, r.id, r.label, 'billing.has-priority', 'insurance', 'entry.insurances', {
@@ -122,14 +196,139 @@ const billingOrder = (): GraphDef => {
     'insurance',
     'entry.insurances'
   );
-  g.ret('return');
-  g.wire(
-    joinLists(g, 'ordered', 'Primary, Then Secondary, Then Tertiary, Then Others', T.insurance, [
-      ...PRIORITIES.map((r) => `${r.id}.list` as const),
-      'others.list'
-    ]),
-    'return.insurances'
+  const ordered = joinLists(
+    g,
+    'ordered',
+    'Before Medicare, Then Primary, Secondary, Tertiary and Others',
+    T.insurance,
+    ['beforeMedicare.list', ...PRIORITIES.map((r) => `${r.id}.list` as const), 'others.list']
   );
+  node(g, 'once', 'std.list.unique', 'Each Once', { list: ordered }, { type: T.insurance });
+  g.ret('return');
+  g.wire('once.list', 'return.insurances');
+  return g.def;
+};
+
+const payerChecks = (): GraphDef => {
+  const g = rule(
+    [
+      d('encounter', T.encounter, 'Encounter', 'The encounter whose insurances are billed.'),
+      d('classification', CODE.classification, 'Classification', 'What kind of trip it was.'),
+      d(
+        'insurances',
+        listOf(T.insurance),
+        'Insurances in Billing Order',
+        'The insurances to bill, in billing order.'
+      )
+    ],
+    [
+      d(
+        'reasons',
+        listOf('string'),
+        'Reasons',
+        'What a biller should confirm about the payers before the claim goes out.'
+      )
+    ]
+  );
+  breakRecord(g, 'trip', 'Encounter', ENCOUNTER, 'entry.encounter');
+  breakRecord(g, 'payment', 'Payment', PAYMENT, 'trip.payment');
+  keepWhere(
+    g,
+    'accidents',
+    'Transport Accident Causes',
+    'billing.transport-accident-cause',
+    'cause',
+    'trip.injuryCauses'
+  );
+  const injury = anyOf(g, 'injury', 'Work Injury or Transport Accident', [
+    isCode(g, 'work', 'Work Related', 'yesNoUnknown', 'trip.workRelated', WORK_RELATED),
+    greaterThan(g, 'accident', 'Transport Accident', 'integer', 'accidents.count', 0)
+  ]);
+  node(
+    g,
+    'first',
+    'std.list.first',
+    'First Insurance',
+    { list: 'entry.insurances' },
+    {
+      type: T.insurance
+    }
+  );
+  breakRecord(g, 'billedFirst', 'Insurance Billed First', INSURANCE, 'first.item');
+  node(
+    g,
+    'count',
+    'std.list.length',
+    'Insurances Reported',
+    { list: 'entry.insurances' },
+    {
+      type: T.insurance
+    }
+  );
+  const noInsurance = isZero(g, 'noInsurance', 'No Insurance Reported', 'count.length');
+  const medicareFirst = anyOf(g, 'medicareFirst', 'Medicare Billed First', [
+    isIn(
+      g,
+      'medicareType',
+      'Medicare Payer Type',
+      PAYER_TYPE,
+      'billedFirst.payerType',
+      codes(g, 'medicareTypes', 'Medicare Payer Types', PAYER_TYPE, MEDICARE_TYPES)
+    ),
+    allOf(g, 'medicareMethod', 'Medicare Pays an Insurance With No Payer Type', [
+      isMissing(g, 'noPayerType', 'No Payer Type', 'billedFirst.payerType'),
+      not(g, 'someInsurance', 'Some Insurance Reported', noInsurance),
+      isCode(g, 'medicarePays', 'Medicare Pays', PAYMENT_METHOD, 'payment.method', MEDICARE_METHOD)
+    ])
+  ]);
+  const criteria: Criterion[] = [
+    {
+      id: 'secondaryPayer',
+      label: 'Medicare First on a Work Injury or Transport Accident',
+      reason:
+        'Medicare is billed first on a work injury or transport accident: confirm with the Medicare Secondary Payer questionnaire who pays first',
+      holds: allOf(g, 'secondaryPayer', 'Medicare First on a Work Injury or Transport Accident', [
+        injury,
+        medicareFirst
+      ])
+    },
+    {
+      id: 'noTransportMedicare',
+      label: 'Medicare First Without Transport',
+      reason:
+        'Medicare is billed first for treatment without transport (A0998), which Medicare does not pay: bill the patient or another payer, or expect a denial',
+      holds: allOf(g, 'noTransportMedicare', 'Medicare First Without Transport', [
+        isCode(
+          g,
+          'noTransport',
+          'Treated Without Transport',
+          'tripClassification',
+          'entry.classification',
+          'treatNoTransport'
+        ),
+        medicareFirst
+      ])
+    },
+    {
+      id: 'missingCoverage',
+      label: 'Insurer Named, but No Insurance Reported',
+      reason:
+        'The payment method names an insurer, but the report gives no insurance: find the coverage before billing the patient',
+      holds: allOf(g, 'missingCoverage', 'Insurer Named, but No Insurance Reported', [
+        isIn(
+          g,
+          'insurerMethod',
+          'Paid by an Insurer',
+          PAYMENT_METHOD,
+          'payment.method',
+          codes(g, 'insurerMethods', 'Insurer Payment Methods', PAYMENT_METHOD, INSURER_METHODS)
+        ),
+        noInsurance
+      ])
+    }
+  ];
+  g.ret('return');
+  g.wire(reasonsOf(g, 'reasons', 'Payer Reasons', criteria), 'return.reasons');
   return g.def;
 };
 
@@ -229,13 +428,22 @@ const resolveCoverage = (): GraphDef => {
 
 const determinePayers = (): GraphDef => {
   const g = stage(
-    [d('encounter', T.encounter, 'Encounter', 'The encounter whose insurances to bill.')],
+    [
+      d('encounter', T.encounter, 'Encounter', 'The encounter whose insurances to bill.'),
+      d('classification', CODE.classification, 'Classification', 'What kind of trip it was.')
+    ],
     [
       d(
         'coverages',
         listOf(T.coverage),
         'Coverages',
         'The payers to bill, in billing order; none when the patient pays.'
+      ),
+      d(
+        'reasons',
+        listOf('string'),
+        'Reasons',
+        'What a biller should confirm about the payers before the claim goes out.'
       )
     ],
     { determined: exit('Determined', 'Every reported insurance is a coverage.') },
@@ -243,6 +451,11 @@ const determinePayers = (): GraphDef => {
   );
   breakRecord(g, 'trip', 'Encounter', ENCOUNTER, 'entry.encounter');
   g.add('order', 'billing.billing-order', { label: 'Billing Order' });
+  g.add('checks', 'billing.payer-checks', { label: 'Payer Checks' });
+  g.wire('entry.encounter', 'checks.encounter');
+  g.wire('order.insurances', 'checks.insurances');
+  g.wire('entry.classification', 'checks.classification');
+  g.wire('checks.reasons', 'return.reasons');
   g.add('each', 'std.flow.for-each', { label: 'Each Insurance' });
   g.add('coverage', 'billing.resolve-coverage', { label: 'Resolve Coverage' });
   g.add('keep', 'std.var.append', { label: 'Keep the Coverage', config: { name: 'coverages' } });
@@ -274,10 +487,28 @@ export const payerGraphs: SeedGraph[] = [
     hasOtherPriority()
   ),
   asRule(
+    'billing.primary-to-medicare',
+    'Primary to Medicare',
+    "Whether one insurance pays before Medicare by law: workers' compensation, automobile medical or liability, by its payer type (ePayment.57).",
+    primaryToMedicare()
+  ),
+  asRule(
     'billing.billing-order',
     'Billing Order',
-    'The order to bill the insurances in: primary, then secondary, then tertiary, then any other, as the report ranks them. Override it for payer rules of your own, such as Medicare secondary.',
+    "The order to bill the insurances in: workers' compensation, automobile medical and liability first, as they pay before Medicare, then primary, secondary, tertiary and any other, as the report ranks them. Override it for payer rules of your own.",
     billingOrder()
+  ),
+  asRule(
+    'billing.transport-accident-cause',
+    'Transport Accident Cause',
+    'Whether one cause of injury is a transport accident, ICD-10 V00 to V99, such as a motor vehicle collision.',
+    transportAccidentCause()
+  ),
+  asRule(
+    'billing.payer-checks',
+    'Payer Checks',
+    'What a biller should confirm about the payers: Medicare billed first on a work injury or transport accident (Medicare Secondary Payer) or for treatment without transport, or a payment method naming an insurer when the report gives no insurance.',
+    payerChecks()
   ),
   asRule(
     'billing.payer-choice',
@@ -301,7 +532,7 @@ export const payerGraphs: SeedGraph[] = [
   asStage(
     'billing.determine-payers',
     'Determine Payers',
-    'The coverages of an encounter: every reported insurance, in billing order. No insurance means the patient pays.',
+    'The coverages of an encounter: every reported insurance, in billing order, with the Payer Checks a biller should confirm. No insurance means the patient pays.',
     determinePayers()
   )
 ];

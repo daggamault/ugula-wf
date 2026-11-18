@@ -80,7 +80,12 @@ const buildClaim = (): GraphDef => {
   g.wire('payers.coverages', 'primary.list', 'claim.coverages');
   g.wire('primary.item', 'primaryPayer.coverage');
   g.wire('primaryPayer.payerId', 'charges.payerId');
-  g.wire('classify.classification', 'charges.classification', 'claim.classification');
+  g.wire(
+    'classify.classification',
+    'charges.classification',
+    'payers.classification',
+    'claim.classification'
+  );
   g.wire('trip.transportMethod', 'charges.transportMethod');
   g.wire('trip.patientsTransported', 'charges.patientsTransported');
   g.wire('payment.transportReason', 'charges.transportReason');
@@ -101,6 +106,7 @@ const buildClaim = (): GraphDef => {
     'classify.reasons',
     'service.reasons',
     'places.reasons',
+    'payers.reasons',
     'charges.reasons'
   ]);
   g.wire(reasons, 'claim.reasons');

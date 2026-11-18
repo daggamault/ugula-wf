@@ -61,19 +61,19 @@ A working summary of US ground ambulance billing for people building Ugula. Rule
 
 What the app does today is in [Workflows](workflows.md); everything else is rebuilt on the same records and primitives, one workflow per event.
 
-| Item                                                                                             | Status                                                                     |
-| ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| Trip classification, level of service, emergency status, loaded miles                            | Built: Trip Classification, Service Details                                |
-| Base rate (A0426-A0434), A0998 without transport, A0425 mileage, origin and destination modifier | Built: Charge Lines, Base Rate Code, Origin and Destination                |
-| Patient matching and payer directory matching                                                    | Built: Resolve Patient, Resolve Coverage                                   |
-| Coordination of benefits order                                                                   | Built as report order (Billing Order); Medicare Secondary Payer to rebuild |
-| Claim checks (signature, PCS, transport reason, timely filing, ABN, prior authorization)         | To rebuild                                                                 |
-| Eligibility (270/271) and insurance discovery                                                    | To rebuild; the X12 and clearinghouse foundations exist                    |
-| 837P submission and acknowledgments (TA1, 999, 277CA)                                            | To rebuild; the X12 builders and readers exist                             |
-| Claim status (276/277)                                                                           | To rebuild                                                                 |
-| 835 posting, denial routing by CARC, corrected claims, appeals                                   | To rebuild; the 835 reader exists                                          |
-| QL and GM modifiers; A0888 non-covered miles; air base rates and mileage                         | Built: Line Modifiers, Covered Miles, Vehicles table                       |
-| GY, GA/GZ modifiers; NTE narrative                                                               | To rebuild                                                                 |
-| Documents in the PCR (facesheet, PCS, signature, ABN, MSP)                                       | Attachments are stored on the Encounter; reading them is next              |
-| Patient statements, payment plans, collections, refunds, balance-billing laws                    | To rebuild                                                                 |
-| Facility invoicing and deadlines (timely filing, appeals, records, PCS expiry)                   | To rebuild                                                                 |
+| Item                                                                                             | Status                                                        |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| Trip classification, level of service, emergency status, loaded miles                            | Built: Trip Classification, Service Details                   |
+| Base rate (A0426-A0434), A0998 without transport, A0425 mileage, origin and destination modifier | Built: Charge Lines, Base Rate Code, Origin and Destination   |
+| Patient matching and payer directory matching                                                    | Built: Resolve Patient, Resolve Coverage                      |
+| Coordination of benefits order and Medicare Secondary Payer                                      | Built: Billing Order, Payer Checks; MSP questionnaire to read |
+| Claim checks (signature, PCS, transport reason, timely filing, ABN, prior authorization)         | To rebuild                                                    |
+| Eligibility (270/271) and insurance discovery                                                    | To rebuild; the X12 and clearinghouse foundations exist       |
+| 837P submission and acknowledgments (TA1, 999, 277CA)                                            | To rebuild; the X12 builders and readers exist                |
+| Claim status (276/277)                                                                           | To rebuild                                                    |
+| 835 posting, denial routing by CARC, corrected claims, appeals                                   | To rebuild; the 835 reader exists                             |
+| QL and GM modifiers; A0888 non-covered miles; air base rates and mileage                         | Built: Line Modifiers, Covered Miles, Vehicles table          |
+| GY, GA/GZ modifiers; NTE narrative                                                               | To rebuild                                                    |
+| Documents in the PCR (facesheet, PCS, signature, ABN, MSP)                                       | Attachments are stored on the Encounter; reading them is next |
+| Patient statements, payment plans, collections, refunds, balance-billing laws                    | To rebuild                                                    |
+| Facility invoicing and deadlines (timely filing, appeals, records, PCS expiry)                   | To rebuild                                                    |

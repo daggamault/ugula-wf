@@ -11,88 +11,154 @@ import { parseDataset, toEncounter } from '@ugula/nemsis';
 import type { SeedTable } from './builder.ts';
 import type { SeedGraph } from './graphs.ts';
 
-type Expected = { classification: string; lines: string[] };
+type Expected = { classification: string; lines: string[]; payers?: string[]; checks?: string[] };
 
 const SAMPLES = '.xmls';
 
 const NOW = new Date('2026-11-17T00:00:00Z');
 
+const A0998_CHECK =
+  'Medicare is billed first for treatment without transport (A0998), which Medicare does not pay: bill the patient or another payer, or expect a denial';
+
+const COVERAGE_CHECK =
+  'The payment method names an insurer, but the report gives no insurance: find the coverage before billing the patient';
+
+const MSP_CHECK =
+  'Medicare is billed first on a work injury or transport accident: confirm with the Medicare Secondary Payer questionnaire who pays first';
+
 const EXPECTED: Record<string, Expected[]> = {
   'als1-iv-solutions.xml': [
-    { classification: 'emergency', lines: ['A0427-EH x1', 'A0425-EH x6.4'] }
+    { classification: 'emergency', lines: ['A0427-EH x1', 'A0425-EH x6.4'], payers: ['Medicaid'] }
   ],
   'als2-cardiac-arrest.xml': [
-    { classification: 'emergency', lines: ['A0433-RH x1', 'A0425-RH x5.4'] }
+    { classification: 'emergency', lines: ['A0433-RH x1', 'A0425-RH x5.4'], payers: ['Medicare'] }
   ],
   'als2-iv-medications.xml': [
-    { classification: 'emergency', lines: ['A0433-PH x1', 'A0425-PH x6.9'] }
+    { classification: 'emergency', lines: ['A0433-PH x1', 'A0425-PH x6.9'], payers: ['Blue Plan'] }
   ],
   'auto-accident-msp.xml': [
-    { classification: 'emergency', lines: ['A0427-SH x1', 'A0425-SH x4.6'] }
+    {
+      classification: 'emergency',
+      lines: ['A0427-SH x1', 'A0425-SH x4.6'],
+      payers: ['Medicare', 'Keystone Auto'],
+      checks: [MSP_CHECK]
+    }
   ],
   'batch-three-reports.xml': [
-    { classification: 'emergency', lines: ['A0429-SH x1', 'A0425-SH x8.3'] },
+    { classification: 'emergency', lines: ['A0429-SH x1', 'A0425-SH x8.3'], payers: ['Blue Plan'] },
     { classification: 'notBillable', lines: ['A0429 x1'] },
-    { classification: 'treatNoTransport', lines: ['A0998 x1'] }
-  ],
-  'bls-emergency-commercial.xml': [
-    { classification: 'emergency', lines: ['A0429-SH x1', 'A0425-SH x8.3'] }
+    {
+      classification: 'treatNoTransport',
+      lines: ['A0998 x1'],
+      payers: ['Medicare'],
+      checks: [A0998_CHECK]
+    }
   ],
   'bls-emergency-commercial-corrected.xml': [
-    { classification: 'emergency', lines: ['A0429-SH x1', 'A0425-SH x10.1'] }
+    { classification: 'emergency', lines: ['A0429-SH x1', 'A0425-SH x10.1'], payers: ['Blue Plan'] }
+  ],
+  'bls-emergency-commercial.xml': [
+    { classification: 'emergency', lines: ['A0429-SH x1', 'A0425-SH x8.3'], payers: ['Blue Plan'] }
   ],
   'cancelled-prior-to-arrival.xml': [{ classification: 'notBillable', lines: ['A0429 x1'] }],
   'contract-facility.xml': [
-    { classification: 'scheduled', lines: ['A0429-EH x1', 'A0425-EH x4.6'] }
+    {
+      classification: 'scheduled',
+      lines: ['A0429-EH x1', 'A0425-EH x4.6'],
+      payers: ['Simulated Medicare Part B']
+    }
   ],
   'critical-care-scene.xml': [
-    { classification: 'emergency', lines: ['A0427-RH x1', 'A0425-RH x6.3'] }
+    { classification: 'emergency', lines: ['A0427-RH x1', 'A0425-RH x6.3'], payers: ['Blue Plan'] }
   ],
-  'dead-at-scene-ql.xml': [{ classification: 'pronouncedDead', lines: ['A0429-RH-QL x1'] }],
+  'dead-at-scene-ql.xml': [
+    {
+      classification: 'pronouncedDead',
+      lines: ['A0429-RH-QL x1'],
+      payers: ['Simulated Medicare Part B']
+    }
+  ],
   'dependent-secondary-coverage.xml': [
-    { classification: 'emergency', lines: ['A0429-SH x1', 'A0425-SH x5.8'] }
+    {
+      classification: 'emergency',
+      lines: ['A0429-SH x1', 'A0425-SH x5.8'],
+      payers: ['Blue Plan', 'Medicaid']
+    }
   ],
   'emergent-interfacility.xml': [
-    { classification: 'scheduled', lines: ['A0427-HH x1', 'A0425-HH x13.6'] }
+    { classification: 'scheduled', lines: ['A0427-HH x1', 'A0425-HH x13.6'], payers: ['Medicare'] }
   ],
   'farther-facility-a0888.xml': [
-    { classification: 'emergency', lines: ['A0427-RH x1', 'A0425-RH x2', 'A0888-RH x2.6'] }
+    {
+      classification: 'emergency',
+      lines: ['A0427-RH x1', 'A0425-RH x2', 'A0888-RH x2.6'],
+      payers: ['Simulated Medicare Part B']
+    }
   ],
   'long-distance-stale-pcs.xml': [
-    { classification: 'scheduled', lines: ['A0428-HH x1', 'A0425-HH x124'] }
+    { classification: 'scheduled', lines: ['A0428-HH x1', 'A0425-HH x124'], payers: ['Medicare'] }
   ],
   'medicaid-by-payment-method-unsigned.xml': [
-    { classification: 'emergency', lines: ['A0429-RH x1', 'A0425-RH x4.5'] }
+    {
+      classification: 'emergency',
+      lines: ['A0429-RH x1', 'A0425-RH x4.5'],
+      checks: [COVERAGE_CHECK]
+    }
   ],
-  'missing-disposition.xml': [{ classification: 'notBillable', lines: ['A0429-SH x1'] }],
+  'missing-disposition.xml': [
+    { classification: 'notBillable', lines: ['A0429-SH x1'], payers: ['Blue Plan'] }
+  ],
   'missing-patient-details.xml': [
-    { classification: 'emergency', lines: ['A0429-RH x1', 'A0425-RH x5.3'] }
+    { classification: 'emergency', lines: ['A0429-RH x1', 'A0425-RH x5.3'], payers: ['Blue Plan'] }
   ],
   'multiple-patients-gm.xml': [
-    { classification: 'emergency', lines: ['A0427-RH-GM x1', 'A0425-RH-GM x4.6'] }
+    {
+      classification: 'emergency',
+      lines: ['A0427-RH-GM x1', 'A0425-RH-GM x4.6'],
+      payers: ['Simulated Medicare Part B']
+    }
   ],
   'nemsis-34-emergency.xml': [
-    { classification: 'emergency', lines: ['A0427-RH x1', 'A0425-RH x6.9'] }
+    { classification: 'emergency', lines: ['A0427-RH x1', 'A0425-RH x6.9'], payers: ['Medicare'] }
   ],
   'new-patient-medicare.xml': [
-    { classification: 'emergency', lines: ['A0427-RH x1', 'A0425-RH x4.6'] }
+    {
+      classification: 'emergency',
+      lines: ['A0427-RH x1', 'A0425-RH x4.6'],
+      payers: ['Simulated Medicare Part B']
+    }
   ],
-  'refusal-unsigned.xml': [{ classification: 'refusal', lines: ['A0429 x1'] }],
+  'refusal-unsigned.xml': [
+    { classification: 'refusal', lines: ['A0429 x1'], payers: ['Blue Plan'] }
+  ],
   'rescue-no-patient-care.xml': [{ classification: 'notBillable', lines: ['A0429 x1'] }],
   'scheduled-dialysis-pcs.xml': [
-    { classification: 'scheduled', lines: ['A0428-RJ x1', 'A0425-RJ x5.9'] }
+    { classification: 'scheduled', lines: ['A0428-RJ x1', 'A0425-RJ x5.9'], payers: ['Medicare'] }
   ],
   'scheduled-missing-pcs.xml': [
-    { classification: 'scheduled', lines: ['A0428-HN x1', 'A0425-HN x8.5'] }
+    { classification: 'scheduled', lines: ['A0428-HN x1', 'A0425-HN x8.5'], payers: ['Medicare'] }
   ],
   'sct-interfacility.xml': [
-    { classification: 'scheduled', lines: ['A0434-HH x1', 'A0425-HH x42.2'] }
+    { classification: 'scheduled', lines: ['A0434-HH x1', 'A0425-HH x42.2'], payers: ['Blue Plan'] }
   ],
   'short-trip-self-pay.xml': [
     { classification: 'emergency', lines: ['A0429-RH x1', 'A0425-RH x0.4'] }
   ],
-  'treat-no-transport-medicare.xml': [{ classification: 'treatNoTransport', lines: ['A0998 x1'] }],
-  'work-injury-msp.xml': [{ classification: 'emergency', lines: ['A0427-RH x1', 'A0425-RH x4.6'] }]
+  'treat-no-transport-medicare.xml': [
+    {
+      classification: 'treatNoTransport',
+      lines: ['A0998 x1'],
+      payers: ['Medicare'],
+      checks: [A0998_CHECK]
+    }
+  ],
+  'work-injury-msp.xml': [
+    {
+      classification: 'emergency',
+      lines: ['A0427-RH x1', 'A0425-RH x4.6'],
+      payers: ['Keystone Comp', 'Simulated Medicare Part B']
+    }
+  ]
 };
 
 type Line = { code: string; modifiers: string[]; units: number };
@@ -135,9 +201,20 @@ export const sampleProblems = async (
       transportReason: field(payment, 'transportReason') ?? null,
       closestFacilityMiles: field(payment, 'closestFacilityMiles') ?? null
     });
+    const order = await run('billing.billing-order', {
+      insurances: field(encounter, 'insurances') ?? []
+    });
+    const checks = await run('billing.payer-checks', {
+      encounter,
+      classification: trip.classification ?? null,
+      insurances: order.insurances ?? []
+    });
+    const payers = (order.insurances as Json[]).map((i) => String(field(i, 'companyName')));
     return {
       classification: String(trip.classification),
-      lines: (charges.lines as Line[]).map(lineText)
+      lines: (charges.lines as Line[]).map(lineText),
+      ...(payers.length ? { payers } : {}),
+      ...((checks.reasons as string[]).length ? { checks: checks.reasons as string[] } : {})
     };
   };
   const files = fs.readdirSync(SAMPLES).filter((f) => f.endsWith('.xml'));

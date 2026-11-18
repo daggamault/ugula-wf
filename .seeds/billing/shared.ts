@@ -221,6 +221,11 @@ export const template = (
   return outputOf(id, 'text');
 };
 
+export const isZero = (g: Builder, id: string, label: string, value: Port) => {
+  node(g, id, 'std.logic.equal', label, { a: value, b: fixed(0) }, { type: 'integer' });
+  return outputOf(id, 'result');
+};
+
 export const not = (g: Builder, id: string, label: string, value: Port) => {
   node(g, id, 'std.logic.not', label, { value });
   return outputOf(id, 'result');
