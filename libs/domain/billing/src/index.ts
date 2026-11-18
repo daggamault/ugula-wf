@@ -29,12 +29,14 @@ export {
 } from './claim-details.ts';
 export {
   CLAIM_DECISIONS,
+  CLAIM_SETTLEMENTS,
   CLAIM_STATUS_LABELS,
   CLAIM_STATUSES,
   type ClaimDecision,
   type ClaimInput,
   type ClaimLocation,
   type ClaimReview,
+  type ClaimSettlement,
   type ClaimStatus,
   isEditable,
   NOTE_LENGTH,
@@ -80,6 +82,22 @@ export {
   ZIP_PLUS_4_PATTERN,
   type ZipPlace
 } from './geo.ts';
+export {
+  ACKNOWLEDGMENT_KINDS,
+  type Acknowledgment,
+  acknowledgmentsOf,
+  adjudicationOf,
+  CLEARINGHOUSE_FILE_KINDS,
+  type ClearinghouseFileKind,
+  claimPaidCentsOf,
+  fileKindOf,
+  isBalanced,
+  PAYMENT_OUTCOMES,
+  type PaymentOutcome,
+  patientCentsOf,
+  paymentOutcomeOf,
+  providerAdjustmentCentsOf
+} from './inbound.ts';
 export { billingKinds } from './kinds.ts';
 export {
   CARRIER_PATTERN,
@@ -130,10 +148,13 @@ export {
 export type {
   BillingStores,
   ClaimStore,
+  ClearinghouseStore,
   DiagnosisStore,
   FeeStore,
   PatientStore,
   PayerStore,
+  PaymentView,
+  RemittanceView,
   SentClaim
 } from './stores.ts';
 export {
@@ -143,4 +164,5 @@ export {
   submissionIssues,
   x837ClaimOf
 } from './submission.ts';
+export { type Remittance, type RemittanceClaim, read835 } from './x835.ts';
 export { build837, MAX_CONTROL_NUMBER, type Submitter } from './x837.ts';

@@ -48,6 +48,7 @@ const buildClaimsTable = (db: Kysely<Database>) =>
     )
     .addColumn('reviewed_at', 'timestamptz')
     .addColumn('review_note', 'text')
+    .addColumn('status_note', 'text')
     .addColumn('classification', 'text', (col) => col.notNull())
     .addColumn('service_date', 'date')
     .addColumn('level', 'text', (col) => col.notNull())

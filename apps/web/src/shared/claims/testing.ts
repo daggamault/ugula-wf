@@ -48,6 +48,7 @@ export const claimDetail: ClaimDetail = {
   revision: 1,
   reviewed_at: null,
   review_note: null,
+  status_note: null,
   reviewed_by: null,
   origin_code: null,
   transport_reason: 'A',

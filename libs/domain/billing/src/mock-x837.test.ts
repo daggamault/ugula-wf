@@ -88,6 +88,7 @@ describe('read837', () => {
         patient: { lastName: 'DOE', firstName: 'TIM' },
         payer: { name: 'MEDICARE', id: 'MCR' },
         claimFiling: 'MB',
+        priorPaidCents: null,
         lines: [{ code: 'A0427', modifiers: [], chargeCents: 10_000, units: 1, lineNumber: null }]
       },
       {
@@ -98,6 +99,7 @@ describe('read837', () => {
         patient: { lastName: 'ROE', firstName: 'RAY' },
         payer: null,
         claimFiling: null,
+        priorPaidCents: null,
         lines: [
           { code: 'A0425', modifiers: ['RH', 'QL'], chargeCents: 5_050, units: 3, lineNumber: '7' }
         ]

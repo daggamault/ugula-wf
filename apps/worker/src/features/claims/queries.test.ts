@@ -223,7 +223,7 @@ describe('createClaimStore', () => {
     await createClaimStore(db, boss, notSent).saveClaim('r1', CLAIM);
     const stale = queries.find((q) => q.sql.startsWith('select "r"."id" from "workflow_runs"'));
     assert.match(stale?.sql ?? '', /"r"."status" = \$\d+ and r.inputs ->> 'encounterId' = \$\d+/);
-    assert.match(stale?.sql ?? '', /"t"."permission" = \$\d+/);
+    assert.match(stale?.sql ?? '', /"t"."permission" in \(\$\d+, \$\d+\)/);
     assert.ok(stale?.parameters.includes('claims:approve'));
     assert.ok(stale?.parameters.includes(ENCOUNTER));
     assert.deepEqual(jobs, [{ runId: STALE_RUN, command: { type: 'cancel' } }]);

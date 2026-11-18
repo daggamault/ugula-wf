@@ -44,6 +44,8 @@ import { createPatientRoutes } from './features/patients/routes.ts';
 import { createPatientService } from './features/patients/service.ts';
 import { createPayerRoutes } from './features/payers/routes.ts';
 import { createPayerService } from './features/payers/service.ts';
+import { createRemittanceRoutes } from './features/remittances/routes.ts';
+import { createRemittanceService } from './features/remittances/service.ts';
 import { createRoleRoutes } from './features/roles/routes.ts';
 import { createRoleService } from './features/roles/service.ts';
 import { createRunRoutes } from './features/runs/routes.ts';
@@ -244,6 +246,8 @@ export const createApp = ({
     )
     .use('/claims/*', guardMethods({ ...read('claims:read'), PUT: 'claims:update' }))
     .route('/claims', createClaimRoutes(createClaimService({ db, boss, publish })))
+    .use('/remittances/*', guardMethods(read('claims:read')))
+    .route('/remittances', createRemittanceRoutes(createRemittanceService({ db })))
     .use('/imports/*', guardMethods({ ...read('imports:read'), POST: 'imports:create' }))
     .route('/imports', createImportRoutes(imports));
   app.route('/api/imports/sftp', createSftpRoutes(imports, config.SFTP_HOOK_SECRET));

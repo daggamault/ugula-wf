@@ -86,6 +86,7 @@ export type ClaimDetail = ClaimSummary & {
   revision: number;
   reviewed_at: string | null;
   review_note: string | null;
+  status_note: string | null;
   reviewed_by: string | null;
   import_id: string | null;
   import_file_name: string | null;

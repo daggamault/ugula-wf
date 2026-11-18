@@ -229,7 +229,7 @@ export const claimColumns = (c: Omit<ClaimInput, 'encounterId' | 'patientId'>) =
   reasons: c.reasons
 });
 
-const REVIEW_PERMISSION = 'claims:approve';
+const CLAIM_TASK_PERMISSIONS = ['claims:approve', 'claims:update'] as const;
 
 export const cancelStaleReviews = async (
   tx: Db,
@@ -251,7 +251,7 @@ export const cancelStaleReviews = async (
           .select(sql`1`.as('one'))
           .whereRef('t.run_id', '=', 'r.id')
           .where('t.status', '=', 'open')
-          .where('t.permission', '=', REVIEW_PERMISSION)
+          .where('t.permission', 'in', CLAIM_TASK_PERMISSIONS)
       )
     );
   if (exceptRunId) q = q.where('r.id', '<>', exceptRunId);

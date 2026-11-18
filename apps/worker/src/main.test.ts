@@ -15,6 +15,7 @@ describe('worker createWorker', () => {
       WORKER_RUN_CONCURRENCY: 8,
       WORKER_MAX_EVENT_LOOP_UTILIZATION: 0.9,
       CLEARINGHOUSE_PREVIOUS_SECRET_KEYS: [],
+      CLEARINGHOUSE_POLL_MINUTES: 5,
       REDIS_HOST: 'localhost',
       REDIS_PORT: 6379,
       REDIS_PASSWORD: 'secret',

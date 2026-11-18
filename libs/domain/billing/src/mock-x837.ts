@@ -17,6 +17,7 @@ export type Mock837Claim = {
   patient: { lastName: string; firstName: string | null };
   payer: Party | null;
   claimFiling: string | null;
+  priorPaidCents: number | null;
   lines: Mock837Line[];
 };
 
@@ -96,6 +97,7 @@ export const read837 = (text: string): Mock837 => {
         patient: sub.patient,
         payer: sub.payer,
         claimFiling: sub.claimFiling,
+        priorPaidCents: null,
         lines: []
       };
       out.claims.push(claim);
@@ -103,6 +105,8 @@ export const read837 = (text: string): Mock837 => {
     }
     if (claim) {
       if (id === 'DTP' && q === '472') claim.serviceDate ??= dateOf(seg[3]?.slice(0, 8));
+      if (id === 'AMT' && q === 'D')
+        claim.priorPaidCents = (claim.priorPaidCents ?? 0) + centsOf(seg[2]);
       if (id === 'SV1') {
         const [, code, ...modifiers] = componentsOf(q, file);
         claim.lines.push({

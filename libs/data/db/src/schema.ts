@@ -1,16 +1,20 @@
 import type { Permission } from '@ugula/access';
 import type {
   Adjudication,
+  Adjustment,
   AfterDownload,
   ClaimFilingCode,
   ClaimStatus,
   Classification,
+  ClearinghouseFileKind,
   ClearinghouseVendor,
   CodeSet,
   CorrectionMethod,
   CoverageStatus,
   FacilityKind,
   InsuredRelationship,
+  LineAdjudication,
+  PaymentOutcome,
   PlanType,
   Rurality,
   ServiceLevel,
@@ -471,6 +475,7 @@ export type ClaimsTable = {
   reviewed_by: string | null;
   reviewed_at: ColumnType<Date | null, Date | null, Date | null>;
   review_note: string | null;
+  status_note: string | null;
   classification: Classification;
   service_date: ColumnType<string | null, string | null, string | null>;
   level: ServiceLevel;
@@ -506,6 +511,55 @@ export type ClaimsTable = {
   reasons: ColumnType<string[], string[] | undefined, string[]>;
   created_at: Timestamp;
   updated_at: Timestamp;
+};
+
+type ClearinghouseFilesTable = {
+  id: Generated<string>;
+  agency_id: string;
+  kind: ClearinghouseFileKind;
+  file_name: string;
+  content: string;
+  content_hash: string;
+  received_at: Timestamp;
+};
+
+type RemittancesTable = {
+  id: Generated<string>;
+  agency_id: string;
+  file_id: string;
+  payer_name: string | null;
+  payer_code: string | null;
+  trace_number: string | null;
+  payment_method: string | null;
+  paid_on: ColumnType<string | null, string | null, string | null>;
+  total_cents: number;
+  claim_paid_cents: number;
+  provider_adjustment_cents: number;
+  unmatched_count: number;
+  is_balanced: boolean;
+  reconciled_at: NullableTimestamp;
+  reconciled_by: string | null;
+  reconcile_note: string | null;
+  created_at: Timestamp;
+};
+
+type ClaimPaymentsTable = {
+  id: Generated<string>;
+  agency_id: string;
+  remittance_id: string;
+  claim_id: string | null;
+  coverage_position: number | null;
+  claim_number: string;
+  status_code: string;
+  outcome: PaymentOutcome;
+  charge_cents: number;
+  paid_cents: number;
+  patient_cents: number;
+  payer_claim_number: string | null;
+  adjustments: JsonColumn<Adjustment[]>;
+  lines: JsonColumn<LineAdjudication[]>;
+  remarks: ColumnType<string[], string[] | undefined, string[]>;
+  created_at: Timestamp;
 };
 
 type ClaimSubmissionsTable = {
@@ -738,6 +792,9 @@ export type Database = {
   clearinghouse_connections: ClearinghouseConnectionsTable;
   billing_profiles: BillingProfilesTable;
   claim_submissions: ClaimSubmissionsTable;
+  clearinghouse_files: ClearinghouseFilesTable;
+  remittances: RemittancesTable;
+  claim_payments: ClaimPaymentsTable;
   payers: PayersTable;
   payer_aliases: PayerAliasesTable;
   payer_suggestions: PayerSuggestionsTable;

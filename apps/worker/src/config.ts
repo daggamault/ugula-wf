@@ -27,7 +27,8 @@ const configSchema = v.object({
   WORKER_RUN_CONCURRENCY: v.optional(posInt, '8'),
   WORKER_MAX_EVENT_LOOP_UTILIZATION: v.optional(utilization, '0.9'),
   WORKER_MAX_HEAP_MB: v.optional(posInt),
-  WORKER_MAX_RSS_MB: v.optional(posInt)
+  WORKER_MAX_RSS_MB: v.optional(posInt),
+  CLEARINGHOUSE_POLL_MINUTES: v.optional(posInt, '5')
 });
 
 export type Config = v.InferOutput<typeof configSchema>;

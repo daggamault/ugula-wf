@@ -1,6 +1,7 @@
 import type { CodeDescriptions, InsuredRelationship, ServiceLevel, Sex } from '@ugula/billing';
 import type { Api } from '../../shared/api.ts';
 import type { ClaimDetail, ClaimSummary } from '../../shared/claims/claim-detail.ts';
+import type { ClaimPayment } from '../../shared/claims/claim-payments.tsx';
 import type { Page } from '../../shared/url-state.ts';
 
 export type ClaimSearch = {
@@ -75,10 +76,12 @@ export const createClaimsClient = (api: Api) => ({
   list: (query: ClaimQuery, page: string, signal?: AbortSignal) =>
     api.get<Page<ClaimSummary>>(`/api/claims?${listQuery(query, page)}`, signal),
   find: (id: string, signal?: AbortSignal) =>
-    api.get<{ claim: ClaimDetail; codes: CodeDescriptions; issues: string[] }>(
-      claimPath(id),
-      signal
-    ),
+    api.get<{
+      claim: ClaimDetail;
+      codes: CodeDescriptions;
+      issues: string[];
+      payments: ClaimPayment[];
+    }>(claimPath(id), signal),
   edit: (id: string, edit: ClaimEdit) =>
     api.put<{ id: string; revision: number }>(claimPath(id), edit),
   payers: async (q: string, signal?: AbortSignal) =>

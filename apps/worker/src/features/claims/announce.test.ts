@@ -17,6 +17,7 @@ const announcing = (reviewOutcome: 'recorded' | 'superseded' | 'notReady') => {
   const inner: ClaimStore = {
     findClaim: async () => null,
     checkClaim: async () => null,
+    settleClaim: async (_, id) => (id === 'c1' ? 'settled' : 'changed'),
     sendClaim: async (_, id) =>
       id === 'c1'
         ? { outcome: 'sent', fileName: 'S000000001.CLP', controlNumber: 1 }
@@ -38,6 +39,13 @@ describe('announceClaims', () => {
       revision: 1,
       outcome: 'created'
     });
+    assert.deepEqual(announced, [{ kind: 'claim', id: 'c1' }]);
+  });
+
+  it('announces a claim settled, and not one changed since', async () => {
+    const { store, announced } = announcing('recorded');
+    assert.equal(await store.settleClaim('r1', 'c1', 'closed', null), 'settled');
+    assert.equal(await store.settleClaim('r1', 'c2', 'closed', null), 'changed');
     assert.deepEqual(announced, [{ kind: 'claim', id: 'c1' }]);
   });
 

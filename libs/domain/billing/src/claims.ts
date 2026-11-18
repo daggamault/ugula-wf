@@ -45,6 +45,14 @@ export const CLAIM_STATUS_LABELS: Record<ClaimStatus, string> = {
   closed: 'Closed'
 };
 
+export const CLAIM_SETTLEMENTS = [
+  'closed',
+  'patient_balance',
+  'denied'
+] as const satisfies readonly ClaimStatus[];
+
+export type ClaimSettlement = (typeof CLAIM_SETTLEMENTS)[number];
+
 const EDITABLE: readonly ClaimStatus[] = ['needs_review', 'approved', 'on_hold', 'rejected'];
 
 const UNSENT: readonly ClaimStatus[] = ['needs_review', 'approved', 'on_hold'];

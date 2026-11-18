@@ -109,7 +109,7 @@ describe('ClaimPage', () => {
   it('loads the claim and says why it could not', async () => {
     render(
       createElement(ClaimPage, {
-        client: fakeClaims(async () => ({ claim, codes: {}, issues: [] })),
+        client: fakeClaims(async () => ({ claim, codes: {}, issues: [], payments: [] })),
         live: idleLive,
         claimId: 'c1'
       })
@@ -145,7 +145,7 @@ describe('ClaimPage', () => {
       createElement(ClaimPage, {
         client: fakeClaims(async () => {
           finds += 1;
-          return { claim, codes: {}, issues: [] };
+          return { claim, codes: {}, issues: [], payments: [] };
         }),
         live,
         claimId: 'c1'

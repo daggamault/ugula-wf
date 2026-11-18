@@ -57,10 +57,13 @@ export const code = (kind: string): ValueType => ({ code: kind });
 
 export const ID = {
   claim: { id: 'claim' },
+  clearinghouseFile: { id: 'clearinghouseFile' },
   encounter: { id: 'encounter' },
   import: { id: 'import' },
   patient: { id: 'patient' },
   payer: { id: 'payer' },
+  payment: { id: 'payment' },
+  remittance: { id: 'remittance' },
   report: { id: 'report' }
 } as const;
 

@@ -6,6 +6,7 @@ import { ClaimDataView } from '../../shared/claims/claim-data.tsx';
 import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
 import { EncounterPanel } from '../../shared/claims/claim-encounter.tsx';
 import { PayersPanel } from '../../shared/claims/claim-payers.tsx';
+import { type ClaimPayment, PaymentsPanel } from '../../shared/claims/claim-payments.tsx';
 import { ClaimReviewPanel } from '../../shared/claims/claim-review.tsx';
 import { ClaimStatusBadge } from '../../shared/claims/claim-status-badge.tsx';
 import { ClaimSummaryPanel, ReasonsPanel } from '../../shared/claims/claim-summary.tsx';
@@ -42,6 +43,7 @@ export const ClaimView = ({
   claim,
   codes,
   issues = [],
+  payments = [],
   tab = 'overview',
   back = '/claims',
   error = ''
@@ -49,6 +51,7 @@ export const ClaimView = ({
   claim: ClaimDetail;
   codes: CodeDescriptions;
   issues?: readonly string[];
+  payments?: readonly ClaimPayment[];
   tab?: ClaimTab;
   back?: string;
   error?: string;
@@ -115,6 +118,9 @@ export const ClaimView = ({
             </SectionPanel>
             <PayersPanel coverages={claim.coverages} />
           </div>
+          {payments.length || claim.status !== 'needs_review' ? (
+            <PaymentsPanel payments={payments} />
+          ) : null}
         </>
       ) : (
         <ClaimDataView claim={claim} codes={codes} />
@@ -143,6 +149,7 @@ export const ClaimPage = ({
       claim={detail.data.claim}
       codes={detail.data.codes}
       issues={detail.data.issues}
+      payments={detail.data.payments}
     />
   );
 };

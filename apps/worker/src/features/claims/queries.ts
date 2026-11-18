@@ -33,6 +33,8 @@ const numberOrNull = (x: string | number | null) => (x === null ? null : Number(
 
 const UNSENT = CLAIM_STATUSES.filter((s) => !wasSent(s));
 
+const SETTLEABLE = ['submitted', 'denied', 'patient_balance', 'closed'] as const;
+
 const issuesOf = async (db: Kysely<Database>, runId: string, claimId: string) => {
   if (!isUuid(claimId)) return null;
   const run = await runAgency(db, runId).executeTakeFirst();
@@ -220,6 +222,18 @@ export const createClaimStore = (
       };
     }),
   checkClaim: (runId, claimId) => issuesOf(db, runId, claimId),
+  settleClaim: async (runId, claimId, settlement, note) => {
+    if (!isUuid(claimId)) throw new Error(`Claim ${claimId} does not exist`);
+    const settled = await db
+      .updateTable('claims')
+      .set({ status: settlement, status_note: note, updated_at: sql`now()` })
+      .where('id', '=', claimId)
+      .where('agency_id', '=', runAgency(db, runId))
+      .where('status', 'in', SETTLEABLE)
+      .returning('id')
+      .executeTakeFirst();
+    return settled ? 'settled' : 'changed';
+  },
   sendClaim,
   reviewClaim: async (runId, review) => {
     if (!isUuid(review.claimId)) throw new Error(`Claim ${review.claimId} does not exist`);

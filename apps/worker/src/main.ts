@@ -18,6 +18,8 @@ import { createFeeStore } from './features/charges/queries.ts';
 import { announceClaims } from './features/claims/announce.ts';
 import { createClaimStore } from './features/claims/queries.ts';
 import { createClaimSender } from './features/claims/send.ts';
+import { collectClearinghouseFiles, registerCollectJob } from './features/clearinghouse/collect.ts';
+import { createClearinghouseStore } from './features/clearinghouse/queries.ts';
 import { createDiagnosisStore } from './features/diagnoses/queries.ts';
 import { announceEncounters } from './features/encounters/announce.ts';
 import { createEncounterStore } from './features/encounters/queries.ts';
@@ -107,6 +109,9 @@ if (import.meta.main) {
   );
   await blobs.ensureBucket();
   const store = createRunStore({ db, boss });
+  const keyring = config.CLEARINGHOUSE_SECRET_KEY
+    ? parseKeyring(config.CLEARINGHOUSE_SECRET_KEY, config.CLEARINGHOUSE_PREVIOUS_SECRET_KEYS)
+    : null;
   const live = coalescePublish((agencyId, event) => publishLiveEvent(redis, agencyId, event));
   const publish: Publish = live.publish;
   const scope = createRunScope();
@@ -134,18 +139,17 @@ if (import.meta.main) {
               boss,
               createClaimSender({
                 db,
-                keyring: config.CLEARINGHOUSE_SECRET_KEY
-                  ? parseKeyring(
-                      config.CLEARINGHOUSE_SECRET_KEY,
-                      config.CLEARINGHOUSE_PREVIOUS_SECRET_KEYS
-                    )
-                  : null,
+                keyring: keyring,
                 now
               })
             ),
             announce
           ),
-          diagnoses: createDiagnosisStore(db, createEmbedder({ url: config.EMBEDDINGS_URL, fetch }))
+          diagnoses: createDiagnosisStore(
+            db,
+            createEmbedder({ url: config.EMBEDDINGS_URL, fetch })
+          ),
+          clearinghouse: createClearinghouseStore(db)
         }
       }),
       loadDefinitions: (ids) => findDefinitions(db, ids),
@@ -171,6 +175,11 @@ if (import.meta.main) {
     report
   });
   await registerScheduleJob({ boss, start: startDueSchedules({ db, boss, report }) });
+  await registerCollectJob({
+    boss,
+    minutes: config.CLEARINGHOUSE_POLL_MINUTES,
+    collect: collectClearinghouseFiles({ db, keyring, report })
+  });
   const events = startEventDispatcher({
     dispatch: (limit) => dispatchEvents(db, boss, limit),
     listen: createListen({

@@ -16,6 +16,7 @@ import { fail, ok } from '../../shared/result.ts';
 import {
   type ClaimFilters,
   findClaim,
+  findClaimPayments,
   findDecidedParts,
   findEditableClaim,
   searchClaims
@@ -110,15 +111,17 @@ export const createClaimService = ({ db, boss, publish }: ClaimServiceDeps) => (
     ok(await searchClaims(db, agencyId, filters)),
 
   find: async (agencyId: string, id: string) => {
-    const [claim, check] = await Promise.all([
+    const [claim, check, payments] = await Promise.all([
       findClaim(db, agencyId, id),
-      checkClaim(db, agencyId, id)
+      checkClaim(db, agencyId, id),
+      findClaimPayments(db, agencyId, id)
     ]);
     if (!claim) return notFound;
     return ok({
       claim,
       codes: await describeCodes(db, claimCodeRefs(claim)),
-      issues: check?.issues ?? []
+      issues: check?.issues ?? [],
+      payments
     });
   },
 

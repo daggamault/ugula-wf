@@ -23,6 +23,7 @@ describe('createClients', () => {
       'tasks',
       'imports',
       'fees',
+      'remittances',
       'claims',
       'patients',
       'payers',

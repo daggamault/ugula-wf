@@ -12,6 +12,7 @@ type Reviewed = Pick<
   | 'reviewed_at'
   | 'reviewed_by'
   | 'review_note'
+  | 'status_note'
   | 'sent_at'
   | 'sent_file_name'
   | 'sent_control_number'
@@ -37,6 +38,7 @@ export const ClaimReviewPanel = ({ claim }: { claim: Reviewed }) => (
           <Detail label="Note">{claim.review_note ?? emptyValue}</Detail>
         </>
       )}
+      {claim.status_note ? <Detail label="Settled Because">{claim.status_note}</Detail> : null}
       {claim.sent_at ? (
         <>
           <Detail label="Sent">{formatDateTime(claim.sent_at)}</Detail>

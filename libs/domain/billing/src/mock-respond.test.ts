@@ -53,7 +53,7 @@ describe('respond', () => {
     assert.deepEqual(r.rejected, ['c-2']);
   });
 
-  it('pays 80% of each accepted line per payer and adjusts the rest as CO-45', () => {
+  it('allows 90% of each accepted line per payer, pays 80% of that and leaves 20% to the patient', () => {
     const remits = read835(r.remit835 ?? '');
     assert.deepEqual(
       remits.map((m) => [
@@ -62,19 +62,22 @@ describe('respond', () => {
         m.claims.map((c) => [c.claimNumber, c.chargeCents, c.paidCents, c.payerClaimNumber])
       ]),
       [
-        ['DEMOMCR', 75_400, [['c-1', 94_250, 75_400, 'MOCK-c-1']]],
-        ['AETNA', 68_000, [['c-3', 85_000, 68_000, 'MOCK-c-3']]]
+        ['DEMOMCR', 67_860, [['c-1', 94_250, 67_860, 'MOCK-c-1']]],
+        ['AETNA', 15_300, [['c-3', 85_000, 15_300, 'MOCK-c-3']]]
       ]
     );
     assert.deepEqual(remits[0]?.claims[0]?.adjustments, [
-      { group: 'CO', reason: '45', cents: 17_000 },
-      { group: 'CO', reason: '45', cents: 1_850 }
+      { group: 'CO', reason: '45', cents: 8_500 },
+      { group: 'PR', reason: '2', cents: 15_300 },
+      { group: 'CO', reason: '45', cents: 925 },
+      { group: 'PR', reason: '2', cents: 1_665 }
     ]);
+    assert.equal(remits[0]?.claims[0]?.patientCents, 16_965);
     assert.deepEqual(
       remits[0]?.claims[0]?.services.map((s) => [s.code, s.paidCents, s.units, s.lineNumber]),
       [
-        ['A0427', 68_000, 1, '1'],
-        ['A0425', 7_400, 7.4, '2']
+        ['A0427', 61_200, 1, '1'],
+        ['A0425', 6_660, 7.4, '2']
       ]
     );
     assert.equal(remits[0]?.paidOn, '2026-11-03');
@@ -92,8 +95,11 @@ describe('respond', () => {
       sampleEnvelope
     );
     const [remit] = read835(respond(odd, now).remit835 ?? '');
-    assert.equal(remit?.claims[0]?.paidCents, 9_876);
-    assert.deepEqual(remit?.claims[0]?.adjustments, [{ group: 'CO', reason: '45', cents: 2_469 }]);
+    assert.equal(remit?.claims[0]?.paidCents, 8_889);
+    assert.deepEqual(remit?.claims[0]?.adjustments, [
+      { group: 'CO', reason: '45', cents: 1_234 },
+      { group: 'PR', reason: '2', cents: 2_222 }
+    ]);
   });
 
   it('holds back the 835 for claims the payer does not remit yet', () => {
@@ -113,11 +119,32 @@ describe('respond', () => {
     const [remit] = read835(odd.remit835 ?? '');
     assert.deepEqual(
       [remit?.payerId, remit?.claims[0]?.paidCents, remit?.claims[0]?.services],
-      ['DEMOMCR', 8_000, []]
+      ['DEMOMCR', 7_200, []]
     );
-    assert.deepEqual(remit?.claims[0]?.adjustments, [{ group: 'CO', reason: '45', cents: 2_000 }]);
+    assert.deepEqual(remit?.claims[0]?.adjustments, [
+      { group: 'CO', reason: '45', cents: 1_000 },
+      { group: 'PR', reason: '2', cents: 1_800 }
+    ]);
     assert.equal(isaOf(odd.ack999)[15], 'P');
     assert.equal(read277(odd.ack277 ?? '')[0]?.status, 'accepted');
+  });
+
+  it('has a later payer pay the coinsurance the payer before it left', () => {
+    const secondary = build837(
+      sampleSubmitter,
+      [{ ...sampleX837, otherPayers: sampleDependentX837.otherPayers }],
+      sampleEnvelope
+    );
+    const [remit] = read835(respond(secondary, now).remit835 ?? '');
+    const [claim] = remit?.claims ?? [];
+    assert.deepEqual([claim?.paidCents, claim?.patientCents], [15_300 + 1_665, 0]);
+    assert.deepEqual(
+      claim?.adjustments.map((a) => [a.group, a.reason]),
+      [
+        ['OA', '23'],
+        ['OA', '23']
+      ]
+    );
   });
 
   it('sends no 835 when every claim is rejected', () => {

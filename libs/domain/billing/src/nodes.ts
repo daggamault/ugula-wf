@@ -1,5 +1,6 @@
 import { actionNode, branchNode, type NodeDef, pin } from '@ugula/graph';
 import { type ClaimValue, readClaim, readClaimReview } from './claims.ts';
+import { createClearinghouseNodes } from './clearinghouse-nodes.ts';
 import { normalizeCode } from './code-sets.ts';
 import { CLAIM_TYPE, PATIENT_TYPE, PAYER_TYPE } from './models.ts';
 import { nameKey } from './names.ts';
@@ -581,6 +582,7 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
         const [first] = matches;
         return { matches, best: first?.code ?? null, bestScore: first?.score ?? null };
       }
-    })
+    }),
+    ...createClearinghouseNodes(storesOf)
   ];
 };

@@ -165,7 +165,7 @@ export const createClaimSender =
         .execute();
       await tx
         .updateTable('claims')
-        .set({ status: 'submitted', updated_at: sql`now()` })
+        .set({ status: 'submitted', status_note: null, updated_at: sql`now()` })
         .where('agency_id', '=', agencyId)
         .where('id', '=', claimId)
         .where('revision', '=', submission.revision)

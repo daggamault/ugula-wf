@@ -174,6 +174,7 @@ describe('cancelStaleReviews', () => {
     assert.match(select?.sql ?? '', /r\.inputs ->> 'encounterId' = \$\d+/);
     assert.match(select?.sql ?? '', /"r"\."id" <> \$\d+$/);
     assert.ok(select?.parameters.includes('claims:approve'));
+    assert.ok(select?.parameters.includes('claims:update'));
     assert.deepEqual(
       jobs.map((j) => (j as { data: unknown }).data),
       [{ runId: 'run-2', command: { type: 'cancel' } }]

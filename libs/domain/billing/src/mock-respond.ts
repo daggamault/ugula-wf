@@ -9,6 +9,8 @@ const MOCK_REJECT_PREFIX = 'REJECT';
 
 const MOCK_REJECTION = 'Invalid member ID';
 
+export const MOCK_ALLOWED_SHARE = 0.9;
+
 export const MOCK_PAID_SHARE = 0.8;
 
 export type MockResponse = {
@@ -66,21 +68,47 @@ const rejectFile = (text: string, now: Date, error: string): MockResponse => {
   };
 };
 
-const paidOf = (cents: number) => Math.round(cents * MOCK_PAID_SHARE);
+const shareOf = (chargeCents: number, secondary: boolean) => {
+  const allowed = Math.round(chargeCents * MOCK_ALLOWED_SHARE);
+  const primaryPaid = Math.round(allowed * MOCK_PAID_SHARE);
+  const coinsurance = allowed - primaryPaid;
+  return secondary
+    ? {
+        paidCents: coinsurance,
+        adjustments: [{ group: 'OA' as const, reason: '23', cents: chargeCents - coinsurance }]
+      }
+    : {
+        paidCents: primaryPaid,
+        adjustments: [
+          { group: 'CO' as const, reason: '45', cents: chargeCents - allowed },
+          { group: 'PR' as const, reason: '2', cents: coinsurance }
+        ].filter((a) => a.cents)
+      };
+};
+
+const patientOf = (adjustments: readonly { group: string; cents: number }[]) =>
+  adjustments.filter((a) => a.group === 'PR').reduce((sum, a) => sum + a.cents, 0);
 
 const remitted = (c: Mock837Claim) => {
+  const secondary = c.priorPaidCents !== null;
   const lines = c.lines.map((l) => ({
     code: l.code,
     modifiers: l.modifiers,
     chargeCents: l.chargeCents,
-    paidCents: paidOf(l.chargeCents),
     units: l.units,
+    ...shareOf(l.chargeCents, secondary),
     ...(l.lineNumber ? { lineNumber: l.lineNumber } : {})
   }));
   const balanced = lines.reduce((sum, l) => sum + l.chargeCents, 0) === c.chargeCents;
-  return balanced && lines.length
-    ? { paidCents: lines.reduce((sum, l) => sum + l.paidCents, 0), lines }
-    : { paidCents: paidOf(c.chargeCents) };
+  if (balanced && lines.length) {
+    return {
+      paidCents: lines.reduce((sum, l) => sum + l.paidCents, 0),
+      patientCents: lines.reduce((sum, l) => sum + patientOf(l.adjustments), 0),
+      lines
+    };
+  }
+  const whole = shareOf(c.chargeCents, secondary);
+  return { ...whole, patientCents: patientOf(whole.adjustments) };
 };
 
 export const mockPayerClaimNumber = (claimNumber: string) => `MOCK-${claimNumber}`;

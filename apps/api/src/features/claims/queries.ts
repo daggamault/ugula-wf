@@ -136,6 +136,28 @@ export const findDecidedParts = async (db: Db, id: string) => {
   return { lines, payers: payers.slice(0, current < 0 ? payers.length : current) };
 };
 
+export const findClaimPayments = (db: Db, agencyId: string, claimId: string) =>
+  db
+    .selectFrom('claim_payments as p')
+    .innerJoin('remittances as r', 'r.id', 'p.remittance_id')
+    .select([
+      'p.id',
+      'p.remittance_id',
+      'p.coverage_position',
+      'p.outcome',
+      'p.paid_cents',
+      'p.patient_cents',
+      'p.adjustments',
+      'p.remarks',
+      'r.payer_name',
+      'r.paid_on',
+      'r.trace_number'
+    ])
+    .where('p.agency_id', '=', agencyId)
+    .where('p.claim_id', '=', claimId)
+    .orderBy('p.created_at')
+    .execute();
+
 export const findClaim = (db: Db, agencyId: string, id: string) =>
   claimRows(db, agencyId)
     .leftJoinLateral(
@@ -168,6 +190,7 @@ export const findClaim = (db: Db, agencyId: string, id: string) =>
       'c.revision',
       'c.reviewed_at',
       'c.review_note',
+      'c.status_note',
       sql<string | null>`nullif(concat_ws(' ', reviewer.first_name, reviewer.last_name), '')`.as(
         'reviewed_by'
       ),

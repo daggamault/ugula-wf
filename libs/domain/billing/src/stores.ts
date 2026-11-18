@@ -1,4 +1,5 @@
-import type { ClaimInput, ClaimReview, StoredClaim } from './claims.ts';
+import type { ClaimInput, ClaimReview, ClaimSettlement, StoredClaim } from './claims.ts';
+import type { PaymentOutcome } from './inbound.ts';
 import type { Address, NewPatient, Patient } from './patients.ts';
 import type { DirectoryPayer, Payer, PayerCandidate } from './payers.ts';
 
@@ -46,6 +47,48 @@ export type ClaimStore = {
     runId: string,
     review: ClaimReview
   ) => Promise<'recorded' | 'superseded' | 'notReady'>;
+  settleClaim: (
+    runId: string,
+    claimId: string,
+    settlement: ClaimSettlement,
+    note: string | null
+  ) => Promise<'settled' | 'changed'>;
+};
+
+export type PaymentView = {
+  claimId: string;
+  claimNumber: string;
+  outcome: PaymentOutcome;
+  paidCents: number;
+  patientCents: number;
+  hasNextPayer: boolean;
+  reasons: string[];
+};
+
+export type RemittanceView = {
+  payerName: string | null;
+  totalCents: number;
+  balanced: boolean;
+  unmatched: number;
+  reconciled: boolean;
+};
+
+type Posted = { remittances: number; posted: number; unmatched: number };
+
+export type ClearinghouseStore = {
+  applyAcknowledgments: (
+    runId: string,
+    fileId: string
+  ) => Promise<{ accepted: number; rejected: number }>;
+  postRemittance: (runId: string, fileId: string) => Promise<Posted>;
+  findPayment: (runId: string, paymentId: string) => Promise<PaymentView | null>;
+  findRemittance: (runId: string, remittanceId: string) => Promise<RemittanceView | null>;
+  reconcileRemittance: (
+    runId: string,
+    remittanceId: string,
+    reconciledBy: string | null,
+    note: string | null
+  ) => Promise<void>;
 };
 
 type Diagnosis = { code: string; description: string };
@@ -63,4 +106,5 @@ export type BillingStores = {
   fees: FeeStore;
   claims: ClaimStore;
   diagnoses: DiagnosisStore;
+  clearinghouse: ClearinghouseStore;
 };

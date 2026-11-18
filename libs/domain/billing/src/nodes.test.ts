@@ -47,6 +47,8 @@ const fakeStores = () => {
   const addresses: [string, string | null][] = [];
   const reviews: ClaimReview[] = [];
   const searches: [string, number, boolean][] = [];
+  const settled: [string, string, string | null][] = [];
+  const reconciled: [string, string | null, string | null][] = [];
   const stores: BillingStores = {
     patients: {
       findPatient: async (_, id) => patients.find((p) => p.id === id) ?? null,
@@ -100,6 +102,10 @@ const fakeStores = () => {
           ? { outcome: 'sent', fileName: 'S000000007.CLP', controlNumber: 7 }
           : { outcome: 'notReady', issues: ['The claim has no diagnosis'] };
       },
+      settleClaim: async (_, id, settlement, note) => {
+        settled.push([id, settlement, note]);
+        return id === 'c-1' ? 'settled' : 'changed';
+      },
       checkClaim: async (_, id) =>
         id === 'c-1' ? (saved.at(-1)?.coverages.length ? [] : ['The claim has no payer']) : null,
       reviewClaim: async (_, review) => {
@@ -107,6 +113,34 @@ const fakeStores = () => {
         if (review.decision === 'approved' && !saved.at(-1)?.coverages.length) return 'notReady';
         return review.revision === saved.length ? 'recorded' : 'superseded';
       }
+    },
+    clearinghouse: {
+      applyAcknowledgments: async (_, fileId) =>
+        fileId === 'f-999' ? { accepted: 1, rejected: 0 } : { accepted: 0, rejected: 2 },
+      postRemittance: async () => ({ remittances: 1, posted: 2, unmatched: 1 }),
+      findPayment: async (_, id) =>
+        id === 'pay-1'
+          ? {
+              claimId: 'c-1',
+              claimNumber: '20261001-0012',
+              outcome: 'paid',
+              paidCents: 6_000,
+              patientCents: 1_500,
+              hasNextPayer: true,
+              reasons: ['PR-2 $15.00: Coinsurance Amount']
+            }
+          : null,
+      findRemittance: async (_, id) =>
+        id === 'r-1'
+          ? {
+              payerName: 'Medicare',
+              totalCents: 6_000,
+              balanced: true,
+              unmatched: 0,
+              reconciled: false
+            }
+          : null,
+      reconcileRemittance: async (_, id, by, note) => void reconciled.push([id, by, note])
     },
     diagnoses: {
       findBillable: async (codes) =>
@@ -122,7 +156,7 @@ const fakeStores = () => {
       }
     }
   };
-  return { stores, patients, saved, addresses, reviews, searches };
+  return { stores, patients, saved, addresses, reviews, searches, settled, reconciled };
 };
 
 const run = (stores: BillingStores, type: string, inputs: Values) => {
@@ -255,6 +289,64 @@ const CLAIM = {
   coverages: [{ payerName: 'Medicare', relationship: '18' }],
   lines: [{ code: 'A0429', units: 1, unitCents: 50000, totalCents: 50000 }]
 };
+
+describe('clearinghouse nodes', () => {
+  it('applies acknowledgments and posts remittances, saying how many', async () => {
+    const { stores } = fakeStores();
+    const acks = await run(stores, 'clearinghouse-file.acknowledge', { fileId: 'f-277' });
+    assert.deepEqual(acks.outputs, { accepted: 0, rejected: 2 });
+    const posted = await run(stores, 'clearinghouse-file.post-remittance', { fileId: 'f-835' });
+    assert.deepEqual(posted.outputs, { remittances: 1, posted: 2, unmatched: 1 });
+  });
+
+  it('reads a payment and a remittance, or says they are not there', async () => {
+    const { stores } = fakeStores();
+    const paid = await run(stores, 'payment.read', { paymentId: 'pay-1' });
+    assert.deepEqual(
+      [paid.pin, paid.outputs.outcome, paid.outputs.patientCents, paid.outputs.hasNextPayer],
+      ['found', 'paid', 1_500, true]
+    );
+    assert.equal((await run(stores, 'payment.read', { paymentId: 'pay-9' })).pin, 'notFound');
+    const remit = await run(stores, 'remittance.read', { remittanceId: 'r-1' });
+    assert.deepEqual(
+      [remit.pin, remit.outputs.balanced, remit.outputs.unmatched],
+      ['found', true, 0]
+    );
+    assert.equal((await run(stores, 'remittance.read', { remittanceId: 'r-9' })).pin, 'notFound');
+  });
+
+  it('settles a claim, and reconciles a remittance by a biller or by itself', async () => {
+    const { stores, settled, reconciled } = fakeStores();
+    const closed = await run(stores, 'claim.settle', {
+      claimId: 'c-1',
+      settlement: 'closed',
+      note: ' Small balance '
+    });
+    assert.equal(closed.pin, 'settled');
+    assert.equal(
+      (await run(stores, 'claim.settle', { claimId: 'c-2', settlement: 'patient_balance' })).pin,
+      'changed'
+    );
+    assert.deepEqual(settled, [
+      ['c-1', 'closed', 'Small balance'],
+      ['c-2', 'patient_balance', null]
+    ]);
+    await assert.rejects(
+      run(stores, 'claim.settle', { claimId: 'c-1', settlement: 'paid' }),
+      /paid is not a claim settlement/
+    );
+    await run(stores, 'remittance.reconcile', { remittanceId: 'r-1' });
+    await run(stores, 'remittance.reconcile', {
+      remittanceId: 'r-1',
+      reconciledBy: 'u-1',
+      note: 'Matched by hand'
+    });
+    assert.deepEqual(reconciled, [
+      ['r-1', null, null],
+      ['r-1', 'u-1', 'Matched by hand']
+    ]);
+  });
+});
 
 describe('Send Claim', () => {
   it('sends an approved claim, or says why it did not', async () => {

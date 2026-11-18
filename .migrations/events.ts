@@ -10,7 +10,11 @@ export const EVENT_FUNCTIONS = [
   'emit_encounter_created_event',
   'emit_encounter_revised_event',
   'emit_claim_created_event',
-  'emit_claim_approved_event'
+  'emit_claim_approved_event',
+  'emit_claim_rejected_event',
+  'emit_claim_adjudicated_event',
+  'emit_clearinghouse_file_received_event',
+  'emit_remittance_received_event'
 ] as const;
 
 const buildEventsTable = (db: Kysely<Database>) =>
@@ -179,8 +183,92 @@ const claimApprovedTrigger = sql`
   for each row when (new.status = 'approved' and old.status is distinct from 'approved')
   execute function emit_claim_approved_event()`;
 
+const claimRejectedFunction = sql`
+  create function emit_claim_rejected_event() returns trigger language plpgsql as $$
+  begin
+    insert into events (agency_id, type, payload)
+    select new.agency_id, ${sql.lit(BILLING_EVENTS.claimRejected)}, jsonb_build_object(
+      'claimId', c.id,
+      'encounterId', c.encounter_id,
+      'position', new.position,
+      'reason', coalesce(new.status_note, 'Rejected')
+    )
+    from claims c where c.id = new.claim_id;
+    return null;
+  end;
+  $$`;
+
+const claimRejectedTrigger = sql`
+  create trigger claim_coverages_emit_rejected
+  after update of status on claim_coverages
+  for each row when (new.status = 'rejected' and old.status is distinct from 'rejected')
+  execute function emit_claim_rejected_event()`;
+
+const claimAdjudicatedFunction = sql`
+  create function emit_claim_adjudicated_event() returns trigger language plpgsql as $$
+  begin
+    insert into events (agency_id, type, payload)
+    select new.agency_id, ${sql.lit(BILLING_EVENTS.claimAdjudicated)}, jsonb_build_object(
+      'claimId', c.id,
+      'encounterId', c.encounter_id,
+      'paymentId', new.id,
+      'outcome', new.outcome
+    )
+    from claims c where c.id = new.claim_id;
+    return null;
+  end;
+  $$`;
+
+const claimAdjudicatedTrigger = sql`
+  create trigger claim_payments_emit_adjudicated
+  after insert on claim_payments
+  for each row when (new.claim_id is not null)
+  execute function emit_claim_adjudicated_event()`;
+
+const fileReceivedFunction = sql`
+  create function emit_clearinghouse_file_received_event() returns trigger language plpgsql as $$
+  begin
+    insert into events (agency_id, type, payload)
+    values (new.agency_id, ${sql.lit(BILLING_EVENTS.clearinghouseFileReceived)}, jsonb_build_object(
+      'fileId', new.id,
+      'kind', new.kind,
+      'fileName', new.file_name
+    ));
+    return null;
+  end;
+  $$`;
+
+const fileReceivedTrigger = sql`
+  create trigger clearinghouse_files_emit_received
+  after insert on clearinghouse_files
+  for each row execute function emit_clearinghouse_file_received_event()`;
+
+const remittanceReceivedFunction = sql`
+  create function emit_remittance_received_event() returns trigger language plpgsql as $$
+  begin
+    insert into events (agency_id, type, payload)
+    values (new.agency_id, ${sql.lit(BILLING_EVENTS.remittanceReceived)}, jsonb_build_object(
+      'remittanceId', new.id
+    ));
+    return null;
+  end;
+  $$`;
+
+const remittanceReceivedTrigger = sql`
+  create trigger remittances_emit_received
+  after insert on remittances
+  for each row execute function emit_remittance_received_event()`;
+
 export const createEventEmitters = async (db: Kysely<Database>) => {
   for (const statement of [
+    claimRejectedFunction,
+    claimRejectedTrigger,
+    claimAdjudicatedFunction,
+    claimAdjudicatedTrigger,
+    fileReceivedFunction,
+    fileReceivedTrigger,
+    remittanceReceivedFunction,
+    remittanceReceivedTrigger,
     taskFunction,
     taskTrigger,
     encounterCreatedFunction,

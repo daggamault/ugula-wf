@@ -57,6 +57,19 @@ describe('ClaimReviewPanel', () => {
     assert.equal(shown.at(-2)?.[0], 'Sent');
   });
 
+  it('says why a claim was settled', () => {
+    show({
+      status: 'closed',
+      reviewed_by: 'Dana Biller',
+      reviewed_at: '2026-10-02T15:04:00Z',
+      status_note: 'Written off as not medically necessary'
+    });
+    assert.deepEqual(details().at(-1), [
+      'Settled Because',
+      'Written off as not medically necessary'
+    ]);
+  });
+
   it('shows why a claim is on hold', () => {
     show({
       status: 'on_hold',

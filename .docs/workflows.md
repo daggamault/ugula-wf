@@ -1,6 +1,6 @@
 # Workflows
 
-How billing is built on the engine: a few events start workflows, workflows are stages, stages are rules, and rules are primitives wired on the canvas. Only a handful of service nodes touch the outside world, and they all speak in typed records. Scope today is one path, from a NEMSIS XML file to a reviewed claim sent to the clearinghouse as an 837P; everything later in the claim's life (acknowledgments, remittance, denials, patient balances) is rebuilt on the same model afterwards.
+How billing is built on the engine: a few events start workflows, workflows are stages, stages are rules, and rules are primitives wired on the canvas. Only a handful of service nodes touch the outside world, and they all speak in typed records. Scope today runs from a NEMSIS XML file to a claim closed by its payers: review, the 837P, acknowledgments and rejections, remittance posting, billing each payer in turn, denials, and reconciling remittances. Eligibility, claim status inquiries, appeals as their own workflow and patient statements are built on the same model next.
 
 ## Principles
 
@@ -16,14 +16,14 @@ How billing is built on the engine: a few events start workflows, workflows are 
 
 ## Palette
 
-| Group      | Nodes                                                                                                                                                                                                                                         |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Events     | The workflow's start, shown as the event it waits for (On PCR File Received, On Encounter Created) with the event's fields as pins, or On Schedule                                                                                            |
-| Records    | Break and Make for Encounter, Times, Odometer, Person, Address, Scene, Destination, Payment, Insurance, Medication, Procedure, Vital Signs, Signature, Crew Member, Attachment, Claim, Coverage, Charge Line, Patient, Patient Address, Payer |
-| Primitives | Constant, Contains, Equal, compare, Is Null, And/Or/Not, Select, Choose Value, math, text, time, lists (Keep Items Where, Run Rule for Each, Find Item Where), Lookup Table, Branch, Switch, For Each, Sequence                               |
-| Services   | Read PCR File, Read PCR, Save Encounter, Read Encounter, Find Patient, Save Patient, Read Patient, Find Payer, Read Payer, Find Fee, Save Claim, Read Claim, Check Claim, Record Claim Review, Send Claim, Check Diagnoses, Search Diagnoses  |
-| Endings    | Return, Fail                                                                                                                                                                                                                                  |
-| Graphs     | Every rule, stage and workflow, called like a node                                                                                                                                                                                            |
+| Group      | Nodes                                                                                                                                                                                                                                                                                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Events     | The workflow's start, shown as the event it waits for (On PCR File Received, On Encounter Created) with the event's fields as pins, or On Schedule                                                                                                                                                                                                      |
+| Records    | Break and Make for Encounter, Times, Odometer, Person, Address, Scene, Destination, Payment, Insurance, Medication, Procedure, Vital Signs, Signature, Crew Member, Attachment, Claim, Coverage, Charge Line, Patient, Patient Address, Payer                                                                                                           |
+| Primitives | Constant, Contains, Equal, compare, Is Null, And/Or/Not, Select, Choose Value, math, text, time, lists (Keep Items Where, Run Rule for Each, Find Item Where), Lookup Table, Branch, Switch, For Each, Sequence                                                                                                                                         |
+| Services   | Read PCR File, Read PCR, Save Encounter, Read Encounter, Find Patient, Save Patient, Read Patient, Find Payer, Read Payer, Find Fee, Save Claim, Read Claim, Check Claim, Record Claim Review, Send Claim, Settle Claim, Apply Acknowledgments, Post Remittance, Read Payment, Read Remittance, Reconcile Remittance, Check Diagnoses, Search Diagnoses |
+| Endings    | Return, Fail                                                                                                                                                                                                                                                                                                                                            |
+| Graphs     | Every rule, stage and workflow, called like a node                                                                                                                                                                                                                                                                                                      |
 
 ## Records
 
@@ -51,15 +51,19 @@ How billing is built on the engine: a few events start workflows, workflows are 
 
 ## Events
 
-| Event               | Payload                         | Emitted when                                          |
-| ------------------- | ------------------------------- | ----------------------------------------------------- |
-| `pcr_file.received` | import, file, file name         | A NEMSIS file is uploaded or arrives over SFTP        |
-| `encounter.created` | encounter, PCR number           | Save Encounter stores a PCR number for the first time |
-| `encounter.revised` | encounter, PCR number, revision | Save Encounter stores a changed copy of a PCR         |
-| `claim.created`     | claim, encounter                | Save Claim stores a new claim                         |
-| `claim.approved`    | claim, encounter, revision      | A biller approves a claim                             |
-| `claim.edited`      | claim, encounter, revision      | A biller saves a correction to a claim                |
-| `task.completed`    | task, queue, outcome            | A biller completes a task                             |
+| Event                         | Payload                            | Emitted when                                              |
+| ----------------------------- | ---------------------------------- | --------------------------------------------------------- |
+| `pcr_file.received`           | import, file, file name            | A NEMSIS file is uploaded or arrives over SFTP            |
+| `encounter.created`           | encounter, PCR number              | Save Encounter stores a PCR number for the first time     |
+| `encounter.revised`           | encounter, PCR number, revision    | Save Encounter stores a changed copy of a PCR             |
+| `claim.created`               | claim, encounter                   | Save Claim stores a new claim                             |
+| `claim.approved`              | claim, encounter, revision         | A biller approves a claim                                 |
+| `claim.edited`                | claim, encounter, revision         | A biller saves a correction to a claim                    |
+| `claim.rejected`              | claim, encounter, payer, reason    | A TA1, 999 or 277CA rejects the claim at a payer          |
+| `claim.adjudicated`           | claim, encounter, payment, outcome | A remittance posts a payment, denial, forward or reversal |
+| `clearinghouse_file.received` | file, kind, file name              | The worker collects a file from the clearinghouse         |
+| `remittance.received`         | remittance                         | A remittance (one 835 payment) is posted                  |
+| `task.completed`              | task, queue, outcome               | A biller completes a task                                 |
 
 ## Workflows
 
@@ -150,6 +154,26 @@ When a revised PCR arrives for a claim already sent, Save Claim keeps the claim 
 
 A biller corrects a claim on its Edit Claim page (permission `claims:update`): the service, the patient as billed, pickup and destination, payers and charge lines. Saving makes a new revision that needs review, cancels the review still open on the revision before, and emits `claim.edited`; this workflow reads the claim and runs **Review Claim** on the new revision. Fixing what Check Claim lists, or releasing a held claim, is the same correction.
 
+### Acknowledgment Received and Remittance File Received (on `clearinghouse_file.received`)
+
+The worker collects every file in the agency's download folders over SFTP each `CLEARINGHOUSE_POLL_MINUTES` (see [Clearinghouse](clearinghouse.md#receiving-files)) and stores it once, as the kind its content shows. **Acknowledgment Received** (TA1, 999 and 277CA) runs Apply Acknowledgments: a file the clearinghouse accepted is noted on its submission, a 277CA accepts the claim at its payer with the payer claim number, and a rejection marks that payer Rejected with why, which emits `claim.rejected`. **Remittance File Received** (835) runs Post Remittance: each payment (BPR/TRN) is a remittance, and each claim payment (CLP) is posted on the payer that has the claim, as paid, denied (CLP02 4), forwarded to the next payer (CLP02 19 to 21, or a crossover payer) or reversed (CLP02 22), keeping what the payer paid and adjusted per claim and per line. A claim payment that matches no claim with a payer waiting is kept unmatched for reconciliation. Each posting emits `claim.adjudicated`.
+
+### Rejected Claim (on `claim.rejected`)
+
+A **Fix the Rejected Claim** task (permission `claims:update`) shows why. Corrected: the biller edited the claim, which goes back through review and out again once approved. Resend: Send Claim sends it again as it is, for a problem fixed elsewhere (payer enrollment, the clearinghouse).
+
+### Payment Posted (on `claim.adjudicated`)
+
+Read Payment, then **Next Step After Payment**, a rule: reversed asks a biller to **Review the Reversal**; denied asks a biller to **Work the Denial** (bill the next payer, keep it Denied while it is appealed, or write it off with a note); forwarded waits for the next payer's own remittance; when the payer left part of the charge to the patient (group PR) and another payer comes next, Send Claim bills that payer with what this one paid; with no payer left the claim is Patient Balance; when nothing is owed it is Closed. Settle Claim gives the claim its status and note.
+
+### Reconcile Remittance (on `remittance.received`)
+
+A remittance whose claim payments less its provider adjustments (PLB) make its total, and whose every claim payment matched a claim, reconciles itself. Otherwise a **Reconcile the Remittance** task asks a biller to match the payments and explain the difference, and records their note.
+
+| Graph                   | Kind | Built from                                                                                                     |
+| ----------------------- | ---- | -------------------------------------------------------------------------------------------------------------- |
+| Next Step After Payment | rule | Outcome, patient responsibility and whether another payer comes next, chosen with Select into a Next Step code |
+
 ## Customizing
 
 | An agency wants                                                     | It overrides                                                            |
@@ -160,8 +184,9 @@ A biller corrects a claim on its Edit Claim page (permission `claims:update`): t
 | An extra charge (oxygen, a second attendant)                        | Charge Lines, adding a line from its own rule                           |
 | Its own handling of one payer                                       | Resolve Coverage or Billing Order, branching on that payer              |
 | Something after every claim                                         | Nothing: a new workflow on `claim.created`                              |
+| Its own rule for what follows a payment (a small-balance write-off) | Next Step After Payment                                                 |
 
 ## Next
 
 - **Documents in the PCR.** Attachments are already on the Encounter. An Extract Document service reads a facesheet or PCS into fields, a Document Facts rule merges them into the Encounter, and Save Encounter stores the result as a revision, so everything downstream reruns through `encounter.revised`.
-- **The rest of the claim's life**, each as its own workflow from an event: check eligibility and discover insurance, check the claim, submit, acknowledgments, remittance and posting, denials and appeals, patient balance, close.
+- **The rest of the claim's life**, each as its own workflow from an event: check eligibility and discover insurance, claim status inquiries when no answer comes, corrected and replacement claims, appeals, patient statements and collections.

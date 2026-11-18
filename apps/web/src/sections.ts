@@ -6,6 +6,7 @@ import {
   Building2Icon,
   FileUpIcon,
   HospitalIcon,
+  LandmarkIcon,
   ListChecksIcon,
   ReceiptTextIcon,
   SettingsIcon,
@@ -16,6 +17,7 @@ import {
   WorkflowIcon
 } from 'lucide-react';
 import { FACILITIES_PATH } from './features/facilities/facilities-page.tsx';
+import { REMITTANCES_PATH } from './features/remittances/remittances-page.tsx';
 import { ROLES_PATH } from './features/roles/roles-page.tsx';
 import { TASKS_PATH } from './features/tasks/tasks-page.tsx';
 import { USERS_PATH } from './features/users/users-page.tsx';
@@ -57,6 +59,13 @@ export const SECTIONS: readonly Section[] = [
     label: 'Claims',
     href: '/claims',
     icon: ReceiptTextIcon,
+    permission: 'claims:read'
+  },
+  {
+    id: 'remittances',
+    label: 'Remittances',
+    href: REMITTANCES_PATH,
+    icon: LandmarkIcon,
     permission: 'claims:read'
   },
   {

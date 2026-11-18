@@ -21,6 +21,7 @@ import { createNemsisDictionaryTables } from './nemsis-dictionary.ts';
 import { createNotificationsTables } from './notifications.ts';
 import { createDailyNumbers, DAILY_NUMBER_FUNCTIONS } from './numbers.ts';
 import { createPatientsTable } from './patients.ts';
+import { createRemittancesTables } from './remittances.ts';
 import { createTasksTable } from './tasks.ts';
 import { createUsersTables } from './users.ts';
 import { createWorkflowRunsTables } from './workflow-runs.ts';
@@ -29,6 +30,9 @@ const resetSchema = async (db: Kysely<Database>) => {
   for (const table of [
     'notification_states',
     'notifications',
+    'claim_payments',
+    'remittances',
+    'clearinghouse_files',
     'claim_submissions',
     'claim_diagnoses',
     'claim_coverages',
@@ -119,6 +123,7 @@ const steps = [
   linkImportReportsToEncounters,
   createFacilitiesTables,
   createClaimsTables,
+  createRemittancesTables,
   createNotificationsTables,
   createEventEmitters
 ] as const;
