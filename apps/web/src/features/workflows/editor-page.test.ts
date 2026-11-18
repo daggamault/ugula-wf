@@ -181,7 +181,7 @@ describe('EditorView', () => {
     it('marks the draft unsaved once its inputs change', async () => {
       const { user } = show(detail('agency', false), { url: '/workflows/g1?panel=signature' });
       await user.click(button('Add Input'));
-      assert.deepEqual(inputNames(), ['field1']);
+      assert.deepEqual(inputNames(), ['New Input']);
       assert.ok(screen.getByText('Unsaved'));
       assert.equal(reason('Publish'), 'Save your changes first.');
     });
@@ -198,7 +198,7 @@ describe('EditorView', () => {
         [['saveDraft', 'g1']]
       );
       const saved = savedDef(calls[0]);
-      assert.deepEqual(saved.signature.inputs, [{ name: 'field1', type: 'string' }]);
+      assert.deepEqual(saved.signature.inputs, [{ name: 'newInput', type: 'string' }]);
       assert.deepEqual(
         saved.nodes.map((n) => n.id),
         ['entry']
@@ -274,21 +274,21 @@ describe('EditorView', () => {
       await user.click(button('Undo'));
       assert.deepEqual(inputNames(), []);
       await user.click(button('Redo'));
-      assert.deepEqual(inputNames(), ['field1']);
+      assert.deepEqual(inputNames(), ['New Input']);
       document.body.focus();
       await user.keyboard('{Control>}z{/Control}');
       assert.deepEqual(inputNames(), []);
       await user.keyboard('{Control>}y{/Control}');
-      assert.deepEqual(inputNames(), ['field1']);
+      assert.deepEqual(inputNames(), ['New Input']);
       await user.keyboard('{Control>}{Shift>}z{/Shift}{/Control}');
-      assert.deepEqual(inputNames(), ['field1']);
+      assert.deepEqual(inputNames(), ['New Input']);
     });
 
     it('adds a Get node for a variable and shows it in place of the panel', async () => {
       const { calls, user } = show(detail('agency', false), {
         url: '/workflows/g1?panel=signature'
       });
-      await user.click(button('Add Get lines'));
+      await user.click(button('Add Get Lines'));
       assert.equal(window.location.search, '');
       assert.ok(!screen.queryByRole('complementary', { name: 'Inputs and Outputs' }));
       await user.click(button('Save'));
@@ -473,7 +473,7 @@ describe('EditorView', () => {
         )
       );
       assert.ok(!screen.queryByRole('button', { name: 'Add Input' }));
-      assert.ok(!screen.queryByRole('button', { name: 'Add Get lines' }));
+      assert.ok(!screen.queryByRole('button', { name: 'Add Get Lines' }));
     });
 
     it('warns when the base moved on, with links to compare and show removed nodes', () => {

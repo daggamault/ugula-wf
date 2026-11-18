@@ -299,7 +299,7 @@ describe('FieldEditor', () => {
   it('lists the fields of the record wired in', async () => {
     const { last, user } = show(FieldEditor, { record, path: 'trip.state' });
     assert.equal(shown('Field'), 'Trip › State');
-    assert.equal(shown('Record'), 'Record');
+    assert.equal(shown('Record'), 'Custom Record');
     await user.click(option('Field', 'Miles'));
     assert.deepEqual(last(), { record, path: 'miles' });
   });
@@ -317,8 +317,8 @@ describe('FieldEditor', () => {
 
   it('changes the type of the record', async () => {
     const { last, user } = show(FieldEditor, { path: 'a' });
-    await user.click(option('Record', 'List'));
-    assert.deepEqual(last(), { path: 'a', record: { list: 'string' } });
+    await user.click(screen.getByRole('checkbox', { name: 'List' }));
+    assert.deepEqual(last(), { path: 'a', record: { list: 'any' } });
   });
 });
 

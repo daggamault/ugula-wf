@@ -10,10 +10,12 @@ import {
   INPUT_TYPE,
   inputNode,
   isPure,
+  type Json,
   type NodeDef,
   type NodeInstance,
   type NodeLevel,
   type NodeRef,
+  type PinSpec,
   RETURN_TYPE,
   refKey,
   ruleRefOf,
@@ -26,6 +28,7 @@ import {
 } from '@ugula/graph';
 import type * as v from 'valibot';
 import { labelFromName } from '../format.ts';
+import { fieldNodeInfo, type Models, SET_FIELD } from './record-fields.ts';
 
 export type PublishedNode = {
   graph_id: string;
@@ -55,12 +58,14 @@ export type PaletteEntry = NodeRef & {
   description: string;
   level: NodeLevel;
   keywords: readonly string[];
+  config?: Json;
 };
 
 type CatalogSources = {
   published?: readonly PublishedNode[];
   graphs?: readonly (NodeRef & { definition: GraphDef })[];
   events?: readonly EventDef[];
+  models?: Models;
 };
 
 export const eventLabel = (events: readonly EventDef[], type: string) =>
@@ -81,6 +86,7 @@ const entrySummary = (inst: NodeInstance, events: readonly EventDef[]) =>
 export type Catalog = {
   palette: PaletteEntry[];
   published: readonly PublishedNode[];
+  models: Models;
   signatureOf: (inst: NodeInstance, owner: GraphDef) => Signature | null;
   titleOf: (inst: NodeInstance) => string;
   describe: (inst: NodeInstance) => string;
@@ -136,9 +142,15 @@ const stub = (signature: Signature): GraphDef => ({
   edges: []
 });
 
+const fieldTitle = (inst: NodeInstance, models: Models) => {
+  const field = fieldNodeInfo(inst, models);
+  if (!field) return undefined;
+  return inst.type === SET_FIELD.type ? `Set ${field.label}` : field.label;
+};
+
 export const createCatalog = (
   nodes: NodeDef[],
-  { published = [], graphs = [], events = [] }: CatalogSources = {}
+  { published = [], graphs = [], events = [], models = {} }: CatalogSources = {}
 ): Catalog => {
   const full = new Map(graphs.map((g) => [refKey(g), g.definition]));
   const stubs = new Map(published.map((p) => [refKey({ type: p.key, version: p.version }), p]));
@@ -218,15 +230,28 @@ export const createCatalog = (
   return {
     palette,
     published,
+    models,
     signatureOf: (inst, owner) => {
       try {
-        return registry.signature(inst, owner);
+        const sig = registry.signature(inst, owner);
+        const field = fieldNodeInfo(inst, models);
+        if (!field) return sig;
+        const relabel = (p: PinSpec) =>
+          p.name === 'value'
+            ? {
+                ...p,
+                label: field.label,
+                ...(field.description ? { description: field.description } : {})
+              }
+            : p;
+        return { ...sig, inputs: sig.inputs.map(relabel), outputs: sig.outputs.map(relabel) };
       } catch {
         return null;
       }
     },
     titleOf: (inst) =>
       inst.label ??
+      fieldTitle(inst, models) ??
       (inst.type === ENTRY_TYPE ? entryTitle(inst, events) : undefined) ??
       (inst.type === INPUT_TYPE ? inputTitle(inst) : undefined) ??
       registry.node(inst)?.title ??
@@ -234,18 +259,22 @@ export const createCatalog = (
       stubs.get(refKey(inst))?.name ??
       (inst.type === RETURN_TYPE ? 'Return' : titleFromKey(inst.type)),
     describe: (inst) =>
-      inst.type === ENTRY_TYPE
+      fieldNodeInfo(inst, models)?.description ||
+      (inst.type === ENTRY_TYPE
         ? ENTRY_DESCRIPTION
         : inst.type === RETURN_TYPE
           ? RETURN_DESCRIPTION
           : (registry.node(inst)?.description ??
             stdGraphInfo[refKey(inst)]?.description ??
             stubs.get(refKey(inst))?.description ??
-            ''),
+            '')),
     hasConfig: (inst) => registry.node(inst)?.config !== undefined,
     configSchemaOf: (inst) => registry.node(inst)?.config,
     summaryOf: (inst) => {
       if (inst.type === ENTRY_TYPE) return entrySummary(inst, events);
+      const field = fieldNodeInfo(inst, models);
+      if (field)
+        return field.from ? `${inst.type === SET_FIELD.type ? 'On' : 'From'} ${field.from}` : null;
       try {
         return registry.node(inst)?.summary?.(registry.config(inst)) ?? null;
       } catch {

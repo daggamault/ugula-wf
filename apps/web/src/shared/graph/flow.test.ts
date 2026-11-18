@@ -15,6 +15,7 @@ import {
   foldedSide,
   insertReroute,
   moveNodes,
+  NEW_PIN,
   placed,
   REROUTE,
   removeEdges,
@@ -239,6 +240,52 @@ describe('connectionKind', () => {
   });
 });
 
+describe('growing the signature from the canvas', () => {
+  it('adds an output named and typed after the wire dropped on Return', () => {
+    assert.equal(connectionKind(def, catalog, link('add1', 'result', 'return1', NEW_PIN)), 'data');
+    const grown = connect(def, catalog, link('add1', 'result', 'return1', NEW_PIN));
+    const added = grown.signature.outputs.at(-1);
+    assert.deepEqual([added?.name, added?.type], ['result', 'number']);
+    assert.deepEqual(grown.edges.at(-1), {
+      from: 'add1',
+      fromPin: 'result',
+      to: 'return1',
+      toPin: 'result'
+    });
+  });
+
+  it('adds an input named and typed after the pin Entry is dragged onto', () => {
+    const grown = connect(def, catalog, link('entry', NEW_PIN, 'up1', 'text'));
+    const added = grown.signature.inputs.at(-1);
+    assert.deepEqual([added?.name, added?.type], ['text', 'string']);
+    assert.deepEqual(grown.edges.at(-1), {
+      from: 'entry',
+      fromPin: 'text',
+      to: 'up1',
+      toPin: 'text'
+    });
+  });
+
+  it('keeps a new pin name unique', () => {
+    const grown = connect(def, catalog, link('entry', 'x', 'return1', NEW_PIN));
+    assert.equal(grown.signature.outputs.at(-1)?.name, 'x');
+    const twice = connect(grown, catalog, link('entry', 'x', 'return1', NEW_PIN));
+    assert.equal(twice.signature.outputs.at(-1)?.name, 'x2');
+  });
+
+  it('never names a new output like an exit', () => {
+    const withExit: GraphDef = { ...def, signature: { ...def.signature, execOut: ['result'] } };
+    const grown = connect(withExit, catalog, link('add1', 'result', 'return1', NEW_PIN));
+    assert.equal(grown.signature.outputs.at(-1)?.name, 'result2');
+  });
+
+  it('grows only from Entry and Return, and never on exec pins', () => {
+    assert.equal(connectionKind(def, catalog, link('add1', 'result', 'up1', NEW_PIN)), null);
+    assert.equal(connectionKind(def, catalog, link('entry', 'exec', 'return1', NEW_PIN)), null);
+    assert.equal(connect(def, catalog, link('add1', 'result', 'up1', NEW_PIN)), def);
+  });
+});
+
 describe('connect', () => {
   it('wires a data input, dropping its literal value', () => {
     const wired = connect(def, catalog, link('entry', 'x', 'add1', 'a'));
@@ -418,6 +465,20 @@ describe('revealPin and folds', () => {
 
   it('folds a break node down to no outputs until one is used', () => {
     assert.deepEqual(flowNode(pcr, 'pcr1')?.data.fold, { side: 'out', shown: [] });
+  });
+
+  it('lays a folded node out by the pins it shows, not every pin it could', () => {
+    const two: GraphDef = {
+      ...def,
+      nodes: [
+        { id: 'entry', type: ENTRY_TYPE, version: 1 },
+        { id: 'pcr1', type: 'encounter.break', version: 1, shown: [out] },
+        { id: 'pcr2', type: 'encounter.break', version: 1 }
+      ],
+      edges: []
+    };
+    const at = (id: string) => flowNode(two, id)?.position.y ?? 0;
+    assert.ok(Math.abs(at('pcr2') - at('pcr1')) < 200);
   });
 
   it('shows a revealed output, once', () => {

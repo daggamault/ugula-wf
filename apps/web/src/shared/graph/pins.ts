@@ -65,6 +65,7 @@ export const describeType = (type: ValueType, kinds: ValueKinds): string => {
   if ('id' in type) return kinds.id[type.id] ?? `${labelFromName(type.id)} ID`;
   if ('code' in type) return kinds.code[type.code] ?? `${labelFromName(type.code)} Code`;
   if ('list' in type) return `List of ${describeType(type.list, kinds)}`;
+  if (type.model) return kinds.models?.[type.model]?.title ?? labelFromName(type.model);
   const fields = Object.keys(type.object);
   return fields.length ? `Record With ${fields.join(', ')}` : 'Record';
 };

@@ -2,16 +2,12 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { GraphDef } from '@ugula/graph';
 import { createElement, useState } from 'react';
+import { createCatalog } from '../../shared/graph/catalog.ts';
+import { exitsOf, withExits } from '../../shared/graph/signature-edits.ts';
+import { testNodes } from '../../shared/testing.ts';
 import { render, screen, userEvent, within } from '../../shared/testing-dom.ts';
 import type { GraphKind } from './client.ts';
-import {
-  exitsOf,
-  freeName,
-  type VariableNode,
-  WorkflowPanel,
-  withDoc,
-  withExits
-} from './workflow-panel.tsx';
+import { freeName, type VariableNode, WorkflowPanel, withDoc } from './workflow-panel.tsx';
 
 const def: GraphDef = {
   signature: {
@@ -50,6 +46,7 @@ const show = ({
     return createElement(WorkflowPanel, {
       kind,
       def: current,
+      catalog: createCatalog(testNodes),
       editable,
       locked,
       onChange: (next) => {
@@ -81,9 +78,9 @@ describe('WorkflowPanel', () => {
   it('describes what a workflow takes in and hands back, and closes', async () => {
     const { closes, user } = show();
     const panel = screen.getByRole('complementary', { name: 'Inputs and Outputs' });
-    assert.equal(
-      within(panel).getByText(/^What this/).textContent,
-      "What this workflow takes in, hands back and keeps while it runs, shown as its node's pins."
+    assert.match(
+      within(panel).getByText(/^What this/).textContent ?? '',
+      /^What this workflow takes in, hands back and keeps while it runs, shown as its node's pins\. Tip: /
     );
     await user.click(screen.getByRole('button', { name: 'Close Inputs and Outputs' }));
     assert.equal(closes(), 1);
@@ -94,12 +91,12 @@ describe('WorkflowPanel', () => {
     assert.ok(screen.getByText(/^What this subworkflow takes in/));
   });
 
-  it('lists the inputs, outputs, exits and variables by name', () => {
+  it('lists the inputs, outputs, exits and variables by their friendly names', () => {
     show();
-    assert.deepEqual(names('Inputs'), ['claim', 'payer']);
-    assert.deepEqual(names('Outputs'), ['total']);
-    assert.deepEqual(names('Exits'), ['ok', 'rejected']);
-    assert.deepEqual(names('Variables'), ['lines']);
+    assert.deepEqual(names('Inputs'), ['Claim', 'Payer']);
+    assert.deepEqual(names('Outputs'), ['Total']);
+    assert.deepEqual(names('Exits'), ['Ok', 'Rejected']);
+    assert.deepEqual(names('Variables'), ['Lines']);
     const exits = within(section('Exits'));
     assert.deepEqual(
       exits
@@ -121,19 +118,21 @@ describe('WorkflowPanel', () => {
     );
   });
 
-  it('adds an input with a free name, typed as text', async () => {
+  it('adds a text input with a free name', async () => {
     const { changes, user } = show();
     await user.click(screen.getByRole('button', { name: 'Add Input' }));
-    assert.equal(changes.length, 1);
-    assert.deepEqual(last(changes[0]?.signature.inputs ?? []), { name: 'field3', type: 'string' });
-    assert.deepEqual(names('Inputs'), ['claim', 'payer', 'field3']);
+    assert.deepEqual(last(changes[0]?.signature.inputs ?? []), {
+      name: 'newInput',
+      type: 'string'
+    });
+    assert.deepEqual(names('Inputs'), ['Claim', 'Payer', 'New Input']);
   });
 
   it('removes and reorders outputs and inputs', async () => {
     const { changes, user } = show();
-    await user.click(screen.getByRole('button', { name: 'Move claim down' }));
-    assert.deepEqual(names('Inputs'), ['payer', 'claim']);
-    await user.click(screen.getByRole('button', { name: 'Remove total' }));
+    await user.click(screen.getByRole('button', { name: 'Move Claim down' }));
+    assert.deepEqual(names('Inputs'), ['Payer', 'Claim']);
+    await user.click(screen.getByRole('button', { name: 'Remove Total' }));
     assert.deepEqual(changes[1]?.signature.outputs, []);
     assert.deepEqual(
       changes[1]?.signature.inputs.map((p) => p.name),
@@ -141,18 +140,59 @@ describe('WorkflowPanel', () => {
     );
   });
 
-  it('labels an input and drops the label once it is cleared', async () => {
+  it('renames an unused input by its friendly name once you leave the field', async () => {
     const { changes, user } = show();
-    const label = within(section('Inputs')).getAllByRole('textbox', { name: 'Label' })[1];
-    assert.ok(label);
-    await user.type(label, 'P');
+    const name = within(section('Inputs')).getAllByRole('textbox', { name: 'Name' })[1];
+    assert.ok(name);
+    await user.clear(name);
+    await user.type(name, 'Primary Payer');
+    assert.equal(changes.length, 0);
+    await user.tab();
+    assert.deepEqual(changes[0]?.signature.inputs[1], { name: 'primaryPayer', type: 'string' });
+    assert.deepEqual(names('Inputs'), ['Claim', 'Primary Payer']);
+  });
+
+  it('refuses a blank or duplicate name and puts the old one back', async () => {
+    const { changes, user } = show();
+    const name = within(section('Inputs')).getAllByRole('textbox', { name: 'Name' })[1];
+    assert.ok(name);
+    await user.clear(name);
+    assert.ok(screen.getByText('Give it a name.'));
+    await user.type(name, 'claim');
+    assert.ok(screen.getByText('Another one already has this name.'));
+    await user.keyboard('{Enter}');
+    assert.equal(changes.length, 0);
+    assert.equal((name as HTMLInputElement).value, 'Payer');
+  });
+
+  it('makes an input optional with a value to use when it is not given', async () => {
+    const { changes, user } = show();
+    const required = within(section('Inputs')).getAllByRole('checkbox', { name: 'Required' })[1];
+    assert.ok(required);
+    assert.equal((required as HTMLInputElement).checked, true);
+    await user.click(required);
     assert.deepEqual(changes[0]?.signature.inputs[1], {
       name: 'payer',
       type: 'string',
-      label: 'P'
+      optional: true
     });
-    await user.clear(label);
-    assert.deepEqual(changes[1]?.signature.inputs[1], { name: 'payer', type: 'string' });
+    await user.type(screen.getByRole('textbox', { name: 'When Not Given' }), 'X');
+    assert.deepEqual(last(changes)?.signature.inputs[1], {
+      name: 'payer',
+      type: 'string',
+      optional: true,
+      default: 'X'
+    });
+    await user.click(required);
+    assert.deepEqual(last(changes)?.signature.inputs[1], { name: 'payer', type: 'string' });
+  });
+
+  it('asks for no Required choice on outputs', () => {
+    show();
+    assert.equal(
+      within(section('Outputs')).queryAllByRole('checkbox', { name: 'Required' }).length,
+      0
+    );
   });
 
   it('adds an exit named after the next free number', async () => {
@@ -164,17 +204,19 @@ describe('WorkflowPanel', () => {
     });
   });
 
-  it('documents an exit and forgets its docs once both are cleared', async () => {
+  it('describes an exit and forgets its docs once cleared', async () => {
     const { changes, user } = show();
     const exits = within(section('Exits'));
-    await user.type(exits.getAllByRole('textbox', { name: 'Label' })[0] as HTMLElement, 'O');
+    await user.type(exits.getAllByRole('textbox', { name: 'Description' })[0] as HTMLElement, 'O');
     assert.deepEqual(changes[0]?.signature.exits, {
-      ok: { label: 'O' },
+      ok: { description: 'O' },
       rejected: { label: 'Rejected', description: 'The payer said no' }
     });
-    await user.clear(exits.getAllByRole('textbox', { name: 'Label' })[1] as HTMLElement);
     await user.clear(exits.getAllByRole('textbox', { name: 'Description' })[1] as HTMLElement);
-    assert.deepEqual(last(changes)?.signature.exits, { ok: { label: 'O' } });
+    assert.deepEqual(last(changes)?.signature.exits, {
+      ok: { description: 'O' },
+      rejected: { label: 'Rejected' }
+    });
     assert.deepEqual(last(changes)?.signature.execOut, ['ok', 'rejected']);
   });
 
@@ -183,15 +225,15 @@ describe('WorkflowPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Add Variable' }));
     assert.deepEqual(changes[0]?.variables, [
       { name: 'lines', type: { list: 'string' }, default: [] },
-      { name: 'var2', type: 'number', default: 0 }
+      { name: 'newVariable', type: 'number', default: 0 }
     ]);
     assert.deepEqual(changes[0]?.signature, def.signature);
   });
 
   it('adds Get and Set nodes for a variable', async () => {
     const { changes, variableNodes, user } = show();
-    await user.click(screen.getByRole('button', { name: 'Add Get lines' }));
-    await user.click(screen.getByRole('button', { name: 'Add Set lines' }));
+    await user.click(screen.getByRole('button', { name: 'Add Get Lines' }));
+    await user.click(screen.getByRole('button', { name: 'Add Set Lines' }));
     assert.deepEqual(variableNodes, [
       ['lines', 'get'],
       ['lines', 'set']

@@ -1,9 +1,9 @@
 import {
+  ENTRY_TYPE,
   type ExitDoc,
   type InputBinding,
-  isRecord,
-  type NodeInstance,
   type PinSpec,
+  RETURN_TYPE,
   type ValueKinds
 } from '@ugula/graph';
 import { Handle, type NodeProps, Position } from '@xyflow/react';
@@ -15,8 +15,8 @@ import { labelFromName } from '../format.ts';
 import { Badge } from '../ui/badge.tsx';
 import { interactiveClasses } from '../ui/interactive.ts';
 import { type NodeKind, OPENS_LABELS } from './catalog.ts';
-import { useCodeMeanings } from './code-meanings.ts';
-import { type GraphFlowNode, type NodeStatus, REROUTE } from './flow.ts';
+import { codedValuesOf, SHOWN_CODES, useCodeMeanings } from './code-meanings.ts';
+import { type GraphFlowNode, NEW_PIN, type NodeStatus, REROUTE } from './flow.ts';
 import { describeType, pinLabel, toneOf, ValueKindsContext } from './pins.ts';
 
 type Pin = { name: string; label: string; exec: boolean; spec?: PinSpec; doc?: ExitDoc };
@@ -26,6 +26,17 @@ type PinSide = 'in' | 'out';
 type NodeActionsValue = {
   breakPin: (node: string, pin: string, side: PinSide) => void;
   revealPin: (node: string, pin: string) => void;
+  growable: boolean;
+  editPin?: PinEditor | null;
+};
+
+type PinOwner = 'inputs' | 'outputs';
+
+type PinEditor = {
+  taken: (owner: PinOwner, name: string, text: string) => boolean;
+  rename: (owner: PinOwner, name: string, text: string) => void;
+  remove: (owner: PinOwner, name: string) => void;
+  openTypes: () => void;
 };
 
 export const NodeActions = createContext<NodeActionsValue | null>(null);
@@ -81,26 +92,151 @@ const preview = (binding: InputBinding | undefined) => {
   return text.length > 18 ? `${text.slice(0, 17)}…` : text;
 };
 
+const PinMenu = ({
+  pin,
+  owner,
+  editor,
+  onClose
+}: {
+  pin: Pin;
+  owner: PinOwner;
+  editor: PinEditor;
+  onClose: () => void;
+}) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const field = useRef<HTMLInputElement>(null);
+  const nameId = useId();
+  const [text, setText] = useState(pin.label);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const outside = (e: PointerEvent) => {
+      if (e.target instanceof Node && !ref.current?.contains(e.target)) close.current();
+    };
+    document.addEventListener('pointerdown', outside);
+    field.current?.select();
+    return () => document.removeEventListener('pointerdown', outside);
+  }, []);
+  const error = !text.trim()
+    ? 'Give it a name.'
+    : text.trim() !== pin.label && editor.taken(owner, pin.name, text)
+      ? 'Another one already has this name.'
+      : null;
+  const rename = () => {
+    if (error) return;
+    if (text.trim() !== pin.label) editor.rename(owner, pin.name, text);
+    onClose();
+  };
+  const noun = owner === 'inputs' ? 'Input' : 'Output';
+  const item = classNamesOf(
+    interactiveClasses,
+    'hover:bg-surface-fg/6 w-full cursor-pointer rounded-lg px-2 py-1.5 text-left text-xs transition duration-150 ease-out'
+  );
+  return (
+    <div
+      ref={ref}
+      role="dialog"
+      aria-label={`${noun} ${pin.label}`}
+      className="nodrag nopan nowheel bg-surface text-surface-fg border-border absolute top-full z-20 mt-1 flex w-56 flex-col gap-1 rounded-xl border p-2 text-left shadow-lg transition-[opacity,scale] duration-200 ease-out starting:scale-95 starting:opacity-0"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onClose();
+      }}
+    >
+      <label htmlFor={nameId} className="text-surface-fg-muted px-1 text-xs font-medium">
+        {noun} Name
+      </label>
+      <input
+        ref={field}
+        id={nameId}
+        value={text}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? `${nameId}-error` : undefined}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') rename();
+        }}
+        className={classNamesOf(
+          interactiveClasses,
+          'bg-surface border-border h-8 rounded-lg border px-2 text-xs'
+        )}
+      />
+      {error ? (
+        <p id={`${nameId}-error`} className="text-danger px-1 text-xs">
+          {error}
+        </p>
+      ) : null}
+      <button type="button" className={item} onClick={rename}>
+        Rename
+      </button>
+      <button
+        type="button"
+        className={item}
+        onClick={() => {
+          editor.openTypes();
+          onClose();
+        }}
+      >
+        Change Type and Details…
+      </button>
+      <button
+        type="button"
+        className={classNamesOf(item, 'text-danger')}
+        onClick={() => {
+          editor.remove(owner, pin.name);
+          onClose();
+        }}
+      >
+        Remove {noun}
+      </button>
+    </div>
+  );
+};
+
 const PinRow = ({
   node,
   pin,
   side,
-  binding
+  binding,
+  owner = null
 }: {
   node: string;
   pin: Pin;
   side: PinSide;
   binding?: string | null;
+  owner?: PinOwner | null;
 }) => {
   const actions = useContext(NodeActions);
   const kinds = useContext(ValueKindsContext);
+  const [menu, setMenu] = useState(false);
+  const editor = owner && !pin.exec ? (actions?.editPin ?? null) : null;
   return (
     <li
+      onContextMenu={
+        editor
+          ? (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setMenu(true);
+            }
+          : undefined
+      }
+      onDoubleClick={
+        editor
+          ? (e) => {
+              e.stopPropagation();
+              setMenu(true);
+            }
+          : undefined
+      }
       className={classNamesOf(
         'text-surface-fg-muted relative flex min-h-6 items-center gap-2 text-xs',
         side === 'in' ? 'pr-2 pl-4' : 'justify-end pr-4 pl-2'
       )}
-      title={pinTitle(pin, kinds)}
+      title={
+        editor
+          ? `${pinTitle(pin, kinds)} Right-click to rename or remove it.`
+          : pinTitle(pin, kinds)
+      }
     >
       <Handle
         type={side === 'in' ? 'target' : 'source'}
@@ -119,6 +255,39 @@ const PinRow = ({
           {binding}
         </span>
       ) : null}
+      {menu && editor && owner ? (
+        <PinMenu pin={pin} owner={owner} editor={editor} onClose={() => setMenu(false)} />
+      ) : null}
+    </li>
+  );
+};
+
+const GROW_LABELS = { in: 'Add Output', out: 'Add Input' } as const;
+
+const GROW_TITLES = {
+  in: 'Drop a wire here to hand its value back as a new output of this workflow.',
+  out: 'Drag from here onto a pin to take its value in as a new input of this workflow.'
+} as const;
+
+const GrowRow = ({ side }: { side: PinSide }) => {
+  const actions = useContext(NodeActions);
+  if (!actions?.growable) return null;
+  return (
+    <li
+      className={classNamesOf(
+        'text-surface-fg-muted relative flex min-h-6 items-center gap-1 text-xs',
+        side === 'in' ? 'pr-2 pl-4' : 'justify-end pr-4 pl-2'
+      )}
+      title={GROW_TITLES[side]}
+    >
+      <Handle
+        type={side === 'in' ? 'target' : 'source'}
+        position={side === 'in' ? Position.Left : Position.Right}
+        id={NEW_PIN}
+        className={classNamesOf(handleBase, 'rounded-full! opacity-60', toneOf('any').dot)}
+      />
+      <PlusIcon aria-hidden="true" className="size-3" />
+      {GROW_LABELS[side]}
     </li>
   );
 };
@@ -205,28 +374,6 @@ const AddField = ({ node, hidden }: { node: string; hidden: Pin[] }) => {
     </button>
   );
 };
-
-const kindOf = (type: unknown): string | null =>
-  isRecord(type) ? (typeof type.code === 'string' ? type.code : kindOf(type.list)) : null;
-
-const COMPARES = new Set(['std.logic.equal', 'std.logic.not-equal']);
-
-export const codedValuesOf = (inst: NodeInstance) => {
-  const config = isRecord(inst.config) ? inst.config : {};
-  const kind = kindOf(config.type);
-  if (!kind) return null;
-  const fixed = inst.inputs?.b;
-  const values =
-    inst.type === 'std.value'
-      ? [config.value].flat()
-      : COMPARES.has(inst.type) && fixed && 'value' in fixed
-        ? [fixed.value]
-        : [];
-  const codes = values.filter((c): c is string => typeof c === 'string' && c !== '');
-  return codes.length ? { kind, codes } : null;
-};
-
-const SHOWN_CODES = 6;
 
 const CodeList = ({ kind, codes }: { kind: string; codes: string[] }) => {
   const meanings = useCodeMeanings(kind, codes);
@@ -356,6 +503,7 @@ export const GraphNode = (props: NodeProps<GraphFlowNode>) => {
                 node={id}
                 pin={pin}
                 side="in"
+                owner={instance.type === RETURN_TYPE && !ghost ? 'outputs' : null}
                 binding={
                   connected.includes(pin.name) || (codedValues && pin.name === 'b')
                     ? null
@@ -363,11 +511,19 @@ export const GraphNode = (props: NodeProps<GraphFlowNode>) => {
                 }
               />
             ))}
+            {instance.type === RETURN_TYPE && !ghost ? <GrowRow side="in" /> : null}
           </ul>
           <ul className="flex flex-col">
             {outputs.map((pin) => (
-              <PinRow key={pin.name} node={id} pin={pin} side="out" />
+              <PinRow
+                key={pin.name}
+                node={id}
+                pin={pin}
+                side="out"
+                owner={instance.type === ENTRY_TYPE && !ghost ? 'inputs' : null}
+              />
             ))}
+            {instance.type === ENTRY_TYPE && !ghost ? <GrowRow side="out" /> : null}
           </ul>
         </div>
       ) : (

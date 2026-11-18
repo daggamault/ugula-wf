@@ -13,6 +13,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type Ref,
+  useContext,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -44,6 +45,7 @@ import {
   type GraphFlowNode,
   insertReroute,
   moveNodes,
+  NEW_PIN,
   type PinRef,
   removeEdges,
   removeNodes,
@@ -52,6 +54,8 @@ import {
 } from './flow.ts';
 import { GraphNode, NodeActions } from './graph-node.tsx';
 import { NODE_WIDTH } from './layout.ts';
+import { WorkflowEventsContext } from './pins.ts';
+import { nameTaken, removePin, renamePinNamed } from './signature-edits.ts';
 
 type Point = { x: number; y: number };
 
@@ -69,6 +73,8 @@ type GraphCanvasProps = Decorations & {
   onOpen?: (id: string) => void;
   onChange?: (def: GraphDef) => void;
   onAdd?: (request: AddRequest) => void;
+  growable?: boolean;
+  onEditSignature?: () => void;
   tools?: ReactNode;
   viewRef?: Ref<CanvasView>;
 };
@@ -158,10 +164,13 @@ export const GraphCanvas = ({
   onOpen,
   onChange,
   onAdd,
+  growable = false,
+  onEditSignature,
   tools,
   viewRef
 }: GraphCanvasProps) => {
   const editable = onChange !== undefined;
+  const events = useContext(WorkflowEventsContext);
   const flow = useMemo(
     () =>
       toFlow(def, catalog, {
@@ -334,7 +343,22 @@ export const GraphCanvas = ({
           onChange
             ? {
                 breakPin: (node, pin, side) => onChange(disconnectPin(def, node, pin, side)),
-                revealPin: (node, pin) => onChange(revealPin(def, node, pin))
+                revealPin: (node, pin) => onChange(revealPin(def, node, pin)),
+                growable,
+                editPin: growable
+                  ? {
+                      taken: (owner, name, text) =>
+                        nameTaken(
+                          def.signature[owner],
+                          def.signature[owner].findIndex((p) => p.name === name),
+                          text
+                        ),
+                      rename: (owner, name, text) =>
+                        onChange(renamePinNamed(def, owner, name, text, events)),
+                      remove: (owner, name) => onChange(removePin(def, catalog, owner, name)),
+                      openTypes: () => onEditSignature?.()
+                    }
+                  : null
               }
             : null
         }
@@ -440,7 +464,7 @@ export const GraphCanvas = ({
             onConnect={(c) => onChange?.(connect(def, catalog, c))}
             onConnectEnd={(e, state) => {
               const handle = state.fromHandle;
-              if (!onAdd || !handle?.id || state.toHandle) return;
+              if (!onAdd || !handle?.id || handle.id === NEW_PIN || state.toHandle) return;
               const request = requestAt(pointOf(e), {
                 node: handle.nodeId,
                 pin: handle.id,

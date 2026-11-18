@@ -63,6 +63,19 @@ describe('shapeOf', () => {
     assert.deepEqual([pure.top, pure.height], [68, 104]);
   });
 
+  it('makes room for the codes and the note a node shows above its pins', () => {
+    const sig = { execIn: ['exec'], execOut: ['then'], inputs: [], outputs: [] };
+    assert.deepEqual(
+      [
+        shapeOf(sig, false, { codeRows: 2 }).top,
+        shapeOf(sig, false, { note: 'short' }).top,
+        shapeOf(sig, false, { note: 'x'.repeat(500) }).top,
+        shapeOf(sig, false, { codeRows: 7, note: 'a\nb' }).height
+      ],
+      [34 + 13 + 32 + 2, 34 + 13 + 16, 34 + 13 + 48, 34 + 13 + 112 + 12 + 13 + 32 + 12 + 24]
+    );
+  });
+
   it('marks a node without exec pins as pure', () => {
     assert.equal(action.pure, false);
     assert.equal(pure.pure, true);

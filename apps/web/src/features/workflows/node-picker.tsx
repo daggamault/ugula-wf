@@ -166,7 +166,7 @@ export const NodePicker = ({ entries, at, hint, onAdd, onClose }: NodePickerProp
                 const i = index++;
                 return (
                   <div
-                    key={`${e.type}@${e.version}`}
+                    key={`${e.type}@${e.version}:${JSON.stringify(e.config ?? null)}`}
                     id={optionId(i)}
                     role="option"
                     aria-selected={i === active}

@@ -3,9 +3,9 @@ import { describe, it } from 'node:test';
 import { ReactFlowProvider } from '@xyflow/react';
 import { createElement } from 'react';
 import { render, screen, userEvent, within } from '../testing-dom.ts';
-import { CodeMeaningsContext } from './code-meanings.ts';
+import { CodeMeaningsContext, codedValuesOf } from './code-meanings.ts';
 import type { GraphNodeData } from './flow.ts';
-import { codedValuesOf, fieldMatches, GraphNode, NodeActions, pinTitle } from './graph-node.tsx';
+import { fieldMatches, GraphNode, NodeActions, pinTitle } from './graph-node.tsx';
 
 const props = {
   id: 'n',
@@ -77,7 +77,8 @@ const show = (patch: Partial<GraphNodeData> = {}, { selected = false, editable =
       ? createElement(NodeActions, {
           value: {
             breakPin: (n, pin, side) => broken.push([n, pin, side]),
-            revealPin: (n, pin) => revealed.push([n, pin])
+            revealPin: (n, pin) => revealed.push([n, pin]),
+            growable: false
           },
           children: node
         })
@@ -518,5 +519,94 @@ describe('codedValuesOf', () => {
       }),
       null
     );
+  });
+});
+
+describe('editing the pins of Return and Entry on the node', () => {
+  const returnData: GraphNodeData = {
+    ...base,
+    instance: { id: 'n', type: 'std.graph.return', version: 1 },
+    title: 'Return',
+    kind: 'entry',
+    signature: {
+      execIn: ['exec'],
+      execOut: [],
+      inputs: [{ name: 'total', type: 'number', label: 'Grand Total' }],
+      outputs: []
+    },
+    connected: []
+  };
+
+  const showReturn = (growable = true) => {
+    const calls: string[] = [];
+    let opened = 0;
+    render(
+      createElement(NodeActions, {
+        value: {
+          breakPin: () => undefined,
+          revealPin: () => undefined,
+          growable,
+          editPin: growable
+            ? {
+                taken: (_, __, text) => text === 'Taken',
+                rename: (owner, name, text) => void calls.push(`rename ${owner} ${name} ${text}`),
+                remove: (owner, name) => void calls.push(`remove ${owner} ${name}`),
+                openTypes: () => {
+                  opened++;
+                }
+              }
+            : null
+        },
+        children: createElement(ReactFlowProvider, {
+          children: createElement(GraphNode, { ...props, data: returnData, selected: false })
+        })
+      })
+    );
+    return { calls, opened: () => opened, user: userEvent.setup() };
+  };
+
+  const pinRow = () => {
+    const row = within(card('Return'))
+      .getAllByRole('listitem')
+      .find((li) => li.textContent === 'Grand Total');
+    assert.ok(row);
+    return row;
+  };
+
+  it('renames an output from its pin', async () => {
+    const { calls, user } = showReturn();
+    await user.pointer({ keys: '[MouseRight]', target: pinRow() });
+    const menu = screen.getByRole('dialog', { name: 'Output Grand Total' });
+    const name = within(menu).getByRole('textbox', { name: 'Output Name' });
+    await user.clear(name);
+    await user.type(name, 'Total Due{Enter}');
+    assert.deepEqual(calls, ['rename outputs total Total Due']);
+    assert.ok(!screen.queryByRole('dialog', { name: 'Output Grand Total' }));
+  });
+
+  it('refuses a name another pin already has', async () => {
+    const { calls, user } = showReturn();
+    await user.dblClick(pinRow());
+    const name = screen.getByRole('textbox', { name: 'Output Name' });
+    await user.clear(name);
+    await user.type(name, 'Taken{Enter}');
+    assert.ok(screen.getByText('Another one already has this name.'));
+    assert.deepEqual(calls, []);
+  });
+
+  it('removes an output, or opens its type and details, from its pin', async () => {
+    const { calls, opened, user } = showReturn();
+    await user.dblClick(pinRow());
+    await user.click(screen.getByRole('button', { name: 'Change Type and Details…' }));
+    assert.equal(opened(), 1);
+    await user.dblClick(pinRow());
+    await user.click(screen.getByRole('button', { name: 'Remove Output' }));
+    assert.deepEqual(calls, ['remove outputs total']);
+  });
+
+  it('offers no pin menu where the inputs and outputs are fixed, or on exec pins', async () => {
+    const { user } = showReturn(false);
+    await user.dblClick(pinRow());
+    assert.ok(!screen.queryByRole('dialog'));
   });
 });

@@ -16,14 +16,14 @@ How billing is built on the engine: a few events start workflows, workflows are 
 
 ## Palette
 
-| Group      | Nodes                                                                                                                                                                                                           |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Events     | The workflow's start, shown as the event it waits for (On PCR File Received, On Encounter Created) with the event's fields as pins, or On Schedule                                                              |
-| Records    | Break and Make for Encounter, Times, Odometer, Person, Address, Scene, Destination, Payment, Insurance, Medication, Procedure, Vital Signs, Signature, Crew Member, Attachment, Claim, Coverage, Charge Line    |
-| Primitives | Constant, Contains, Equal, compare, Is Null, And/Or/Not, Select, Choose Value, math, text, time, lists (Keep Items Where, Run Rule for Each, Find Item Where), Lookup Table, Branch, Switch, For Each, Sequence |
-| Services   | Read PCR File, Read PCR, Save Encounter, Read Encounter, Find Patient, Save Patient, Find Payer, Find Fee, Check Diagnoses, Search Diagnoses, Save Claim                                                        |
-| Endings    | Return, Fail                                                                                                                                                                                                    |
-| Graphs     | Every rule, stage and workflow, called like a node                                                                                                                                                              |
+| Group      | Nodes                                                                                                                                                                                                                                         |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Events     | The workflow's start, shown as the event it waits for (On PCR File Received, On Encounter Created) with the event's fields as pins, or On Schedule                                                                                            |
+| Records    | Break and Make for Encounter, Times, Odometer, Person, Address, Scene, Destination, Payment, Insurance, Medication, Procedure, Vital Signs, Signature, Crew Member, Attachment, Claim, Coverage, Charge Line, Patient, Patient Address, Payer |
+| Primitives | Constant, Contains, Equal, compare, Is Null, And/Or/Not, Select, Choose Value, math, text, time, lists (Keep Items Where, Run Rule for Each, Find Item Where), Lookup Table, Branch, Switch, For Each, Sequence                               |
+| Services   | Read PCR File, Read PCR, Save Encounter, Read Encounter, Find Patient, Save Patient, Read Patient, Find Payer, Read Payer, Find Fee, Save Claim, Read Claim, Record Claim Review, Check Diagnoses, Search Diagnoses                           |
+| Endings    | Return, Fail                                                                                                                                                                                                                                  |
+| Graphs     | Every rule, stage and workflow, called like a node                                                                                                                                                                                            |
 
 ## Records
 
@@ -71,7 +71,7 @@ The API records the import and emits the event in one transaction; an upload is 
 
 ### Encounter to Claim (on `encounter.created`) and Revised Encounter to Claim (on `encounter.revised`)
 
-Read Encounter → **Build Claim**: Trip Classification → **Settle the Trip** (a Classify the Trip task when the rules could not decide) → Is Billable
+Read Encounter (Not Found stops at **Encounter Missing**, a Fail for inspection) → **Build Claim**: Trip Classification → **Settle the Trip** (a Classify the Trip task when the rules could not decide) → Is Billable
 
 - No → Not Billable, with the classification and its reasons.
 - Yes → Resolve Patient → Determine Payers → Assign Charges → Make Claim (with Service Details, Diagnoses, Ambulance Details and the reasons of Payer Checks and Claim Checks) → Save Claim (Needs Review; a revised encounter replaces its claim as a new revision, back to Needs Review even when approved) → **Review Claim**: every claim ends on a Review the Claim task, as the law requires before a claim goes to the clearinghouse. Only a user with `claims:approve` can complete it: Approve makes the claim Approved, ready for the clearinghouse; Hold makes it On Hold with a note. The decision is recorded only for the revision the biller saw. When a revised encounter replaces a claim, the worker cancels the run still waiting on the earlier review, closing its task, so only the review of the current revision stays in the queue.

@@ -5,7 +5,8 @@ import { messageOf } from '../../shared/api.ts';
 import { formatDateTime } from '../../shared/format.ts';
 import { createCatalog, eventLabel } from '../../shared/graph/catalog.ts';
 import { GraphCanvas } from '../../shared/graph/graph-canvas.tsx';
-import { WorkflowEventsContext } from '../../shared/graph/pins.ts';
+import { ValueKindsContext, WorkflowEventsContext } from '../../shared/graph/pins.ts';
+import { NO_MODELS } from '../../shared/graph/record-fields.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
@@ -55,13 +56,15 @@ export const RunView = ({ detail, nodes, graphs, steps, stack, onCancel }: RunVi
   const [error, setError] = useState('');
   const [confirming, setConfirming] = useState(false);
   const events = useContext(WorkflowEventsContext);
+  const models = useContext(ValueKindsContext).models ?? NO_MODELS;
   const catalog = useMemo(
     () =>
       createCatalog(nodes, {
         graphs: graphs.map((g) => ({ type: g.key, version: g.version, definition: g.definition })),
-        events
+        events,
+        models
       }),
-    [nodes, graphs, events]
+    [nodes, graphs, events, models]
   );
   const root = graphs.find((g) => g.key === run.key && g.version === run.version)?.definition;
   const def = root ? graphAt(root, stack, catalog) : undefined;

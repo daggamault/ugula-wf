@@ -1,92 +1,99 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { ValueKinds, ValueType } from '@ugula/graph';
+import type { Model, ValueKinds, ValueType } from '@ugula/graph';
 import { createElement, useState } from 'react';
 import { render, screen, userEvent, within } from '../testing-dom.ts';
 import { ValueKindsContext } from './pins.ts';
 import {
   freeFieldName,
   kindOptions,
-  shapeOf,
-  shapeOptions,
+  optionValue,
   TypePicker,
-  typeFor
+  typeOfOption,
+  typeOptions
 } from './type-picker.tsx';
 
-const kinds: ValueKinds = { id: { claim: 'Claim ID' }, code: { hcpcs: 'HCPCS Code' } };
-const none: ValueKinds = { id: {}, code: {} };
+const CLAIM: Model = {
+  key: 'claim',
+  name: 'claim',
+  title: 'Claim',
+  category: 'Claim',
+  description: 'a claim',
+  fields: [
+    { name: 'total', type: 'number', label: 'Total', description: 'The total.' },
+    { name: 'payerId', type: { id: 'payer' }, label: 'Payer', description: 'Who pays.' }
+  ]
+};
 
-describe('shapeOf', () => {
-  it('names the shape of each kind of type', () => {
-    assert.deepEqual(
-      [
-        shapeOf('integer'),
-        shapeOf({ id: 'claim' }),
-        shapeOf({ code: 'x' }),
-        shapeOf({ list: 'string' }),
-        shapeOf({ object: {} })
-      ],
-      ['integer', 'id', 'code', 'list', 'object']
-    );
+const CLAIM_TYPE: ValueType = {
+  object: { total: 'number', payerId: { id: 'payer' } },
+  model: 'claim'
+};
+
+const kinds: ValueKinds = {
+  id: { claim: 'Claim ID' },
+  code: { hcpcs: 'HCPCS Code' },
+  models: { claim: CLAIM }
+};
+
+describe('optionValue and typeOfOption', () => {
+  it('round-trip every kind of type the picker offers', () => {
+    for (const type of [
+      'integer',
+      { id: 'claim' },
+      { code: 'hcpcs' },
+      CLAIM_TYPE,
+      { object: {} }
+    ] as ValueType[]) {
+      assert.deepEqual(typeOfOption(optionValue(type), kinds), type);
+    }
+  });
+
+  it('knows no type for an unknown model or option', () => {
+    assert.equal(typeOfOption('model:quote', kinds), null);
+    assert.equal(typeOfOption('nope', kinds), null);
   });
 });
 
-describe('shapeOptions', () => {
-  it('offers every value type in plain words, with IDs and codes when there are kinds of them', () => {
-    assert.deepEqual(shapeOptions(kinds, false), [
-      { value: 'any', label: 'Any Value' },
-      { value: 'string', label: 'Text' },
-      { value: 'number', label: 'Number' },
-      { value: 'integer', label: 'Whole Number' },
-      { value: 'boolean', label: 'Yes or No' },
-      { value: 'datetime', label: 'Date and Time' },
-      { value: 'id', label: 'ID' },
-      { value: 'code', label: 'Code' },
-      { value: 'list', label: 'List' },
-      { value: 'object', label: 'Record' }
-    ]);
-  });
-
-  it('leaves out IDs and codes without kinds of them', () => {
+describe('typeOptions', () => {
+  it('groups basics, records, IDs and codes, with a custom record last', () => {
     assert.deepEqual(
-      shapeOptions(none, false).map((o) => o.value),
-      ['any', 'string', 'number', 'integer', 'boolean', 'datetime', 'list', 'object']
+      typeOptions(kinds, false, 'string').map((o) => [o.group, o.label]),
+      [
+        ['Basics', 'Any Value'],
+        ['Basics', 'Text'],
+        ['Basics', 'Number'],
+        ['Basics', 'Whole Number'],
+        ['Basics', 'Yes or No'],
+        ['Basics', 'Date and Time'],
+        ['Records', 'Claim'],
+        ['IDs', 'Claim ID'],
+        ['Codes', 'HCPCS Code'],
+        ['Advanced', 'Custom Record']
+      ]
     );
   });
 
   it('never offers any value for the type of a field', () => {
-    assert.equal(
-      shapeOptions(kinds, true).some((o) => o.value === 'any'),
-      false
-    );
-  });
-});
-
-describe('typeFor', () => {
-  it('builds the type for each shape, starting from the first kind', () => {
-    assert.deepEqual(typeFor('id', kinds), { id: 'claim' });
-    assert.deepEqual(typeFor('code', kinds), { code: 'hcpcs' });
-    assert.deepEqual(typeFor('list', kinds), { list: 'string' });
-    assert.deepEqual(typeFor('object', kinds), { object: {} });
-    assert.equal(typeFor('boolean', kinds), 'boolean');
+    assert.ok(!typeOptions(kinds, true, 'string').some((o) => o.value === 'any'));
   });
 
-  it('falls back to any value for an unknown shape', () => {
-    assert.equal(typeFor('nope', kinds), 'any');
+  it('keeps an unknown current type so it still shows', () => {
+    assert.deepEqual(typeOptions(kinds, false, { code: 'snomed' }).at(-1), {
+      value: 'code:snomed',
+      label: 'Snomed Code',
+      group: 'Advanced'
+    });
   });
 });
 
 describe('kindOptions', () => {
   it('sorts the kinds by label and keeps an unknown current kind', () => {
-    assert.deepEqual(kindOptions({ z: 'Zulu', a: 'Alpha' }, 'b'), [
+    assert.deepEqual(kindOptions({ b: 'Beta', a: 'Alpha' }, 'zed'), [
       { value: 'a', label: 'Alpha' },
-      { value: 'b', label: 'b' },
-      { value: 'z', label: 'Zulu' }
+      { value: 'b', label: 'Beta' },
+      { value: 'zed', label: 'zed' }
     ]);
-  });
-
-  it('lists a known current kind once', () => {
-    assert.deepEqual(kindOptions({ a: 'Alpha' }, 'a'), [{ value: 'a', label: 'Alpha' }]);
   });
 });
 
@@ -123,89 +130,58 @@ const show = (initial: ValueType, { isFieldType = false, editable = true } = {})
 
 const shown = (name: string) => screen.getAllByRole('button', { name }).map((b) => b.textContent);
 
-const pick = async (user: ReturnType<typeof userEvent.setup>, list: string, option: string) => {
-  const [listbox] = screen.getAllByRole('listbox', { name: list });
+const pick = async (user: ReturnType<typeof userEvent.setup>, option: string) => {
+  const [listbox] = screen.getAllByRole('listbox', { name: 'Type' });
   assert.ok(listbox);
   await user.click(within(listbox).getByRole('option', { name: option }));
 };
+
+const listBox = () => screen.getAllByRole('checkbox', { name: 'List' })[0] as HTMLInputElement;
 
 describe('TypePicker', () => {
   it('shows the type in plain words', () => {
     show('integer');
     assert.deepEqual(shown('Type'), ['Whole Number']);
-    assert.ok(!screen.queryByRole('textbox'));
+    assert.equal(listBox().checked, false);
   });
 
-  it('changes to the type picked', async () => {
+  it('picks a record by its name, with no fields to fill in', async () => {
     const { changes, user } = show('integer');
-    await pick(user, 'Type', 'Yes or No');
-    assert.deepEqual(changes, ['boolean']);
-    assert.deepEqual(shown('Type'), ['Yes or No']);
+    await pick(user, 'Claim');
+    assert.deepEqual(changes, [CLAIM_TYPE]);
+    assert.deepEqual(shown('Type'), ['Claim']);
+    assert.ok(!screen.queryByRole('textbox', { name: 'Field Name' }));
   });
 
-  it('never offers any value for the type of a field', () => {
-    show('string', { isFieldType: true });
-    assert.ok(!screen.queryByRole('option', { name: 'Any Value' }));
-  });
-
-  it('asks which kind of ID', async () => {
+  it('picks an ID or a code set in one step', async () => {
     const { changes, user } = show('string');
-    await pick(user, 'Type', 'ID');
-    assert.deepEqual(changes, [{ id: 'claim' }]);
-    assert.deepEqual(shown('ID Of'), ['Claim ID']);
+    await pick(user, 'Claim ID');
+    await pick(user, 'HCPCS Code');
+    assert.deepEqual(changes, [{ id: 'claim' }, { code: 'hcpcs' }]);
   });
 
-  it('asks which code set, keeping an unknown one', async () => {
-    const { changes, user } = show({ code: 'snomed' });
-    assert.deepEqual(shown('Code Set'), ['snomed']);
-    await pick(user, 'Code Set', 'HCPCS Code');
-    assert.deepEqual(changes, [{ code: 'hcpcs' }]);
+  it('makes any type a list and back with one tick', async () => {
+    const { changes, user } = show(CLAIM_TYPE);
+    await user.click(listBox());
+    assert.deepEqual(changes[0], { list: CLAIM_TYPE });
+    assert.deepEqual(shown('Type'), ['Claim']);
+    await pick(user, 'Text');
+    assert.deepEqual(changes[1], { list: 'string' });
+    await user.click(listBox());
+    assert.deepEqual(changes[2], 'string');
   });
 
-  it('asks what each item of a list is', async () => {
-    const { changes, user } = show({ list: 'string' });
-    assert.deepEqual(shown('Each Item Is'), ['Text']);
-    await pick(user, 'Each Item Is', 'Code');
-    assert.deepEqual(changes, [{ list: { code: 'hcpcs' } }]);
-    assert.deepEqual(shown('Code Set'), ['HCPCS Code']);
-  });
-
-  it('lists the fields of a record by name and type', () => {
-    show({ object: { payer: 'string', miles: 'number' } });
-    assert.deepEqual(
-      screen
-        .getAllByRole('textbox', { name: 'Field Name' })
-        .map((f) => (f as HTMLInputElement).value),
-      ['payer', 'miles']
-    );
-    assert.deepEqual(shown('Type'), ['Record', 'Text', 'Number']);
-  });
-
-  it('adds a text field with a free name', async () => {
-    const { changes, user } = show({ object: { payer: 'string' } });
+  it('builds a custom record field by field', async () => {
+    const { changes, user } = show('string');
+    await pick(user, 'Custom Record');
     await user.click(screen.getByRole('button', { name: 'Add Field' }));
-    assert.deepEqual(changes, [{ object: { payer: 'string', field2: 'string' } }]);
+    assert.deepEqual(changes, [{ object: {} }, { object: { field1: 'string' } }]);
+    assert.deepEqual(shown('Type'), ['Custom Record', 'Text']);
   });
 
-  it('renames a field', async () => {
-    const { changes, user } = show({ object: { payer: 'string' } });
-    await user.type(screen.getByRole('textbox', { name: 'Field Name' }), 's');
-    assert.deepEqual(changes, [{ object: { payers: 'string' } }]);
-  });
-
-  it('removes and reorders fields', async () => {
-    const { changes, user } = show({ object: { payer: 'string', miles: 'number' } });
-    await user.click(screen.getByRole('button', { name: 'Move miles up' }));
-    await user.click(screen.getByRole('button', { name: 'Remove payer' }));
-    assert.deepEqual(changes, [
-      { object: { miles: 'number', payer: 'string' } },
-      { object: { miles: 'number' } }
-    ]);
-  });
-
-  it('offers no field changes when read-only', () => {
+  it('changes nothing when read-only', () => {
     show({ object: { payer: 'string' } }, { editable: false });
+    assert.equal(listBox().disabled, true);
     assert.ok(!screen.queryByRole('button', { name: 'Add Field' }));
-    assert.ok(!screen.queryByRole('button', { name: 'Remove payer' }));
   });
 });

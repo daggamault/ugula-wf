@@ -268,7 +268,7 @@ describe('FieldsEditor', () => {
     edit([{ name: 'claimId', type: { id: 'claim' }, label: 'Claim' }]);
     assert.equal(textbox(screen, 'Name').value, 'claimId');
     assert.equal(textbox(screen, 'Label').value, 'Claim');
-    assert.equal(shown(screen, 'Type'), 'ID');
+    assert.equal(shown(screen, 'Type'), 'Claim ID');
     assert.ok(!screen.queryByRole('button', { name: 'Required To' }));
     assert.ok(!screen.queryByRole('button', { name: 'Add Choice' }));
   });

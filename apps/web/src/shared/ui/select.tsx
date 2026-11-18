@@ -23,6 +23,7 @@ export type SelectOption = {
   value: string;
   label: string;
   code?: string | null | undefined;
+  group?: string | undefined;
 };
 
 const SEARCH_THRESHOLD = 7;
@@ -87,7 +88,12 @@ export const summaryOf = (options: readonly SelectOption[], values: readonly str
 export const matchesOf = (options: readonly SelectOption[], query: string) => {
   const q = query.trim().toLowerCase();
   return q
-    ? options.filter((o) => o.label.toLowerCase().includes(q) || o.code?.toLowerCase().includes(q))
+    ? options.filter(
+        (o) =>
+          o.label.toLowerCase().includes(q) ||
+          o.code?.toLowerCase().includes(q) ||
+          o.group?.toLowerCase().includes(q)
+      )
     : options;
 };
 
@@ -98,6 +104,16 @@ export const typeaheadIndex = (options: readonly SelectOption[], typed: string, 
   const order = [...options.keys()].map((i) => (from + i) % options.length);
   return order.find((i) => options[i]?.label.toLowerCase().startsWith(text)) ?? -1;
 };
+
+type Run = { group: string | undefined; items: { o: SelectOption; i: number }[] };
+
+export const runsOf = (options: readonly SelectOption[]): Run[] =>
+  options.reduce<Run[]>((runs, o, i) => {
+    const last = runs.at(-1);
+    if (last && last.group === o.group) last.items.push({ o, i });
+    else runs.push({ group: o.group, items: [{ o, i }] });
+    return runs;
+  }, []);
 
 const nextActive = (key: string, active: number, count: number) =>
   key === 'ArrowDown'
@@ -205,6 +221,36 @@ export const SelectControl = (props: SelectControlProps) => {
     }
   };
 
+  const optionOf = (o: SelectOption, i: number) => {
+    const isChosen = values.includes(o.value);
+    return (
+      <button
+        key={o.value}
+        id={optionId(i)}
+        type="button"
+        role="option"
+        tabIndex={-1}
+        aria-selected={isChosen}
+        data-value={o.value}
+        data-active={i === active}
+        className={optionClasses}
+        onPointerMove={() => setActive(i)}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => choose(o)}
+      >
+        <span className="min-w-0 flex-1 truncate">
+          {o.label || ' '}
+          {o.code ? (
+            <>
+              {' '}
+              <span className="text-surface-fg-muted ml-1 text-xs tabular-nums">{o.code}</span>
+            </>
+          ) : null}
+        </span>
+        {isChosen ? <CheckIcon aria-hidden="true" className="size-4 shrink-0" /> : null}
+      </button>
+    );
+  };
   return (
     <div className="relative flex min-w-0" style={{ anchorName }}>
       <button
@@ -290,38 +336,18 @@ export const SelectControl = (props: SelectControlProps) => {
           onKeyDown={isSearchable ? undefined : onListKey}
           onBlur={onLeave}
         >
-          {shown.map((o, i) => {
-            const isChosen = values.includes(o.value);
-            return (
-              <button
-                key={o.value}
-                id={optionId(i)}
-                type="button"
-                role="option"
-                tabIndex={-1}
-                aria-selected={isChosen}
-                data-value={o.value}
-                data-active={i === active}
-                className={optionClasses}
-                onPointerMove={() => setActive(i)}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => choose(o)}
-              >
-                <span className="min-w-0 flex-1 truncate">
-                  {o.label || ' '}
-                  {o.code ? (
-                    <>
-                      {' '}
-                      <span className="text-surface-fg-muted ml-1 text-xs tabular-nums">
-                        {o.code}
-                      </span>
-                    </>
-                  ) : null}
-                </span>
-                {isChosen ? <CheckIcon aria-hidden="true" className="size-4 shrink-0" /> : null}
-              </button>
-            );
-          })}
+          {runsOf(shown).map(({ group, items }, g) =>
+            group ? (
+              <fieldset key={`${g}-${group}`} className="flex flex-col gap-0.5">
+                <legend className="text-surface-fg-muted px-3 pt-2 pb-1 text-xs font-semibold tracking-wide uppercase">
+                  {group}
+                </legend>
+                {items.map(({ o, i }) => optionOf(o, i))}
+              </fieldset>
+            ) : (
+              items.map(({ o, i }) => optionOf(o, i))
+            )
+          )}
         </div>
         {onSearch || !shown.length ? (
           <p

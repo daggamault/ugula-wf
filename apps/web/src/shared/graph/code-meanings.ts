@@ -1,3 +1,4 @@
+import { isRecord, type NodeInstance } from '@ugula/graph';
 import { createContext, useContext, useEffect, useState } from 'react';
 
 export type Meaning = { code: string; description: string };
@@ -49,3 +50,25 @@ export const useCodeMeanings = (kind: string, codes: readonly string[]) => {
   }, [meanings, kind, key]);
   return found;
 };
+
+const kindOf = (type: unknown): string | null =>
+  isRecord(type) ? (typeof type.code === 'string' ? type.code : kindOf(type.list)) : null;
+
+const COMPARES = new Set(['std.logic.equal', 'std.logic.not-equal']);
+
+export const codedValuesOf = (inst: NodeInstance) => {
+  const config = isRecord(inst.config) ? inst.config : {};
+  const kind = kindOf(config.type);
+  if (!kind) return null;
+  const fixed = inst.inputs?.b;
+  const values =
+    inst.type === 'std.value'
+      ? [config.value].flat()
+      : COMPARES.has(inst.type) && fixed && 'value' in fixed
+        ? [fixed.value]
+        : [];
+  const codes = values.filter((c): c is string => typeof c === 'string' && c !== '');
+  return codes.length ? { kind, codes } : null;
+};
+
+export const SHOWN_CODES = 6;

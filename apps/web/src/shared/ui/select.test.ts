@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement, useState } from 'react';
-import { render, screen, userEvent } from '../testing-dom.ts';
-import { matchesOf, Select, SelectControl, summaryOf, typeaheadIndex } from './select.tsx';
+import { render, screen, userEvent, within } from '../testing-dom.ts';
+import { matchesOf, runsOf, Select, SelectControl, summaryOf, typeaheadIndex } from './select.tsx';
 
 const popoverOpen = new WeakSet<Element>();
 const setPopover = (el: HTMLElement, isOpen: boolean) => {
@@ -115,6 +115,24 @@ describe('matchesOf', () => {
   });
 });
 
+describe('runsOf', () => {
+  it('groups neighbouring options that share a group, keeping their places', () => {
+    assert.deepEqual(
+      runsOf([
+        { value: 'a', label: 'A', group: 'X' },
+        { value: 'b', label: 'B', group: 'X' },
+        { value: 'c', label: 'C' },
+        { value: 'd', label: 'D', group: 'X' }
+      ]).map((r) => [r.group, r.items.map((x) => x.i)]),
+      [
+        ['X', [0, 1]],
+        [undefined, [2]],
+        ['X', [3]]
+      ]
+    );
+  });
+});
+
 describe('typeaheadIndex', () => {
   const options = ['All', 'Failed', 'Faulted', 'Running'].map((label) => ({ value: label, label }));
 
@@ -153,6 +171,43 @@ describe('Select', () => {
     assert.deepEqual(
       screen.getAllByRole('option', { selected: true }).map((o) => o.textContent),
       ['Beta']
+    );
+  });
+
+  it('heads each group of options once, and finds options by their group', () => {
+    const grouped = [
+      { value: 'a', label: 'Text', group: 'Basics' },
+      { value: 'b', label: 'Number', group: 'Basics' },
+      { value: 'c', label: 'Claim', group: 'Records' }
+    ];
+    render(
+      createElement(Select, {
+        id: 'kind',
+        label: 'Kind',
+        options: grouped,
+        value: 'a',
+        onChange: noop
+      })
+    );
+    const list = screen.getByRole('listbox', { name: 'Kind' });
+    assert.deepEqual(
+      within(list)
+        .getAllByRole('group')
+        .map((g) => [
+          g.getAttribute('aria-label') ?? g.querySelector('legend')?.textContent,
+          within(g)
+            .getAllByRole('option')
+            .map((o) => o.textContent)
+        ]),
+      [
+        ['Basics', ['Text', 'Number']],
+        ['Records', ['Claim']]
+      ]
+    );
+    assert.ok(within(list).getByRole('group', { name: 'Records' }));
+    assert.deepEqual(
+      matchesOf(grouped, 'record').map((o) => o.value),
+      ['c']
     );
   });
 

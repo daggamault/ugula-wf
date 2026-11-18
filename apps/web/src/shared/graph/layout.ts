@@ -22,18 +22,45 @@ const TITLE = 34;
 const DESCRIPTION = 34;
 const PIN_ROW = 24;
 const PIN_PADDING = 6;
+const SECTION_PADDING = 13;
+const TEXT_LINE = 16;
+const LIST_GAP = 2;
+const NOTE_LINES = 3;
+const NOTE_LINE_CHARS = 32;
+const ADD_FIELD = 25;
 const SWEEPS = 12;
 const SETTLE_PASSES = 4;
 const EXEC_WEIGHT = 8;
 const CONSUMER_WEIGHT = 4;
 
-export const shapeOf = (sig: Signature | null, described: boolean): Shape => {
+type Extras = { codeRows?: number; note?: string | undefined; addField?: boolean };
+
+const codeListHeight = (rows: number) =>
+  rows ? SECTION_PADDING + rows * TEXT_LINE + (rows - 1) * LIST_GAP : 0;
+
+const noteHeight = (note: string | undefined) => {
+  if (!note) return 0;
+  const wrapped = note
+    .split('\n')
+    .reduce((sum, line) => sum + Math.max(Math.ceil(line.length / NOTE_LINE_CHARS), 1), 0);
+  return SECTION_PADDING + Math.min(wrapped, NOTE_LINES) * TEXT_LINE;
+};
+
+export const shapeOf = (
+  sig: Signature | null,
+  described: boolean,
+  { codeRows = 0, note, addField = false }: Extras = {}
+): Shape => {
   const ins = sig ? [...sig.execIn, ...sig.inputs.map((p) => p.name)] : [];
   const outs = sig ? [...sig.execOut, ...sig.outputs.map((p) => p.name)] : [];
-  const top = TITLE + (described ? DESCRIPTION : 0);
+  const top = TITLE + (described ? DESCRIPTION : 0) + codeListHeight(codeRows) + noteHeight(note);
   return {
     top,
-    height: top + PIN_PADDING * 2 + PIN_ROW * Math.max(ins.length, outs.length, 1),
+    height:
+      top +
+      PIN_PADDING * 2 +
+      PIN_ROW * Math.max(ins.length, outs.length, 1) +
+      (addField ? ADD_FIELD : 0),
     ins,
     outs,
     execOuts: sig?.execOut.length ?? 0,
@@ -131,7 +158,7 @@ export const layout = (
       const from = shape(e.from);
       const to = shape(e.to);
       const exec = from.outs.indexOf(e.fromPin) < from.execOuts;
-      const dy = pinOffset(from.outs, e.fromPin) - pinOffset(to.ins, e.toPin);
+      const dy = from.top + pinOffset(from.outs, e.fromPin) - to.top - pinOffset(to.ins, e.toPin);
       const span = Math.max((layer.get(e.to) ?? 0) - (layer.get(e.from) ?? 0), 1);
       if (exec || !from.pure || to.pure) {
         anchors.get(e.to)?.push({ to: e.from, dy, weight: (exec ? EXEC_WEIGHT : 1) / span });

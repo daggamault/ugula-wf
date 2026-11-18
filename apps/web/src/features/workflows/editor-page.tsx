@@ -8,9 +8,9 @@ import {
   addNode,
   addWired,
   arranged,
-  compatibleEntries,
   type NodeChange,
   type PinRef,
+  pickerEntries,
   placed,
   removeNodes
 } from '../../shared/graph/flow.ts';
@@ -21,7 +21,8 @@ import {
   isTyping
 } from '../../shared/graph/graph-canvas.tsx';
 import { emptyHistory, recorded, redone, undone } from '../../shared/graph/history.ts';
-import { pinLabel, WorkflowEventsContext } from '../../shared/graph/pins.ts';
+import { pinLabel, ValueKindsContext, WorkflowEventsContext } from '../../shared/graph/pins.ts';
+import { NO_MODELS } from '../../shared/graph/record-fields.ts';
 import { type Live, useReconnect } from '../../shared/live.ts';
 import { navigate, useLocation, useUnsavedChanges } from '../../shared/router.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
@@ -333,7 +334,7 @@ export const EditorView = ({
       request.from
         ? {
             request,
-            entries: compatibleEntries(def, catalog, request.from),
+            entries: pickerEntries(def, catalog, request.from),
             hint: pinHint(def, catalog, request.from)
           }
         : { request, entries: catalog.palette }
@@ -469,6 +470,8 @@ export const EditorView = ({
                   ? {
                       onChange: change,
                       onAdd: openPicker,
+                      growable: isCustom,
+                      onEditSignature: () => navigate(panelHref('signature')),
                       tools: (
                         <>
                           <Button
@@ -535,6 +538,7 @@ export const EditorView = ({
               key={version}
               kind={graph.kind}
               def={def}
+              catalog={catalog}
               editable={editable && isCustom}
               locked={lockedReason(graph, editable, noun)}
               onChange={change}
@@ -619,9 +623,10 @@ export const EditorPage = ({ client, live, nodes, graphId, version, trail }: Edi
     chosen === null ? Promise.resolve(null) : client.version(graphId, chosen)
   );
   const events = useContext(WorkflowEventsContext);
+  const models = useContext(ValueKindsContext).models ?? NO_MODELS;
   const catalog = useMemo(
-    () => createCatalog(nodes, { published: published.data ?? [], events }),
-    [nodes, published.data, events]
+    () => createCatalog(nodes, { published: published.data ?? [], events, models }),
+    [nodes, published.data, events, models]
   );
   const { reload } = detail;
   const loads = useRef(0);

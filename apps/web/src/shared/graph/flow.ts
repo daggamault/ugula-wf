@@ -8,13 +8,17 @@ import {
   type Json,
   type NodeInstance,
   type NodeRef,
+  type PinSpec,
+  RETURN_TYPE,
   type Signature,
   type ValueType
 } from '@ugula/graph';
 import type { Connection, Edge, Node } from '@xyflow/react';
 import type { Catalog, NodeKind, Opens, PaletteEntry } from './catalog.ts';
+import { codedValuesOf, SHOWN_CODES } from './code-meanings.ts';
 import { layout, NODE_WIDTH, shapeOf } from './layout.ts';
 import { toneOf } from './pins.ts';
+import { FOR_EACH_TYPE, fieldEntries } from './record-fields.ts';
 
 export type NodeStatus = 'idle' | 'done' | 'error' | 'waiting';
 
@@ -82,11 +86,38 @@ const signatureById = (def: GraphDef, catalog: Catalog, id: string) => {
   return inst ? catalog.signatureOf(inst, def) : null;
 };
 
+const codeRowsOf = (inst: NodeInstance) => {
+  const count = codedValuesOf(inst)?.codes.length ?? 0;
+  return count > SHOWN_CODES ? SHOWN_CODES + 1 : count;
+};
+
+const shownSignature = (inst: NodeInstance, def: GraphDef, sig: Signature | null) => {
+  const fold = foldOf(inst, def, sig);
+  if (!sig || !fold) return { sig, folded: false };
+  const keep = (pins: Signature['inputs']) => pins.filter((p) => fold.shown.includes(p.name));
+  const shown =
+    fold.side === 'in'
+      ? { ...sig, inputs: keep(sig.inputs) }
+      : { ...sig, outputs: keep(sig.outputs) };
+  const all = fold.side === 'in' ? sig.inputs : sig.outputs;
+  return { sig: shown, folded: fold.shown.length < all.length };
+};
+
 const arrange = (def: GraphDef, catalog: Catalog) =>
   layout(
     def,
     new Map(
-      def.nodes.map((n) => [n.id, shapeOf(catalog.signatureOf(n, def), catalog.describe(n) !== '')])
+      def.nodes.map((n) => {
+        const { sig, folded } = shownSignature(n, def, catalog.signatureOf(n, def));
+        return [
+          n.id,
+          shapeOf(sig, catalog.describe(n) !== '', {
+            codeRows: codeRowsOf(n),
+            note: n.note,
+            addField: folded || n.type === ENTRY_TYPE || n.type === RETURN_TYPE
+          })
+        ];
+      })
     )
   );
 
@@ -183,8 +214,70 @@ export const toFlow = (
   return { nodes: [...ghosts, ...nodes], edges };
 };
 
+export const NEW_PIN = '+';
+
+const freePin = (name: string, taken: readonly string[]) => {
+  const names = new Set(taken);
+  if (!names.has(name)) return name;
+  for (let i = 2; ; i++) if (!names.has(`${name}${i}`)) return `${name}${i}`;
+};
+
+const newPinSpec = (spec: PinSpec | undefined, name: string, type: ValueType): PinSpec => ({
+  name,
+  type,
+  ...(spec?.label ? { label: spec.label } : {}),
+  ...(spec?.description ? { description: spec.description } : {})
+});
+
+const grow = (def: GraphDef, catalog: Catalog, c: Connection) => {
+  if (!c.sourceHandle || !c.targetHandle || c.source === c.target) return null;
+  const { signature } = def;
+  const typeOf = (id: string) => def.nodes.find((n) => n.id === id)?.type;
+  if (c.targetHandle === NEW_PIN && c.sourceHandle !== NEW_PIN) {
+    const sig = signatureById(def, catalog, c.source);
+    const from = outputOf(sig, c.sourceHandle);
+    if (typeOf(c.target) !== RETURN_TYPE || !from?.type) return null;
+    const name = freePin(c.sourceHandle, [
+      ...signature.outputs.map((p) => p.name),
+      ...signature.execOut
+    ]);
+    const spec = newPinSpec(
+      sig?.outputs.find((p) => p.name === c.sourceHandle),
+      name,
+      from.type
+    );
+    return {
+      def: withSignature(def, {
+        signature: { ...signature, outputs: [...signature.outputs, spec] }
+      }),
+      connection: { ...c, targetHandle: name }
+    };
+  }
+  if (c.sourceHandle === NEW_PIN && c.targetHandle !== NEW_PIN) {
+    const sig = signatureById(def, catalog, c.target);
+    const to = inputOf(sig, c.targetHandle);
+    if (typeOf(c.source) !== ENTRY_TYPE || !to?.type) return null;
+    const name = freePin(c.targetHandle, [
+      ...signature.inputs.map((p) => p.name),
+      ...signature.execIn
+    ]);
+    const spec = newPinSpec(
+      sig?.inputs.find((p) => p.name === c.targetHandle),
+      name,
+      to.type
+    );
+    return {
+      def: withSignature(def, { signature: { ...signature, inputs: [...signature.inputs, spec] } }),
+      connection: { ...c, sourceHandle: name }
+    };
+  }
+  return null;
+};
+
 export const connectionKind = (def: GraphDef, catalog: Catalog, c: Connection) => {
   if (!c.sourceHandle || !c.targetHandle || c.source === c.target) return null;
+  if (c.sourceHandle === NEW_PIN || c.targetHandle === NEW_PIN)
+    return grow(def, catalog, c) ? 'data' : null;
   const from = outputOf(signatureById(def, catalog, c.source), c.sourceHandle);
   const to = inputOf(signatureById(def, catalog, c.target), c.targetHandle);
   if (!from || !to || from.exec !== to.exec) return null;
@@ -215,6 +308,8 @@ const adopt = (
 };
 
 export const connect = (def: GraphDef, catalog: Catalog, c: Connection): GraphDef => {
+  const grown = grow(def, catalog, c);
+  if (grown) return connect(grown.def, catalog, grown.connection);
   const kind = connectionKind(def, catalog, c);
   if (!kind || !c.sourceHandle || !c.targetHandle) return def;
   const edge = { from: c.source, fromPin: c.sourceHandle, to: c.target, toPin: c.targetHandle };
@@ -260,9 +355,17 @@ const PROBE = '__probe';
 const endOf = (def: GraphDef, catalog: Catalog, { node, pin, side }: PinRef) =>
   (side === 'out' ? outputOf : inputOf)(signatureById(def, catalog, node), pin);
 
-const wiringPin = (def: GraphDef, catalog: Catalog, ref: NodeRef, from: PinRef) => {
+type Placeable = NodeRef & { config?: Json };
+
+const wiringPin = (def: GraphDef, catalog: Catalog, ref: Placeable, from: PinRef) => {
   const end = endOf(def, catalog, from);
-  const sig = end && catalog.signatureOf({ id: PROBE, type: ref.type, version: ref.version }, def);
+  const probe: NodeInstance = {
+    id: PROBE,
+    type: ref.type,
+    version: ref.version,
+    ...(ref.config === undefined ? {} : { config: ref.config })
+  };
+  const sig = end && catalog.signatureOf(probe, def);
   if (!end || !sig) return null;
   if (end.exec) return (from.side === 'out' ? sig.execIn[0] : sig.execOut[0]) ?? null;
   const type = end.type ?? 'any';
@@ -275,17 +378,35 @@ const wiringPin = (def: GraphDef, catalog: Catalog, ref: NodeRef, from: PinRef) 
 export const compatibleEntries = (def: GraphDef, catalog: Catalog, from: PinRef): PaletteEntry[] =>
   catalog.palette.filter((e) => wiringPin(def, catalog, e, from) !== null);
 
+export const pickerEntries = (def: GraphDef, catalog: Catalog, from: PinRef): PaletteEntry[] => {
+  const compatible = compatibleEntries(def, catalog, from);
+  const type = from.side === 'out' ? endOf(def, catalog, from)?.type : null;
+  if (!type) return compatible;
+  const loops = typeof type === 'object' && 'list' in type;
+  const first = loops ? compatible.filter((e) => e.type === FOR_EACH_TYPE) : [];
+  return [
+    ...fieldEntries(type, catalog.models),
+    ...first,
+    ...compatible.filter((e) => !first.includes(e))
+  ];
+};
+
 export const addWired = (
   def: GraphDef,
   catalog: Catalog,
-  ref: NodeRef,
+  ref: Placeable,
   at: Point,
   from: PinRef | null
 ) => {
-  const added = addNode(def, ref, {
-    x: Math.round(at.x - (from?.side === 'in' ? NODE_WIDTH : 0)),
-    y: Math.round(at.y)
-  });
+  const added = addNode(
+    def,
+    ref,
+    {
+      x: Math.round(at.x - (from?.side === 'in' ? NODE_WIDTH : 0)),
+      y: Math.round(at.y)
+    },
+    ref.config
+  );
   const pin = from && wiringPin(def, catalog, ref, from);
   if (!from || !pin) return added;
   const link =
