@@ -83,7 +83,7 @@ describe('AgencyPicker', () => {
     ]);
     open();
     const search = within(panel).getByRole('searchbox', { name: 'Find an Agency' });
-    assert.equal(search.getAttribute('placeholder'), 'Find an agency');
+    assert.equal(search.getAttribute('placeholder'), 'Find an Agency');
     await user.type(search, ' BAYSIDE ');
     assert.deepEqual(choices(), ['Agency 7Bayside']);
     await user.clear(search);

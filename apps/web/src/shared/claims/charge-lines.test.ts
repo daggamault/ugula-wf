@@ -23,7 +23,7 @@ const mileage: ClaimLine = {
   total_cents: 8_160
 };
 
-const table = () => screen.getByRole('table', { name: 'Claim lines' });
+const table = () => screen.getByRole('table', { name: 'Claim Lines' });
 
 const rows = () =>
   within(table())

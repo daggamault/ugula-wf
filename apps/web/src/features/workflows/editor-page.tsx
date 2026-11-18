@@ -392,7 +392,7 @@ export const EditorView = ({
           parent ? graphPath(parent.graphId, parent.version, trail.slice(0, -1)) : '/workflows'
         }
         backLabel={parent ? `Back to ${nameOf(parent.graphId)}` : 'Back to Workflows'}
-        breadcrumbs={trail.length ? <Breadcrumbs label="Workflow path" crumbs={crumbs} /> : null}
+        breadcrumbs={trail.length ? <Breadcrumbs label="Workflow Path" crumbs={crumbs} /> : null}
         title={graph.name}
         description={
           <span className="flex flex-wrap items-center gap-2">

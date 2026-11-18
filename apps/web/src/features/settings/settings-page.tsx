@@ -143,7 +143,7 @@ export const ProfileForm = ({
       />
     ));
   return (
-    <form onSubmit={submit} aria-label="Billing profile">
+    <form onSubmit={submit} aria-label="Billing Profile">
       <SectionPanel
         title="Billing Profile"
         description="As it appears on claims and patient statements."

@@ -41,7 +41,7 @@ describe('BindingEditor', () => {
   it('says what an unset input uses and marks a changed pin', () => {
     const html = markup(undefined);
     assert.ok(html.includes('Uses 5 unless you set it.'));
-    assert.ok(html.includes('aria-label="Changed from the base"'));
+    assert.ok(html.includes('aria-label="Changed from the Base"'));
   });
 
   it('edits an expression in a monospace input, checked against the graph variables', () => {

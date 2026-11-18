@@ -242,7 +242,7 @@ export const ClaimsPage = ({ client, live, search }: ClaimsPageProps) => {
   const table = useTableState(PATH, CLAIMS_PAGE_TABLE);
   return (
     <Page title="Claims">
-      <SearchForm label="Search claims" path={PATH} fields={CLAIM_SEARCH_FIELDS} />
+      <SearchForm label="Search Claims" path={PATH} fields={CLAIM_SEARCH_FIELDS} />
       {isSearching(search) || table.isFiltered ? (
         <ClaimResults
           client={client}

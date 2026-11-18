@@ -159,7 +159,7 @@ describe('EditorView', () => {
         screen.getByRole('link', { name: 'Back to Workflows' }).getAttribute('href'),
         '/workflows'
       );
-      assert.ok(!screen.queryByRole('navigation', { name: 'Workflow path' }));
+      assert.ok(!screen.queryByRole('navigation', { name: 'Workflow Path' }));
     });
 
     it('explains how to edit the canvas', () => {
@@ -567,7 +567,7 @@ describe('EditorView', () => {
         { graphId: 'p1', version: 3 }
       ]
     });
-    const path = screen.getByRole('navigation', { name: 'Workflow path' });
+    const path = screen.getByRole('navigation', { name: 'Workflow Path' });
     assert.deepEqual(
       within(path)
         .getAllByRole('link')

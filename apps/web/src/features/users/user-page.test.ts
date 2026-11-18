@@ -78,7 +78,7 @@ const show = (client: UsersClient, permissions: Permission[] = ALL) => {
   return { toasts, user: userEvent.setup() };
 };
 
-const form = () => screen.findByRole('form', { name: 'Save user' });
+const form = () => screen.findByRole('form', { name: 'Save User' });
 
 const button = (name: string) => screen.getByRole('button', { name });
 
@@ -99,7 +99,7 @@ describe('UserPage', () => {
     const pending = () => new Promise(() => undefined);
     show({ user: pending, roles: pending } as unknown as UsersClient);
     assert.ok(screen.getByLabelText('Loading'));
-    assert.ok(!screen.queryByRole('form', { name: 'Save user' }));
+    assert.ok(!screen.queryByRole('form', { name: 'Save User' }));
   });
 
   it('says why the user could not be loaded', async () => {

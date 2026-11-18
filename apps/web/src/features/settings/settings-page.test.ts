@@ -207,8 +207,8 @@ describe('SettingsPage', () => {
     const { client } = fakeClient({ connection: pending });
     showPage(client);
     assert.equal(screen.getAllByRole('status', { name: 'Loading' }).length, 1);
-    assert.ok(!screen.queryByRole('form', { name: 'Billing profile' }));
-    assert.ok(!screen.queryByRole('form', { name: 'Clearinghouse connection' }));
+    assert.ok(!screen.queryByRole('form', { name: 'Billing Profile' }));
+    assert.ok(!screen.queryByRole('form', { name: 'Clearinghouse Connection' }));
   });
 
   it('says why the settings could not load', async () => {
@@ -219,13 +219,13 @@ describe('SettingsPage', () => {
     });
     showPage(client);
     assert.ok(await screen.findByText('Connection lookup failed'));
-    assert.ok(!screen.queryByRole('form', { name: 'Billing profile' }));
+    assert.ok(!screen.queryByRole('form', { name: 'Billing Profile' }));
   });
 
   it('saves the billing profile, confirms it and reloads it', async () => {
     const { calls, client } = fakeClient();
     const { toasts, user } = showPage(client);
-    await screen.findByRole('form', { name: 'Billing profile' });
+    await screen.findByRole('form', { name: 'Billing Profile' });
     await user.click(screen.getByRole('button', { name: 'Save Profile' }));
     assert.deepEqual(calls.saved, [profileInput]);
     assert.deepEqual(toasts, [{ title: 'Billing profile saved' }]);

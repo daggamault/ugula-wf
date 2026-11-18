@@ -72,7 +72,7 @@ export const ClaimView = ({
     >
       {error ? <Alert>{error}</Alert> : null}
       <Tabs
-        label="Claim sections"
+        label="Claim Sections"
         tabs={CLAIM_TABS.map((t) => ({
           label: t.label,
           href: withBack(t.value === 'overview' ? path : `${path}?tab=${t.value}`, back),

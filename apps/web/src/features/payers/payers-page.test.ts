@@ -101,12 +101,12 @@ describe('PayersPage', () => {
       ]
     );
     assert.deepEqual(
-      within(screen.getByRole('list', { name: 'Learned names for Medicare' }))
+      within(screen.getByRole('list', { name: 'Learned Names for Medicare' }))
         .getAllByRole('listitem')
         .map((li) => li.textContent),
       ['MCR Part B']
     );
-    assert.ok(!screen.queryByRole('list', { name: 'Learned names for Acme Health' }));
+    assert.ok(!screen.queryByRole('list', { name: 'Learned Names for Acme Health' }));
     assert.deepEqual(queries, ['page=1&pageSize=25&sort=name&dir=asc']);
   });
 

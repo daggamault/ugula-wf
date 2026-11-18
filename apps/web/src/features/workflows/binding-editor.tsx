@@ -26,8 +26,8 @@ export const bindingFor = (
 export const CustomDot = () => (
   <span
     role="img"
-    aria-label="Changed from the base"
-    title="Changed from the base"
+    aria-label="Changed from the Base"
+    title="Changed from the Base"
     className="bg-custom size-2 shrink-0 rounded-full"
   />
 );

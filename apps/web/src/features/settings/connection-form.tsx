@@ -256,7 +256,7 @@ export const ConnectionForm = ({
       />
     ));
   return (
-    <form onSubmit={submit} aria-label="Clearinghouse connection">
+    <form onSubmit={submit} aria-label="Clearinghouse Connection">
       <SectionPanel
         title="Clearinghouse Connection"
         description="Without one, the server default is used."

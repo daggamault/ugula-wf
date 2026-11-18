@@ -189,7 +189,7 @@ describe('TaskView decision', () => {
 
   it('sends the note with the decision', async () => {
     const { completed, user } = showView(task());
-    await user.type(screen.getByRole('textbox', { name: 'Note (optional)' }), ' Called the crew ');
+    await user.type(screen.getByRole('textbox', { name: 'Note (Optional)' }), ' Called the crew ');
     await user.click(screen.getByRole('button', { name: 'Approve' }));
     assert.deepEqual(completed, [['approve', { note: 'looks fine' }, 'Called the crew']]);
   });
@@ -288,7 +288,7 @@ describe('TaskView changes', () => {
   it('lists edits as current → new when the fields hold current values', () => {
     showView(task({ fields, defaults, prefill: 'current' }));
     screen.getByText(/^Fields start with the current values\./);
-    within(screen.getByRole('region', { name: 'Your changes' })).getByRole('heading', {
+    within(screen.getByRole('region', { name: 'Your Changes' })).getByRole('heading', {
       name: 'No Changes Yet'
     });
   });
@@ -297,7 +297,7 @@ describe('TaskView changes', () => {
     const { user } = showView(task({ fields, defaults, prefill: 'current' }));
     const member = screen.getByRole<HTMLInputElement>('textbox', { name: 'Member ID' });
     await user.type(member, 'X');
-    const changes = screen.getByRole('region', { name: 'Your changes' });
+    const changes = screen.getByRole('region', { name: 'Your Changes' });
     assert.equal(
       within(changes).getByRole('listitem').textContent,
       'Member IDCurrent: 1EG4New: 1EG4X'
@@ -310,13 +310,13 @@ describe('TaskView changes', () => {
   it('says the fields hold suggestions without listing changes', () => {
     showView(task({ fields, defaults, prefill: 'suggested' }));
     screen.getByText(/^Fields start with what the workflow suggests\./);
-    assert.ok(!screen.queryByRole('region', { name: 'Your changes' }));
+    assert.ok(!screen.queryByRole('region', { name: 'Your Changes' }));
   });
 
   it('gives no field help without a prefill', () => {
     showView(task({ fields, defaults }));
     assert.ok(!screen.queryByText(/^Fields start with/));
-    assert.ok(!screen.queryByRole('region', { name: 'Your changes' }));
+    assert.ok(!screen.queryByRole('region', { name: 'Your Changes' }));
   });
 });
 

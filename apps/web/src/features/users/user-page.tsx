@@ -84,7 +84,7 @@ export const UserPage = ({ client, userId, back }: UserPageProps) => {
         />
       ) : null}
       {blocked ? <Alert intent="info">{blocked}</Alert> : null}
-      <form onSubmit={save} aria-label="Save user" className="flex flex-col gap-6">
+      <form onSubmit={save} aria-label="Save User" className="flex flex-col gap-6">
         <SectionPanel title="Access">
           <DetailList>
             <Detail label="Email">{user.email}</Detail>

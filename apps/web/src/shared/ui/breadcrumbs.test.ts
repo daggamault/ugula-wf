@@ -7,7 +7,7 @@ import { Breadcrumbs } from './breadcrumbs.tsx';
 const show = (selected: string[] = []) => {
   render(
     createElement(Breadcrumbs, {
-      label: 'Workflow path',
+      label: 'Workflow Path',
       crumbs: [
         { label: 'Workflows', to: '/workflows' },
         { label: 'Process PCR', onSelect: () => selected.push('pcr') },
@@ -15,7 +15,7 @@ const show = (selected: string[] = []) => {
       ]
     })
   );
-  return screen.getByRole('navigation', { name: 'Workflow path' });
+  return screen.getByRole('navigation', { name: 'Workflow Path' });
 };
 
 describe('Breadcrumbs', () => {

@@ -290,7 +290,7 @@ export const UsersPage = ({ client, live, tab }: ListProps & { tab: UsersTab }) 
       }
     >
       <Tabs
-        label="User views"
+        label="User Views"
         tabs={USERS_TABS.map((t) => ({
           label: t.label,
           href: t.href,

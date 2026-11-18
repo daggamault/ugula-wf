@@ -45,7 +45,7 @@ export const FeesTable = ({
   onDelete: (fee: Fee) => void;
 }) => (
   <Table
-    label="Fee schedule"
+    label="Fee Schedule"
     sorting={search}
     head={[
       { label: 'Payer', sort: 'payer' },

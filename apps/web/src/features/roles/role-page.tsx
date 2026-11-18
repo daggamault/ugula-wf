@@ -46,7 +46,7 @@ export const RoleForm = ({ role, grants, readOnly, back, onSave }: RoleFormProps
     if (failure) setError(failure);
   };
   return (
-    <form onSubmit={submit} aria-label="Save role" className="flex flex-col gap-6">
+    <form onSubmit={submit} aria-label="Save Role" className="flex flex-col gap-6">
       <SectionPanel title="Role">
         <fieldset disabled={busy || readOnly}>
           <FieldGrid>

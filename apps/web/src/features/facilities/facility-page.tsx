@@ -77,7 +77,7 @@ const HospitalPicker = ({
       label="Fill From CMS Hospital"
       span={2}
       hint="Fills the name, address, phone and kind from the CMS hospital list"
-      placeholder="Search hospitals"
+      placeholder="Search Hospitals"
       options={search.results.map((h) => ({ value: h.ccn, label: hospitalLabel(h) }))}
       value=""
       onSearch={search.onSearch}
@@ -114,7 +114,7 @@ export const FacilityForm = ({
     if (failure) setError(failure);
   };
   return (
-    <form onSubmit={submit} aria-label="Save facility">
+    <form onSubmit={submit} aria-label="Save Facility">
       <SectionPanel title="Facility">
         <fieldset disabled={busy}>
           <FieldGrid>

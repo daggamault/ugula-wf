@@ -166,7 +166,7 @@ describe('WorkflowEditor', () => {
 
   it('asks for a workflow before a version', () => {
     show(WorkflowEditor, {});
-    assert.equal(shown('Workflow'), 'Choose a workflow');
+    assert.equal(shown('Workflow'), 'Choose a Workflow');
     assert.ok(!screen.queryByRole('button', { name: 'Version' }));
   });
 
@@ -209,7 +209,7 @@ describe('RuleEditor', () => {
 
   it('asks for a rule before anything else', () => {
     show(RuleEditor, {});
-    assert.equal(shown('Rule'), 'Choose a rule');
+    assert.equal(shown('Rule'), 'Choose a Rule');
     assert.ok(!screen.queryByRole('button', { name: 'Version' }));
     assert.ok(!screen.queryByRole('button', { name: 'Each Item Goes To' }));
   });
@@ -345,7 +345,7 @@ describe('ConstantEditor', () => {
 describe('CodeSetEditor', () => {
   it('picks one of the known code sets', async () => {
     const { last, user } = show(CodeSetEditor, {});
-    assert.equal(shown('Code Set'), 'Choose a code set');
+    assert.equal(shown('Code Set'), 'Choose a Code Set');
     await user.click(option('Code Set', valueKinds.code.hcpcs ?? 'hcpcs'));
     assert.deepEqual(last(), { kind: 'hcpcs' });
   });

@@ -319,7 +319,7 @@ const Decision = ({
         {showChanges ? <ChangeList changes={changes} /> : null}
         <Textarea
           id={`task-${task.id}-note`}
-          label="Note (optional)"
+          label="Note (Optional)"
           hint="Saved with your decision."
           maxLength={1000}
           rows={2}
@@ -402,7 +402,7 @@ const Decision = ({
 
 const WorkflowDetails = ({ context }: { context: Json }) => (
   <SectionPanel title="Workflow Details">
-    <ContextView label="Task context" value={context} hideNotices />
+    <ContextView label="Task Context" value={context} hideNotices />
   </SectionPanel>
 );
 

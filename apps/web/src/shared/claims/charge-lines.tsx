@@ -14,7 +14,7 @@ export const ChargeLines = ({
   codes?: CodeDescriptions;
 }) => (
   <Table
-    label="Claim lines"
+    label="Claim Lines"
     head={['HCPCS', 'Modifiers', { label: 'Units' }, { label: 'Unit Price' }, { label: 'Amount' }]}
   >
     {lines.map((l) => (

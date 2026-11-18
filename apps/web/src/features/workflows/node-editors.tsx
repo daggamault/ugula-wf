@@ -47,7 +47,7 @@ export const WorkflowEditor = ({
       <Select
         id={`${nodeId}-workflow`}
         label="Workflow"
-        placeholder="Choose a workflow"
+        placeholder="Choose a Workflow"
         options={workflowOptions(catalog.published, workflow)}
         value={workflow}
         onChange={(key) => {
@@ -123,7 +123,7 @@ const ruleEditor =
         <Select
           id={`${nodeId}-rule`}
           label="Rule"
-          placeholder="Choose a rule"
+          placeholder="Choose a Rule"
           options={ruleOptions(catalog.published, rule)}
           value={rule}
           onChange={(key) => pick(key, versionsOf(catalog.published, key)[0])}
@@ -156,7 +156,7 @@ const ruleEditor =
           <Select
             id={`${nodeId}-test`}
             label="Keep When"
-            placeholder="Choose a true or false output"
+            placeholder="Choose a True or False Output"
             options={pinOptions(tests, textOf(record.test))}
             value={textOf(record.test)}
             onChange={(test) => onConfig({ ...record, test })}
@@ -212,7 +212,7 @@ export const FieldEditor = ({ nodeId, config, editable, onConfig }: SettingsEdit
         <Select
           id={`${nodeId}-path`}
           label="Field"
-          placeholder="Choose a field"
+          placeholder="Choose a Field"
           options={options}
           value={path}
           onChange={(next) => onConfig({ ...record, path: next })}
@@ -246,7 +246,7 @@ export const CodeSetEditor = ({ nodeId, config, editable, onConfig }: SettingsEd
       <Select
         id={`${nodeId}-kind`}
         label="Code Set"
-        placeholder="Choose a code set"
+        placeholder="Choose a Code Set"
         options={kindOptions(kinds.code, kind).filter((o) => o.value)}
         value={kind}
         onChange={(next) => onConfig({ ...record, kind: next })}

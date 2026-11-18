@@ -91,7 +91,7 @@ describe('RolePage', () => {
     const pending = () => new Promise<never>(() => undefined);
     show({ grants: pending, role: pending } as unknown as RolesClient, 'r1');
     assert.ok(screen.getByLabelText('Loading'));
-    assert.ok(!screen.queryByRole('form', { name: 'Save role' }));
+    assert.ok(!screen.queryByRole('form', { name: 'Save Role' }));
   });
 
   it('opens the role with its name, users and permissions', async () => {
@@ -120,7 +120,7 @@ describe('RolePage', () => {
   it('saves the edited name and permissions with the version it read, then goes back', async () => {
     const { client, updated } = fakeClient();
     const toasts = show(client, 'r1');
-    await screen.findByRole('form', { name: 'Save role' });
+    await screen.findByRole('form', { name: 'Save Role' });
     const user = userEvent.setup();
     await user.clear(nameInput());
     await user.type(nameInput(), '  Senior Biller ');
@@ -168,7 +168,7 @@ describe('RolePage', () => {
     });
     show(client, 'r1');
     const user = userEvent.setup();
-    await screen.findByRole('form', { name: 'Save role' });
+    await screen.findByRole('form', { name: 'Save Role' });
     await user.click(screen.getByRole('button', { name: 'Save Role' }));
     const save = screen.getByRole('button', { name: 'Save Role' });
     assert.equal(save.getAttribute('aria-busy'), 'true');
@@ -186,7 +186,7 @@ describe('RolePage', () => {
       }
     });
     const toasts = show(client, 'r1');
-    await screen.findByRole('form', { name: 'Save role' });
+    await screen.findByRole('form', { name: 'Save Role' });
     await userEvent.setup().click(screen.getByRole('button', { name: 'Save Role' }));
     assert.equal(
       (await screen.findByRole('alert')).textContent,
@@ -199,7 +199,7 @@ describe('RolePage', () => {
   it('shows a role read only to users who may not change roles', async () => {
     const { client } = fakeClient();
     show(client, 'r1', ['roles:read']);
-    await screen.findByRole('form', { name: 'Save role' });
+    await screen.findByRole('form', { name: 'Save Role' });
     assert.equal(nameInput().readOnly, true);
     assert.equal(box('View Users').disabled, true);
     assert.ok(!screen.queryByRole('button', { name: 'Save Role' }));
@@ -208,7 +208,7 @@ describe('RolePage', () => {
   it('shows a role holding permissions the user lacks read only', async () => {
     const { client } = fakeClient({ role: async () => ({ ...role, isGrantable: false }) });
     show(client, 'r1');
-    await screen.findByRole('form', { name: 'Save role' });
+    await screen.findByRole('form', { name: 'Save Role' });
     assert.equal(nameInput().readOnly, true);
     assert.ok(!screen.queryByRole('button', { name: 'Save Role' }));
   });
@@ -216,7 +216,7 @@ describe('RolePage', () => {
   it('shows a new role read only to users who may not create roles', async () => {
     const { client } = fakeClient();
     show(client, null, ['roles:update']);
-    await screen.findByRole('form', { name: 'Save role' });
+    await screen.findByRole('form', { name: 'Save Role' });
     assert.equal(nameInput().readOnly, true);
     assert.ok(!screen.queryByRole('button', { name: 'Save Role' }));
   });

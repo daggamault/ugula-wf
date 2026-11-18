@@ -42,7 +42,7 @@ export const payerDeleteNote = (name: string) =>
 
 export const LearnedNames = ({ payer, q = '' }: { payer: Payer; q?: string }) =>
   payer.aliases.length ? (
-    <ul aria-label={`Learned names for ${payer.name}`} className="flex flex-wrap gap-1">
+    <ul aria-label={`Learned Names for ${payer.name}`} className="flex flex-wrap gap-1">
       {payer.aliases.map((a) => (
         <li key={a.id}>
           <Badge>

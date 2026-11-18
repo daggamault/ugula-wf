@@ -111,7 +111,7 @@ export const RunView = ({ detail, nodes, graphs, steps, stack, onCancel }: RunVi
       <WorkspaceHeader
         backTo={back.to}
         backLabel={back.label}
-        breadcrumbs={<Breadcrumbs label="Run path" crumbs={crumbs} />}
+        breadcrumbs={<Breadcrumbs label="Run Path" crumbs={crumbs} />}
         title={
           <>
             {run.name} <span className="text-surface-fg-muted font-normal">v{run.version}</span>
@@ -183,10 +183,10 @@ export const RunView = ({ detail, nodes, graphs, steps, stack, onCancel }: RunVi
                 description="Select a node to see what went in and out of it, or double-click one to open what it runs."
               />
               <Section title="Inputs">
-                <JsonView label="Run inputs" value={run.inputs} />
+                <JsonView label="Run Inputs" value={run.inputs} />
               </Section>
               <Section title="Result">
-                <JsonView label="Run result" value={run.result ?? undefined} />
+                <JsonView label="Run Result" value={run.result ?? undefined} />
               </Section>
               {children.length ? (
                 <Section

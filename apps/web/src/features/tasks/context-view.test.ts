@@ -11,13 +11,13 @@ const CLAIM = '01a169fa-2534-79ed-97b7-d7789e899bd6';
 const show = (value: Json | undefined, hideNotices?: boolean) =>
   render(
     createElement(ContextView, {
-      label: 'Task context',
+      label: 'Task Context',
       value,
       ...(hideNotices === undefined ? {} : { hideNotices })
     })
   );
 
-const context = () => screen.getByRole('figure', { name: 'Task context' });
+const context = () => screen.getByRole('figure', { name: 'Task Context' });
 
 const detailsIn = (list: Element | null | undefined) =>
   Object.fromEntries(
@@ -167,7 +167,7 @@ describe('ContextView changes', () => {
     });
     const section = sectionOf('Changes (3)');
     assert.deepEqual(
-      within(within(section).getByRole('table', { name: 'Changes from the earlier report' }))
+      within(within(section).getByRole('table', { name: 'Changes from the Earlier Report' }))
         .getAllByRole('row')
         .slice(1)
         .map((row) =>

@@ -34,7 +34,7 @@ export const payerSavedNotice = (name: string, linkedClaims: number) =>
     : `${name} saved`;
 
 const CORRECTION_OPTIONS = [
-  { value: '', label: 'By kind of payer (Medicare reopens, others replace)' },
+  { value: '', label: 'By Kind of Payer (Medicare Reopens, Others Replace)' },
   ...Object.entries(CORRECTION_METHODS).map(([value, label]) => ({ value, label }))
 ];
 
@@ -88,7 +88,7 @@ export const PayerForm = ({
     if (failure) setError(failure);
   };
   return (
-    <form onSubmit={submit} aria-label="Save payer">
+    <form onSubmit={submit} aria-label="Save Payer">
       <SectionPanel
         title="Payer"
         description="The payer ID and claim filing code come from your clearinghouse's payer list."
@@ -201,7 +201,7 @@ export const LearnedNamesPanel = ({
   >
     {payer.aliases.length ? (
       <Table
-        label={`Learned names for ${payer.name}`}
+        label={`Learned Names for ${payer.name}`}
         head={['Name on PCRs', { label: 'Actions', isLabelHidden: true, isCompact: true }]}
       >
         {payer.aliases.map((a) => (

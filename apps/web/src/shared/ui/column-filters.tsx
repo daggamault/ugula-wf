@@ -61,7 +61,7 @@ const FilterPanel = ({
             label={`Find ${filter.label}`}
             isLabelHidden
             type="search"
-            placeholder={`Find ${filter.label.toLowerCase()}`}
+            placeholder={`Find ${filter.label}`}
             value={find}
             onChange={(e) => setFind(e.target.value)}
           />

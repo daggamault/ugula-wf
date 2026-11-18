@@ -48,7 +48,7 @@ export const RunsTable = ({
   search?: SearchView;
 }) => (
   <Table
-    label="Workflow runs"
+    label="Workflow Runs"
     {...(search ? { sorting: search } : {})}
     head={[
       { label: 'Workflow', sort: 'workflow' },

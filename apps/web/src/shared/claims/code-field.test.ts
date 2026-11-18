@@ -199,7 +199,7 @@ describe('CodeField choosing several codes', () => {
     await waitFor(() =>
       assert.deepEqual(ordered(), ['Chest pain, unspecified R07.9', 'Essential hypertension I10'])
     );
-    assert.equal(trigger().textContent, 'Add a code');
+    assert.equal(trigger().textContent, 'Add a Code');
   });
 
   it('adds a code found by searching to the end of the order', async () => {

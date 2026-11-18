@@ -82,7 +82,7 @@ const EventTests = ({ nodeId, event, tests, editable, onChange }: TestsProps) =>
             <Select
               id={`${nodeId}-where-${i}-field`}
               label="Field"
-              placeholder="Choose a field"
+              placeholder="Choose a Field"
               options={fields
                 .filter((f) => f.name === test.field || !tests.some((t) => t.field === f.name))
                 .map((f) => ({ value: f.name, label: pinLabel(f) }))}
@@ -136,7 +136,7 @@ export const TriggerEditor = ({ nodeId, config, editable, onConfig }: SettingsEd
           <Select
             id={`${nodeId}-event`}
             label="Event"
-            placeholder="Choose an event"
+            placeholder="Choose an Event"
             hint={event?.description}
             options={eventOptions(events, trigger.event)}
             value={trigger.event}

@@ -40,7 +40,7 @@ export const changeValueText = (field: FieldSpec, value: Json): string => {
 };
 
 export const ChangeList = ({ changes }: { changes: readonly FieldChange[] }) => (
-  <section aria-label="Your changes" className="flex flex-col gap-2">
+  <section aria-label="Your Changes" className="flex flex-col gap-2">
     <h3 className="text-sm font-medium">
       {changes.length ? (
         <>

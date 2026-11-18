@@ -38,7 +38,7 @@ const show = (client: UsersClient) => {
   return userEvent.setup();
 };
 
-const form = () => screen.findByRole('form', { name: 'Invite user' });
+const form = () => screen.findByRole('form', { name: 'Invite User' });
 
 const textbox = (name: string) => screen.getByRole('textbox', { name }) as HTMLInputElement;
 
@@ -89,7 +89,7 @@ describe('InvitePage', () => {
   it('waits for the roles it can grant', () => {
     show({ roles: () => new Promise(() => undefined) } as unknown as UsersClient);
     assert.ok(screen.getByLabelText('Loading'));
-    assert.ok(!screen.queryByRole('form', { name: 'Invite user' }));
+    assert.ok(!screen.queryByRole('form', { name: 'Invite User' }));
   });
 
   it('says why the roles could not be loaded', async () => {
@@ -107,7 +107,7 @@ describe('InvitePage', () => {
     const { client } = fakeClient();
     show(client);
     await form();
-    assert.deepEqual(roleOptions(), ['Choose a role', 'Biller', 'Auditor']);
+    assert.deepEqual(roleOptions(), ['Choose a Role', 'Biller', 'Auditor']);
     assert.equal(screen.getByRole('link', { name: 'Cancel' }).getAttribute('href'), '/users?q=ann');
   });
 
@@ -126,7 +126,7 @@ describe('InvitePage', () => {
       (screen.getByRole('textbox', { name: 'Link' }) as HTMLInputElement).value,
       'http://app.test/invitation?token=t1'
     );
-    assert.ok(!screen.queryByRole('form', { name: 'Invite user' }));
+    assert.ok(!screen.queryByRole('form', { name: 'Invite User' }));
   });
 
   it('says what is missing instead of inviting', async () => {

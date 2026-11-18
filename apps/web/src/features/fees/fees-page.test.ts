@@ -52,7 +52,7 @@ const show = (client: FeesClient) => {
   return toasts;
 };
 
-const table = () => screen.findByRole('table', { name: 'Fee schedule' });
+const table = () => screen.findByRole('table', { name: 'Fee Schedule' });
 
 const cellsOf = (row: HTMLElement) =>
   within(row)

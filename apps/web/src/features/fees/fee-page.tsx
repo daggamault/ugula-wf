@@ -113,7 +113,7 @@ export const FeeForm = ({
     if (failure) setError(failure);
   };
   return (
-    <form onSubmit={submit} aria-label="Save fee">
+    <form onSubmit={submit} aria-label="Save Fee">
       <SectionPanel
         title="Fee"
         description={fee ? 'To price another code or payer, add a fee.' : undefined}

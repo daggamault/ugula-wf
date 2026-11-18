@@ -188,7 +188,7 @@ const show = (client: ClaimsClient, at = '/claims') => {
   return userEvent.setup();
 };
 
-const searchClaims = () => screen.getByLabelText('Search claims');
+const searchClaims = () => screen.getByLabelText('Search Claims');
 
 describe('ClaimsPage', () => {
   it('asks for a search first and loads no claims until there is one', () => {

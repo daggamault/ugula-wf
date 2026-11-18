@@ -61,7 +61,7 @@ export const ReportsTable = ({
   sorting?: TableSorting;
 }) => (
   <Table
-    label="PCRs in this file"
+    label="PCRs in This File"
     {...(sorting ? { sorting } : {})}
     head={[
       { label: 'Encounter', sort: 'position' },

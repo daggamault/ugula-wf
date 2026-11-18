@@ -69,7 +69,7 @@ const showTable = (query = '') =>
   render(createElement(WorkflowsTable, { graphs, search: search(query) }));
 
 const rowsOf = () =>
-  within(screen.getByRole('table', { name: 'Workflows and subworkflows' }))
+  within(screen.getByRole('table', { name: 'Workflows and Subworkflows' }))
     .getAllByRole('row')
     .slice(1);
 
@@ -185,7 +185,7 @@ describe('WorkflowsPage', () => {
   it('lists every graph and asks for the chosen kinds and scopes', async () => {
     const { client, queries } = fakeClient();
     showPage(client, 'kind=node&scope=agency,system');
-    await screen.findByRole('table', { name: 'Workflows and subworkflows' });
+    await screen.findByRole('table', { name: 'Workflows and Subworkflows' });
     assert.equal(rowsOf().length, 4);
     assert.deepEqual(queries, [
       'page=1&pageSize=25&sort=name&dir=asc&kind=node&scope=agency%2Csystem'

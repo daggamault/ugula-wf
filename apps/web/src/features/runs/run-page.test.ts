@@ -107,7 +107,7 @@ describe('RunView', () => {
     assert.ok(html.includes('aria-label="Back to Process PCR"'));
     assert.ok(html.includes('href="/workflows/g1?version=2"'));
     assert.ok(html.includes('Cancel Run'));
-    assert.ok(html.includes('aria-label="Run path"'));
+    assert.ok(html.includes('aria-label="Run Path"'));
     assert.ok(html.includes('Ingest NEMSIS File') && html.includes('Item</span>'));
     assert.ok(html.includes('&quot;id&quot;: &quot;a&quot;'));
   });

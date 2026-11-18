@@ -70,7 +70,7 @@ const choose = async (user: ReturnType<typeof userEvent.setup>, list: string, op
     within(screen.getByRole('listbox', { name: list })).getByRole('option', { name: option })
   );
 
-const form = () => screen.findByRole('form', { name: 'Save payer' });
+const form = () => screen.findByRole('form', { name: 'Save Payer' });
 
 const here = () => `${window.location.pathname}${window.location.search}`;
 
@@ -124,7 +124,7 @@ describe('PayerPage', () => {
   it('shows a spinner until the payer loads', () => {
     show({ payer: () => new Promise<never>(() => undefined) } as unknown as PayersClient, 'p1');
     assert.ok(screen.getByLabelText('Loading'));
-    assert.ok(!screen.queryByRole('form', { name: 'Save payer' }));
+    assert.ok(!screen.queryByRole('form', { name: 'Save Payer' }));
   });
 
   it('opens a payer with its settings, a read-only name and a way back', async () => {
@@ -140,7 +140,7 @@ describe('PayerPage', () => {
     assert.equal(trigger('Claim Filing').textContent, 'MB · Medicare Part B');
     assert.equal(
       trigger('Corrections').textContent,
-      'By kind of payer (Medicare reopens, others replace)'
+      'By Kind of Payer (Medicare Reopens, Others Replace)'
     );
     assert.equal(trigger('Plan Type').textContent, 'Unknown');
     assert.equal(trigger('Accepts Insurance Searches').textContent, 'No');
@@ -207,7 +207,7 @@ describe('PayerPage', () => {
     await form();
     const user = userEvent.setup();
     await user.clear(days('Filing Limit (Days)'));
-    await choose(user, 'Corrections', 'By kind of payer (Medicare reopens, others replace)');
+    await choose(user, 'Corrections', 'By Kind of Payer (Medicare Reopens, Others Replace)');
     await choose(user, 'Plan Type', 'Unknown');
     await user.click(screen.getByRole('button', { name: 'Save Payer' }));
     assert.deepEqual(saved, [
@@ -281,7 +281,7 @@ describe('PayerPage', () => {
       'p1'
     );
     assert.ok(await screen.findByText('Payer not found'));
-    assert.ok(!screen.queryByRole('form', { name: 'Save payer' }));
+    assert.ok(!screen.queryByRole('form', { name: 'Save Payer' }));
   });
 
   it('deletes the payer once confirmed and goes back', async () => {
@@ -332,7 +332,7 @@ describe('PayerPage', () => {
   it('lists the learned names in a table', async () => {
     const { client } = fakeClient();
     show(client, 'p1');
-    const table = await screen.findByRole('table', { name: 'Learned names for Medicare' });
+    const table = await screen.findByRole('table', { name: 'Learned Names for Medicare' });
     assert.deepEqual(
       within(table)
         .getAllByRole('row')

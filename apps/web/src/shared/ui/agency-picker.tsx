@@ -64,7 +64,7 @@ export const AgencyPicker = ({ agencies, current }: AgencyPickerProps) => {
             label="Find an Agency"
             isLabelHidden
             type="search"
-            placeholder="Find an agency"
+            placeholder="Find an Agency"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />

@@ -342,7 +342,7 @@ describe('NodeInspector', () => {
         ['Input ABase: 2Reset to Base']
       );
       assert.equal(
-        pin(region('Inputs'), 'A').getAllByRole('img', { name: 'Changed from the base' }).length,
+        pin(region('Inputs'), 'A').getAllByRole('img', { name: 'Changed from the Base' }).length,
         1
       );
     });

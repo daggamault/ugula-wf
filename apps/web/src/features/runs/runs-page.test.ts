@@ -82,7 +82,7 @@ const choicesOf = async (filter: string) => {
     .map((c) => c.closest('label')?.textContent);
 };
 
-const table = () => screen.findByRole('table', { name: 'Workflow runs' });
+const table = () => screen.findByRole('table', { name: 'Workflow Runs' });
 
 const cellsOf = (row: HTMLElement) =>
   within(row)

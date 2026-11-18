@@ -90,7 +90,7 @@ describe('ChangeList', () => {
         changes: changesOf(FIELDS, { memberId: '1EG4' }, { memberId: '1EG5', level: 'ALS1' })
       })
     );
-    const list = screen.getByRole('region', { name: 'Your changes' });
+    const list = screen.getByRole('region', { name: 'Your Changes' });
     assert.equal(within(list).getByRole('heading').textContent, 'Your Changes (2)');
     assert.deepEqual(
       within(list)
@@ -114,7 +114,7 @@ describe('ChangeList', () => {
 
   it('explains the list before anything changes', () => {
     render(createElement(ChangeList, { changes: [] }));
-    const list = screen.getByRole('region', { name: 'Your changes' });
+    const list = screen.getByRole('region', { name: 'Your Changes' });
     assert.equal(within(list).getByRole('heading').textContent, 'No Changes Yet');
     assert.ok(
       within(list).getByText(

@@ -117,7 +117,7 @@ export const NodePicker = ({ entries, at, hint, onAdd, onClose }: NodePickerProp
         aria-controls={listId}
         aria-activedescendant={flat.length ? optionId(active) : undefined}
         aria-autocomplete="list"
-        placeholder="For example: round, wait, payer"
+        placeholder="For Example: Round, Wait, Payer"
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);

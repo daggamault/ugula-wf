@@ -116,7 +116,7 @@ describe('ImportPage', () => {
       screen.getByRole('link', { name: /Open Run/ }).getAttribute('href'),
       '/runs/run-1'
     );
-    const table = await screen.findByRole('table', { name: 'PCRs in this file' });
+    const table = await screen.findByRole('table', { name: 'PCRs in This File' });
     const rows = within(table).getAllByRole('row').slice(1);
     assert.deepEqual(
       rows.map((r) => within(r).queryByText(/^(New|Revised)$/)?.textContent),
@@ -129,7 +129,7 @@ describe('ImportPage', () => {
   it('sorts the PCRs through the address bar', async () => {
     const { client, queries } = fakeClient();
     show(client);
-    const table = await screen.findByRole('table', { name: 'PCRs in this file' });
+    const table = await screen.findByRole('table', { name: 'PCRs in This File' });
     await userEvent.setup().click(within(table).getByRole('link', { name: /Charges/ }));
     assert.match(window.location.search, /pcrSort=total/);
     await waitFor(() => assert.match(queries.at(-1) ?? '', /&sort=total&dir=desc$/));

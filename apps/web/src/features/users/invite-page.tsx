@@ -62,7 +62,7 @@ export const InvitePage = ({ client, back }: { client: UsersClient; back: string
           link={link}
         />
       ) : (
-        <form onSubmit={submit} aria-label="Invite user" className="flex flex-col gap-6">
+        <form onSubmit={submit} aria-label="Invite User" className="flex flex-col gap-6">
           <SectionPanel title="Person">
             <fieldset disabled={busy}>
               <FieldGrid>
@@ -75,7 +75,7 @@ export const InvitePage = ({ client, back }: { client: UsersClient; back: string
                   span={2}
                   hint="You can only give roles whose permissions you hold."
                   options={[
-                    { value: '', label: 'Choose a role' },
+                    { value: '', label: 'Choose a Role' },
                     ...grantable.map((r) => ({ value: r.id, label: r.name }))
                   ]}
                   {...choice('roleId')}

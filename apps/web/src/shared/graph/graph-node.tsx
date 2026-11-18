@@ -145,7 +145,7 @@ const AddField = ({ node, hidden }: { node: string; hidden: Pin[] }) => {
         type="search"
         aria-label="Find Field"
         aria-controls={listId}
-        placeholder="Find a field"
+        placeholder="Find a Field"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={(e) => {
@@ -199,7 +199,7 @@ const AddField = ({ node, hidden }: { node: string; hidden: Pin[] }) => {
 
 const CHANGE_TITLES = {
   added: 'Added in this copy',
-  changed: 'Changed from the base',
+  changed: 'Changed from the Base',
   overridden: 'Your agency overrides this'
 } as const;
 

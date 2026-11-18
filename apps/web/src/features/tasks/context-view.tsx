@@ -118,7 +118,7 @@ const Changes = ({ changes }: { changes: readonly Change[] }) => (
       Changes <span className="font-normal">({changes.length})</span>
     </h3>
     {changes.length ? (
-      <Table label="Changes from the earlier report" head={['Field', 'Was', 'Now']}>
+      <Table label="Changes from the Earlier Report" head={['Field', 'Was', 'Now']}>
         {changes.map((c) => (
           <TableRow key={c.field}>
             <TableCell>{c.field}</TableCell>

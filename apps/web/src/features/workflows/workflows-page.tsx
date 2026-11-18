@@ -57,7 +57,7 @@ export const WorkflowsTable = ({
   const events = useContext(WorkflowEventsContext);
   return (
     <Table
-      label="Workflows and subworkflows"
+      label="Workflows and Subworkflows"
       sorting={search}
       head={[
         { label: 'Name', sort: 'name' },

@@ -129,7 +129,7 @@ export const CodeField = ({
       <Select
         {...common}
         isMultiple
-        placeholder="Add a code"
+        placeholder="Add a Code"
         summary=""
         options={codeOptions(codeSet, found, labels)}
         value={chosen}
