@@ -4,10 +4,10 @@ import { invokeNode } from '../testing.ts';
 import type { Values } from '../types.ts';
 import { logicNodes } from './logic.ts';
 
-const run = async (type: string, inputs: Values) => {
+const run = async (type: string, inputs: Values, config?: Values) => {
   const def = logicNodes.find((d) => d.type === type);
   if (!def) throw new Error(type);
-  return (await invokeNode(def, { inputs })).outputs.result;
+  return (await invokeNode(def, { inputs, ...(config ? { config } : {}) })).outputs.result;
 };
 
 describe('logic nodes', () => {
@@ -64,11 +64,25 @@ describe('logic nodes', () => {
     await assert.rejects(() => run('std.logic.greater', { a: true, b: false }), /two numbers/);
   });
 
+  it('combines as many conditions as the gate is set to take', async () => {
+    const three = { count: 3 };
+    const all = (condition3: boolean) => ({ condition1: true, condition2: true, condition3 });
+    const none = (condition3: boolean) => ({ condition1: false, condition2: false, condition3 });
+    assert.equal(await run('std.logic.and', all(false), three), false);
+    assert.equal(await run('std.logic.and', all(true), three), true);
+    assert.equal(await run('std.logic.or', none(true), three), true);
+    assert.equal(await run('std.logic.or', none(false), three), false);
+    await assert.rejects(
+      () => run('std.logic.and', { condition1: true, condition2: true }, three),
+      /Condition 3/
+    );
+  });
+
   it('combines booleans and picks values', async () => {
-    assert.equal(await run('std.logic.and', { a: true, b: false }), false);
-    assert.equal(await run('std.logic.and', { a: true, b: true }), true);
-    assert.equal(await run('std.logic.or', { a: true, b: false }), true);
-    assert.equal(await run('std.logic.or', { a: false, b: false }), false);
+    assert.equal(await run('std.logic.and', { condition1: true, condition2: false }), false);
+    assert.equal(await run('std.logic.and', { condition1: true, condition2: true }), true);
+    assert.equal(await run('std.logic.or', { condition1: true, condition2: false }), true);
+    assert.equal(await run('std.logic.or', { condition1: false, condition2: false }), false);
     assert.equal(await run('std.logic.xor', { a: true, b: true }), false);
     assert.equal(await run('std.logic.xor', { a: false, b: true }), true);
     assert.equal(await run('std.logic.not', { value: false }), true);

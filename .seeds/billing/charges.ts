@@ -7,6 +7,7 @@ import {
   type Builder,
   breakRecord,
   CODE,
+  type Criterion,
   code,
   codes,
   codeTable,
@@ -21,20 +22,24 @@ import {
   isCode,
   isIn,
   isMissing,
+  isText,
   joinLists,
   listOf,
   lookup,
+  makeList,
   node,
   not,
+  orZero,
   type Port,
-  presentOf,
+  reasonsOf,
   rule,
   SCENE,
   SERVICE_TYPES,
   select,
   stage,
   startsWith,
-  T
+  T,
+  template
 } from './shared.ts';
 
 const LINE_FIELDS: { name: string; type: ValueType }[] = [
@@ -238,7 +243,7 @@ const originAndDestination = (): GraphDef => {
     'return.destinationCode'
   );
   g.wire(
-    presentOf(g, 'reasons', 'Origin Reason', 'string', [
+    makeList(g, 'reasons', 'Origin Reason', 'string', [
       whenBoth('reasonApplied', 'Reason When Both Known', 'string', 'origin.reason')
     ]),
     'return.reasons'
@@ -246,12 +251,33 @@ const originAndDestination = (): GraphDef => {
   return g.def;
 };
 
+const GROUND = 'Ground';
+
+const VEHICLES = codeTable(
+  'billing.vehicles',
+  'Vehicles',
+  'The kind of vehicle billed for each NEMSIS transport method (eDisposition.16): fixed wing, rotor wing, else ground.',
+  'string',
+  { '4216001': 'Fixed Wing', '4216003': 'Rotor Wing' },
+  GROUND
+);
+
+const MILEAGE_CODES = codeTable(
+  'billing.mileage-codes',
+  'Mileage Codes',
+  'The HCPCS mileage code for each kind of vehicle.',
+  CODE.hcpcs,
+  { [GROUND]: 'A0425', 'Fixed Wing': 'A0435', 'Rotor Wing': 'A0436' }
+);
+
 const BASE_RATES = codeTable(
   'billing.base-rate-codes',
   'Base Rate Codes',
-  'The HCPCS base rate code for each level of service, emergency or not.',
+  'The HCPCS base rate code for each ground level of service, emergency or not, and for each kind of aircraft.',
   CODE.hcpcs,
   {
+    'Fixed Wing': 'A0430',
+    'Rotor Wing': 'A0431',
     'BLS Emergency': 'A0429',
     'BLS Non-Emergency': 'A0428',
     'ALS1 Emergency': 'A0427',
@@ -263,38 +289,116 @@ const BASE_RATES = codeTable(
   }
 );
 
+const CLASSIFICATION_IN = d(
+  'classification',
+  CODE.classification,
+  'Classification',
+  'What kind of trip it was.'
+);
+
 const SERVICE_IN: PinSpec[] = [
-  d('classification', CODE.classification, 'Classification', 'What kind of trip it was.'),
+  CLASSIFICATION_IN,
   d('level', CODE.level, 'Level of Service', 'BLS, ALS1, ALS2 or SCT.'),
   d('emergency', 'boolean', 'Emergency', 'Whether the trip is billed as an emergency.')
 ];
 
+const VEHICLE_IN = d(
+  'vehicle',
+  'string',
+  'Vehicle',
+  'The kind of vehicle billed: Ground, Fixed Wing or Rotor Wing (Vehicles table).'
+);
+
+const TRANSPORT_METHOD_IN = d(
+  'transportMethod',
+  code('transportMethod'),
+  'Transport Method',
+  'How the patient was transported, such as ground or rotor craft, NEMSIS eDisposition.16.',
+  true
+);
+
+const LOADED_MILES_IN = d(
+  'loadedMiles',
+  'number',
+  'Loaded Miles',
+  'Miles with the patient on board.',
+  true
+);
+
+const ORIGIN_IN = d('originCode', CODE.place, 'Origin', 'The origin letter.', true);
+
+const DESTINATION_IN = d(
+  'destinationCode',
+  CODE.place,
+  'Destination',
+  'The destination letter.',
+  true
+);
+
+const PATIENTS_IN = d(
+  'patientsTransported',
+  'integer',
+  'Patients Transported',
+  'How many patients this unit transported together, NEMSIS eDisposition.11.',
+  true
+);
+
+const TRANSPORT_REASON_IN = d(
+  'transportReason',
+  code('transportReason'),
+  'Transport Reason',
+  'Why the patient went to this destination, such as A for the nearest facility, NEMSIS ePayment.44.',
+  true
+);
+
+const CLOSEST_MILES_IN = d(
+  'closestFacilityMiles',
+  'number',
+  'Miles to the Closest Facility',
+  'Miles to the closest appropriate facility, NEMSIS ePayment.48.',
+  true
+);
+
 const CHARGE_IN: PinSpec[] = [
   ...SERVICE_IN,
-  d('loadedMiles', 'number', 'Loaded Miles', 'Miles with the patient on board.', true),
-  d('originCode', CODE.place, 'Origin', 'The origin letter.', true),
-  d('destinationCode', CODE.place, 'Destination', 'The destination letter.', true)
+  TRANSPORT_METHOD_IN,
+  LOADED_MILES_IN,
+  ORIGIN_IN,
+  DESTINATION_IN,
+  PATIENTS_IN,
+  TRANSPORT_REASON_IN,
+  CLOSEST_MILES_IN
 ];
 
 const PAYER_IN = d('payerId', ID.payer, 'Payer', 'The payer billed first, for its own fees.', true);
 
 const reasonsPin = (what: string) => d('reasons', listOf('string'), 'Reasons', what);
 
-const treatedWithoutTransport = (g: Builder) =>
-  isCode(
-    g,
-    'noTransport',
-    'Treated Without Transport',
-    'tripClassification',
-    'entry.classification',
-    'treatNoTransport'
-  );
+const TRANSPORTS = ['emergency', 'scheduled'];
+
+const NON_COVERED_REASONS = ['B', 'C'];
+
+const isClassification = (g: Builder, id: string, label: string, value: string) =>
+  isCode(g, id, label, 'tripClassification', 'entry.classification', value);
 
 const baseRateCode = (): GraphDef => {
-  const g = rule(SERVICE_IN, [
-    d('code', CODE.hcpcs, 'Base Rate Code', 'The HCPCS code of the trip itself.'),
-    reasonsPin('Which code was chosen and why.')
-  ]);
+  const g = rule(
+    [...SERVICE_IN, VEHICLE_IN],
+    [
+      d('code', CODE.hcpcs, 'Base Rate Code', 'The HCPCS code of the trip itself.'),
+      reasonsPin('Which code was chosen and why.')
+    ]
+  );
+  const dead = isClassification(g, 'dead', 'Pronounced Dead Before Loading', 'pronouncedDead');
+  const level = select(
+    g,
+    'level',
+    'BLS When Pronounced Dead, Else the Level',
+    CODE.level,
+    dead,
+    fixed('BLS'),
+    'entry.level'
+  );
   const kind = select(
     g,
     'kind',
@@ -304,18 +408,23 @@ const baseRateCode = (): GraphDef => {
     fixed('Emergency'),
     fixed('Non-Emergency')
   );
-  node(
+  const groundKey = template(g, 'groundKey', 'Level and Kind', '{level} {kind}', { level, kind });
+  const key = select(
     g,
     'key',
-    'std.text.template',
-    'Level and Kind',
-    { level: 'entry.level', kind },
-    {
-      template: '{level} {kind}'
-    }
+    'Level and Kind by Ground, Else the Aircraft',
+    'string',
+    isText(g, 'ground', 'By Ground', 'entry.vehicle', GROUND),
+    groundKey,
+    'entry.vehicle'
   );
-  lookup(g, 'rate', 'Base Rate Codes', BASE_RATES, 'key.text');
-  const noTransport = treatedWithoutTransport(g);
+  lookup(g, 'rate', 'Base Rate Codes', BASE_RATES, key);
+  const noTransport = isClassification(
+    g,
+    'noTransport',
+    'Treated Without Transport',
+    'treatNoTransport'
+  );
   const rateCode = select(
     g,
     'code',
@@ -325,16 +434,6 @@ const baseRateCode = (): GraphDef => {
     fixed('A0998'),
     'rate.value'
   );
-  node(
-    g,
-    'rateReason',
-    'std.text.template',
-    'Base Rate Reason',
-    { code: rateCode, key: 'key.text' },
-    {
-      template: 'Base rate {code}: {key}'
-    }
-  );
   const reason = select(
     g,
     'reason',
@@ -342,11 +441,177 @@ const baseRateCode = (): GraphDef => {
     'string',
     noTransport,
     fixed('A0998: treated without transport'),
-    'rateReason.text'
+    template(g, 'rateReason', 'Base Rate Reason', 'Base rate {code}: {key}', {
+      code: rateCode,
+      key
+    })
   );
   g.ret('return');
   g.wire(rateCode, 'return.code');
-  g.wire(presentOf(g, 'reasons', 'Base Rate Reason Given', 'string', [reason]), 'return.reasons');
+  g.wire(makeList(g, 'reasons', 'Base Rate Reason Given', 'string', [reason]), 'return.reasons');
+  return g.def;
+};
+
+const lineModifiers = (): GraphDef => {
+  const g = rule(
+    [CLASSIFICATION_IN, ORIGIN_IN, DESTINATION_IN, PATIENTS_IN],
+    [
+      d(
+        'modifiers',
+        listOf(CODE.modifier),
+        'Modifiers',
+        'The origin and destination modifier, then QL and GM when they apply.'
+      ),
+      reasonsPin('Why QL or GM is added.')
+    ]
+  );
+  const letters = template(g, 'letters', 'Origin Then Destination', '{origin}{destination}', {
+    origin: 'entry.originCode',
+    destination: 'entry.destinationCode'
+  });
+  node(
+    g,
+    'places',
+    'std.convert.to-code',
+    'As a Modifier',
+    { text: letters },
+    { kind: 'modifier' }
+  );
+  const criteria: Criterion[] = [
+    {
+      id: 'dead',
+      label: 'Pronounced Dead Before Loading',
+      reason: 'QL: pronounced dead before loading',
+      holds: isClassification(g, 'dead', 'Pronounced Dead Before Loading', 'pronouncedDead')
+    },
+    {
+      id: 'several',
+      label: 'More Than One Patient Transported',
+      reason: 'GM: more than one patient transported',
+      holds: greaterThan(
+        g,
+        'several',
+        'More Than One Patient Transported',
+        'number',
+        orZero(g, 'patients', 'Patients or Zero', 'entry.patientsTransported'),
+        1
+      )
+    }
+  ];
+  const modifier = (id: string, label: string, holds: Port, value: string) =>
+    select(g, id, label, CODE.modifier, holds, fixed(value));
+  g.ret('return');
+  g.wire(
+    makeList(g, 'modifiers', 'Modifiers', CODE.modifier, [
+      'places.code',
+      modifier('ql', 'QL When Pronounced Dead', 'dead.result', 'QL'),
+      modifier('gm', 'GM When More Than One Patient', 'several.result', 'GM')
+    ]),
+    'return.modifiers'
+  );
+  g.wire(reasonsOf(g, 'reasons', 'Modifier Reasons', criteria), 'return.reasons');
+  return g.def;
+};
+
+const coveredMiles = (): GraphDef => {
+  const g = rule(
+    [LOADED_MILES_IN, TRANSPORT_REASON_IN, CLOSEST_MILES_IN],
+    [
+      d(
+        'coveredMiles',
+        'number',
+        'Covered Miles',
+        'The loaded miles, or only the miles to the closest facility when the patient chose a farther one.',
+        true
+      ),
+      d(
+        'nonCoveredMiles',
+        'number',
+        'Non-Covered Miles',
+        'The miles beyond the closest facility when the patient chose a farther one.',
+        true
+      ),
+      reasonsPin('Why some miles are not covered.')
+    ]
+  );
+  const farther = isIn(
+    g,
+    'farther',
+    'Transported Farther by Choice',
+    'transportReason',
+    'entry.transportReason',
+    codes(
+      g,
+      'choiceReasons',
+      'Preferred Physician or Near Family',
+      'transportReason',
+      NON_COVERED_REASONS
+    )
+  );
+  node(
+    g,
+    'closest',
+    'std.math.round',
+    'Closest Facility Up to the Tenth',
+    { value: 'entry.closestFacilityMiles', digits: fixed(1) },
+    { direction: 'up' }
+  );
+  node(g, 'extra', 'std.math.subtract', 'Loaded Minus Closest', {
+    a: 'entry.loadedMiles',
+    b: 'closest.result'
+  });
+  node(g, 'extraTenths', 'std.math.round', 'To the Tenth', {
+    value: 'extra.result',
+    digits: fixed(1)
+  });
+  const hasExtra = allOf(g, 'hasExtra', 'Miles Beyond the Closest Facility', [
+    farther,
+    greaterThan(
+      g,
+      'positiveExtra',
+      'Some Miles Beyond',
+      'number',
+      orZero(g, 'extraOrZero', 'Extra Miles or Zero', 'extraTenths.result'),
+      0
+    )
+  ]);
+  const nonCovered = select(
+    g,
+    'nonCovered',
+    'Extra Miles When Farther by Choice',
+    'number',
+    hasExtra,
+    'extraTenths.result'
+  );
+  g.ret('return');
+  g.wire(
+    select(
+      g,
+      'covered',
+      'Closest Facility Miles When Farther by Choice, Else Loaded Miles',
+      'number',
+      hasExtra,
+      'closest.result',
+      'entry.loadedMiles'
+    ),
+    'return.coveredMiles'
+  );
+  g.wire(nonCovered, 'return.nonCoveredMiles');
+  const reason = select(
+    g,
+    'reason',
+    'Reason When Farther by Choice',
+    'string',
+    hasExtra,
+    template(
+      g,
+      'reasonText',
+      'Non-Covered Miles Reason',
+      'A0888: {miles} miles beyond the closest facility, which the patient chose to pass',
+      { miles: nonCovered }
+    )
+  );
+  g.wire(makeList(g, 'reasons', 'Non-Covered Miles Reason', 'string', [reason]), 'return.reasons');
   return g.def;
 };
 
@@ -356,36 +621,31 @@ const chargeLines = (): GraphDef => {
       'lines',
       listOf(UNPRICED),
       'Lines',
-      'The lines to charge, not yet priced: the base rate, then mileage.'
+      'The lines to charge, not yet priced: the base rate, then covered and non-covered mileage.'
     ),
     reasonsPin('Why each line is charged.')
   ]);
+  const entry = (pins: readonly PinSpec[]) =>
+    Object.fromEntries(pins.map((p) => [p.name, `entry.${p.name}` as const]));
+  lookup(g, 'vehicle', 'Vehicle', VEHICLES, 'entry.transportMethod');
+  node(g, 'base', 'billing.base-rate-code', 'Base Rate Code', {
+    ...entry(SERVICE_IN),
+    vehicle: 'vehicle.value'
+  });
   node(
     g,
-    'base',
-    'billing.base-rate-code',
-    'Base Rate Code',
-    Object.fromEntries(SERVICE_IN.map((p) => [p.name, `entry.${p.name}` as const]))
+    'modifiers',
+    'billing.line-modifiers',
+    'Line Modifiers',
+    entry([CLASSIFICATION_IN, ORIGIN_IN, DESTINATION_IN, PATIENTS_IN])
   );
   node(
     g,
-    'letters',
-    'std.text.template',
-    'Origin Then Destination',
-    { origin: 'entry.originCode', destination: 'entry.destinationCode' },
-    { template: '{origin}{destination}' }
+    'miles',
+    'billing.covered-miles',
+    'Covered Miles',
+    entry([LOADED_MILES_IN, TRANSPORT_REASON_IN, CLOSEST_MILES_IN])
   );
-  node(
-    g,
-    'modifier',
-    'std.convert.to-code',
-    'As a Modifier',
-    { text: 'letters.text' },
-    {
-      kind: 'modifier'
-    }
-  );
-  const modifiers = presentOf(g, 'modifiers', 'Modifiers', CODE.modifier, ['modifier.code']);
   const line = (id: string, label: string, lineCode: Port, units: Port | number) => {
     node(
       g,
@@ -394,58 +654,96 @@ const chargeLines = (): GraphDef => {
       label,
       {
         code: lineCode,
-        modifiers,
+        modifiers: 'modifiers.modifiers',
         units: typeof units === 'number' ? fixed(units) : units
       },
       { fields: LINE_FIELDS }
     );
     return `${id}.object` as const;
   };
-  node(g, 'mileageCode', 'std.value', 'Mileage Code', {}, { type: CODE.hcpcs, value: 'A0425' });
-  const billsMiles = allOf(g, 'billsMiles', 'Transported With Miles', [
-    not(g, 'transported', 'Transported', treatedWithoutTransport(g)),
-    greaterThan(g, 'hasMiles', 'Has Loaded Miles', 'number', 'entry.loadedMiles', 0)
-  ]);
-  const mileage = select(
+  const transported = isIn(
     g,
-    'mileage',
-    'Mileage When Transported',
-    UNPRICED,
-    billsMiles,
-    line('mileageLine', 'Mileage Line', 'mileageCode.value', 'entry.loadedMiles'),
-    fixed(null)
+    'transported',
+    'Transported',
+    'tripClassification',
+    'entry.classification',
+    codes(g, 'transports', 'Kinds of Transport', 'tripClassification', TRANSPORTS)
   );
+  const billsMiles = (id: string, label: string, miles: Port) =>
+    allOf(g, id, label, [
+      transported,
+      greaterThan(
+        g,
+        `${id}Some`,
+        `Some ${label}`,
+        'number',
+        orZero(g, `${id}OrZero`, `${label} or Zero`, miles),
+        0
+      )
+    ]);
+  lookup(g, 'mileageCode', 'Mileage Code', MILEAGE_CODES, 'vehicle.value');
+  const coveredBilled = billsMiles('coveredBilled', 'Covered Miles', 'miles.coveredMiles');
   node(
     g,
-    'mileageText',
-    'std.text.template',
-    'Mileage Reason',
-    { miles: 'entry.loadedMiles' },
+    'nonCoveredCode',
+    'std.value',
+    'Non-Covered Mileage Code',
+    {},
     {
-      template: 'Mileage A0425: {miles} loaded miles'
+      type: CODE.hcpcs,
+      value: 'A0888'
     }
+  );
+  const nonCoveredBilled = billsMiles(
+    'nonCoveredBilled',
+    'Non-Covered Miles',
+    'miles.nonCoveredMiles'
   );
   const mileageReason = select(
     g,
     'mileageReason',
     'Mileage Reason When Transported',
     'string',
-    billsMiles,
-    'mileageText.text',
-    fixed(null)
+    coveredBilled,
+    template(g, 'mileageText', 'Mileage Reason', 'Mileage {code}: {miles} miles', {
+      code: 'mileageCode.value',
+      miles: 'miles.coveredMiles'
+    })
   );
   g.ret('return');
   g.wire(
-    presentOf(g, 'lines', 'Lines to Charge', UNPRICED, [
+    makeList(g, 'lines', 'Lines to Charge', UNPRICED, [
       line('baseLine', 'Base Rate Line', 'base.code', 1),
-      mileage
+      select(
+        g,
+        'mileage',
+        'Mileage When Transported',
+        UNPRICED,
+        coveredBilled,
+        line('mileageLine', 'Mileage Line', 'mileageCode.value', 'miles.coveredMiles')
+      ),
+      select(
+        g,
+        'nonCovered',
+        'Non-Covered Mileage When Farther by Choice',
+        UNPRICED,
+        nonCoveredBilled,
+        line(
+          'nonCoveredLine',
+          'Non-Covered Mileage Line',
+          'nonCoveredCode.value',
+          'miles.nonCoveredMiles'
+        )
+      )
     ]),
     'return.lines'
   );
   g.wire(
     joinLists(g, 'reasons', 'Reasons for the Lines', 'string', [
       'base.reasons',
-      presentOf(g, 'mileageReasons', 'Mileage Reason Given', 'string', [mileageReason])
+      'modifiers.reasons',
+      makeList(g, 'mileageReasons', 'Mileage Reason Given', 'string', [mileageReason]),
+      'miles.reasons'
     ]),
     'return.reasons'
   );
@@ -478,16 +776,6 @@ const priceLine = (): GraphDef => {
     });
   lineOf('priced', 'Priced Line', true);
   lineOf('unpriced', 'Line Without a Fee', false);
-  node(
-    g,
-    'noFee',
-    'std.text.template',
-    'No Fee Reason',
-    { code: 'parts.code' },
-    {
-      template: 'No fee for {code}'
-    }
-  );
   g.ret('withFee', 'priced');
   g.ret('withoutFee', 'priced');
   g.wire('entry.exec', 'fee.exec');
@@ -495,7 +783,10 @@ const priceLine = (): GraphDef => {
   g.wire('priced.line', 'withFee.line');
   g.wire('fee.notFound', 'withoutFee.exec');
   g.wire('unpriced.line', 'withoutFee.line');
-  g.wire('noFee.text', 'withoutFee.reason');
+  g.wire(
+    template(g, 'noFee', 'No Fee Reason', 'No fee for {code}', { code: 'parts.code' }),
+    'withoutFee.reason'
+  );
   return g.def;
 };
 
@@ -584,13 +875,25 @@ export const chargeGraphs: SeedGraph[] = [
   asRule(
     'billing.base-rate-code',
     'Base Rate Code',
-    'The HCPCS code of the trip: A0998 when treated without transport, else the Base Rate Codes table by level of service and emergency.',
+    'The HCPCS code of the trip: A0998 when treated without transport, else the Base Rate Codes table by the aircraft, or for ground by level of service and emergency; BLS when the patient was pronounced dead before loading.',
     baseRateCode()
+  ),
+  asRule(
+    'billing.line-modifiers',
+    'Line Modifiers',
+    'The modifiers of every line: the origin and destination letters, then QL when the patient was pronounced dead before loading and GM when more than one patient was transported.',
+    lineModifiers()
+  ),
+  asRule(
+    'billing.covered-miles',
+    'Covered Miles',
+    'Splits the loaded miles when the patient chose a facility farther than the closest one (transport reason B or C): miles to the closest facility are covered, the rest are billed as non-covered A0888.',
+    coveredMiles()
   ),
   asRule(
     'billing.charge-lines',
     'Charge Lines',
-    'The lines to charge: the base rate, then A0425 for the loaded miles of a transport, each with the origin and destination modifier. Override it to add a charge of your own.',
+    'The lines to charge: the base rate, then the mileage code of the vehicle (Mileage Codes table) for the covered miles of a transport and A0888 for any non-covered miles, each with the line modifiers. Override it to add a charge of your own.',
     chargeLines()
   ),
   asStage(

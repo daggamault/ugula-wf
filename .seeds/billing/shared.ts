@@ -200,6 +200,27 @@ export const isCode = (
   return outputOf(id, 'result');
 };
 
+export const isText = (g: Builder, id: string, label: string, item: Port, value: string) => {
+  node(g, id, 'std.logic.equal', label, { a: item, b: fixed(value) }, { type: 'string' });
+  return outputOf(id, 'result');
+};
+
+export const orZero = (g: Builder, id: string, label: string, value: Port) => {
+  node(g, id, 'std.logic.coalesce', label, { value, fallback: fixed(0) }, { type: 'number' });
+  return outputOf(id, 'result');
+};
+
+export const template = (
+  g: Builder,
+  id: string,
+  label: string,
+  text: string,
+  values: Record<string, Port>
+) => {
+  node(g, id, 'std.text.template', label, values, { template: text });
+  return outputOf(id, 'text');
+};
+
 export const not = (g: Builder, id: string, label: string, value: Port) => {
   node(g, id, 'std.logic.not', label, { value });
   return outputOf(id, 'result');
@@ -240,13 +261,11 @@ export const startsWith = (g: Builder, id: string, label: string, text: Port, pa
 };
 
 const gates = (gate: 'and' | 'or') => (g: Builder, id: string, label: string, ports: Port[]) => {
-  const [first, ...rest] = ports;
-  if (!first) throw new Error(`${id} needs a test`);
-  return rest.reduce<Port>((acc, port, i) => {
-    const step = rest.length === 1 ? id : `${id}${i + 1}`;
-    node(g, step, `std.logic.${gate}`, label, { a: acc, b: port });
-    return outputOf(step, 'result');
-  }, first);
+  const [first] = ports;
+  if (!first) throw new Error(`${id} needs a condition`);
+  if (ports.length === 1) return first;
+  node(g, id, `std.logic.${gate}`, label, numbered('condition', ports), { count: ports.length });
+  return outputOf(id, 'result');
 };
 
 export const allOf = gates('and');
@@ -283,18 +302,6 @@ export const makeList = (g: Builder, id: string, label: string, type: ValueType,
   return outputOf(id, 'list');
 };
 
-export const presentOf = (
-  g: Builder,
-  id: string,
-  label: string,
-  type: ValueType,
-  items: Port[]
-) => {
-  const list = makeList(g, `${id}Or`, `${label} or Nothing`, type, items);
-  node(g, id, 'std.list.compact', label, { list }, { type });
-  return outputOf(id, 'list');
-};
-
 export const joinLists = (
   g: Builder,
   id: string,
@@ -309,7 +316,7 @@ export const joinLists = (
 export type Criterion = { id: string; label: string; reason: string; holds: Port };
 
 export const reasonsOf = (g: Builder, id: string, label: string, criteria: Criterion[]) =>
-  presentOf(
+  makeList(
     g,
     id,
     label,
@@ -409,10 +416,14 @@ export const choiceRule = (
       fields: Object.entries(candidate.fields).map(([name, type]) => ({ name, type }))
     } as Json
   });
-  g.add('label', 'std.text.template', {
-    label: 'Choice Label',
-    config: { template: label.template }
-  });
+  const shown = Object.keys(candidate.fields).filter((n) => label.template.includes(`{${n}}`));
+  const text = template(
+    g,
+    'label',
+    'Choice Label',
+    label.template,
+    Object.fromEntries(shown.map((n) => [n, `parts.${n}` as const]))
+  );
   g.add('choice', 'std.object.make', {
     label: 'Choice',
     config: {
@@ -423,13 +434,8 @@ export const choiceRule = (
     } as Json
   });
   g.wire('entry.candidate', 'parts.object');
-  for (const name of Object.keys(candidate.fields).filter((n) =>
-    label.template.includes(`{${n}}`)
-  )) {
-    g.wire(`parts.${name}`, `label.${name}`);
-  }
   g.wire(`parts.${candidate.value}`, 'choice.value');
-  g.wire('label.text', 'choice.label');
+  g.wire(text, 'choice.label');
   g.ret('return');
   g.wire('choice.object', 'return.choice');
   return g.def;

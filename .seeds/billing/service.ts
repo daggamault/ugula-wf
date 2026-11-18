@@ -29,6 +29,7 @@ import {
   node,
   not,
   ODOMETER,
+  orZero,
   PAYMENT,
   type Port,
   PROCEDURE,
@@ -48,10 +49,12 @@ const KIND = {
   unit: 'unitDisposition',
   transport: 'transportDisposition',
   evaluation: 'patientEvaluation',
+  arrestOutcome: 'arrestOutcome',
   service: 'serviceType',
   levelOfCare: 'levelOfCare',
   cmsServiceLevel: 'cmsServiceLevel',
   yesNo: 'yesNo',
+  responseUrgency: 'responseUrgency',
   responseMode: 'responseMode',
   route: 'medicationRoute',
   rxnorm: 'rxnorm',
@@ -103,7 +106,18 @@ const SERVICE_LEVEL_IN = codeIn(
   'The level of service the crew reported, NEMSIS ePayment.50.'
 );
 
+const ARREST_OUTCOME_IN = codeIn(
+  'arrestOutcome',
+  KIND.arrestOutcome,
+  'End of the Cardiac Arrest Event',
+  'How the cardiac arrest ended, such as expired in the field, NEMSIS eArrest.18.'
+);
+
 const TRANSPORTED = ['4230001', '4230003'];
+
+const DEAD_WITHOUT_TRANSPORT = ['4212015', '4212019'];
+
+const EXPIRED_IN_FIELD = '3018003';
 
 const TRANSPORTED_INCIDENTS = ['4212013', '4212017', '4212023', '4212033'];
 
@@ -387,6 +401,59 @@ const transportCriteria = (): GraphDef => {
   ]);
 };
 
+const pronouncedDeadCriteria = (): GraphDef => {
+  const g = rule([INCIDENT_IN, TRANSPORT_IN, ARREST_OUTCOME_IN], CRITERIA_OUT);
+  return criteriaResult(g, 'Pronounced Dead', [
+    {
+      id: 'deadAtScene',
+      label: 'Dead at Scene Without Transport',
+      reason: 'Patient dead at the scene and not transported',
+      holds: isIn(
+        g,
+        'deadAtScene',
+        'Dead at Scene Without Transport',
+        KIND.incident,
+        'entry.incidentDisposition',
+        codes(
+          g,
+          'deadCodes',
+          'Dead at Scene Without Transport Dispositions',
+          KIND.incident,
+          DEAD_WITHOUT_TRANSPORT
+        )
+      )
+    },
+    {
+      id: 'expiredInField',
+      label: 'Expired in the Field Without Transport',
+      reason: 'Patient expired in the field and was not transported',
+      holds: allOf(g, 'expiredInField', 'Expired in the Field Without Transport', [
+        isCode(
+          g,
+          'expired',
+          'Expired in the Field',
+          KIND.arrestOutcome,
+          'entry.arrestOutcome',
+          EXPIRED_IN_FIELD
+        ),
+        not(
+          g,
+          'notTransported',
+          'Not Transported',
+          isIn(
+            g,
+            'transported',
+            'Transported by This Unit',
+            KIND.transport,
+            'entry.transportDisposition',
+            codes(g, 'transportedCodes', 'Transported Dispositions', KIND.transport, TRANSPORTED)
+          )
+        )
+      ])
+    }
+  ]);
+};
+
 const scheduledCriteria = (): GraphDef => {
   const g = rule([SERVICE_IN], CRITERIA_OUT);
   return criteriaResult(g, 'Scheduled', [
@@ -425,6 +492,12 @@ const TRIP_CRITERIA: CriteriaNode[] = [
     fields: ['incidentDisposition', 'patientEvaluation', 'transportDisposition']
   },
   {
+    id: 'pronouncedDead',
+    key: 'billing.pronounced-dead-criteria',
+    label: 'Pronounced Dead Criteria',
+    fields: ['incidentDisposition', 'transportDisposition', 'arrestOutcome']
+  },
+  {
     id: 'noTransport',
     key: 'billing.no-transport-criteria',
     label: 'No Transport Criteria',
@@ -444,7 +517,7 @@ const TRIP_CRITERIA: CriteriaNode[] = [
   }
 ];
 
-const BILLABLE = ['emergency', 'scheduled', 'treatNoTransport'];
+const BILLABLE = ['emergency', 'scheduled', 'pronouncedDead', 'treatNoTransport'];
 
 const tripClassification = (): GraphDef => {
   const g = rule(
@@ -454,7 +527,7 @@ const tripClassification = (): GraphDef => {
         'classification',
         CODE.classification,
         'Classification',
-        'What kind of trip it was: emergency, scheduled, treatNoTransport, refusal or notBillable.'
+        'What kind of trip it was: emergency, scheduled, pronouncedDead, treatNoTransport, refusal or notBillable.'
       ),
       d('billable', 'boolean', 'Billable', 'Whether the trip is billed.'),
       reasonsOut('the trip was classified this way')
@@ -480,6 +553,12 @@ const tripClassification = (): GraphDef => {
         'notBillable'
       ),
       kind('asRefusal', 'Refusal When Its Criteria Hold', 'refusal.holds', 'refusal'),
+      kind(
+        'asPronouncedDead',
+        'Pronounced Dead When Its Criteria Hold',
+        'pronouncedDead.holds',
+        'pronouncedDead'
+      ),
       kind(
         'asNoTransport',
         'Treated, No Transport When Its Criteria Hold',
@@ -952,30 +1031,48 @@ const emergencyStatus = (): GraphDef => {
   );
   breakRecord(g, 'trip', 'Encounter', ENCOUNTER, 'entry.encounter');
   breakRecord(g, 'payment', 'Payment', PAYMENT, 'trip.payment');
+  const noUrgency = isMissing(g, 'noUrgency', 'No Response Urgency', 'payment.responseUrgency');
   const noMode = isMissing(g, 'noMode', 'No Response Mode', 'trip.responseMode');
   const criteria: Criterion[] = [
     {
-      id: 'immediate',
-      label: 'Immediate Response to the Call',
-      reason: 'Immediate response to the call',
-      holds: isIn(
+      id: 'urgency',
+      label: 'Immediate Response Urgency Reported',
+      reason: 'The crew reported an immediate response urgency',
+      holds: isCode(
         g,
-        'immediate',
-        'Immediate Response',
-        KIND.responseMode,
-        'trip.responseMode',
-        codes(g, 'immediateCodes', 'Immediate Response Modes', KIND.responseMode, [
-          '2223001',
-          '2223003',
-          '2223007'
-        ])
+        'urgency',
+        'Immediate Response Urgency',
+        KIND.responseUrgency,
+        'payment.responseUrgency',
+        '2640001'
       )
     },
     {
+      id: 'immediate',
+      label: 'No Response Urgency, and an Immediate Response Mode',
+      reason: 'No response urgency, and the unit responded immediately',
+      holds: allOf(g, 'immediate', 'No Response Urgency and an Immediate Response Mode', [
+        noUrgency,
+        isIn(
+          g,
+          'immediateMode',
+          'Immediate Response Mode',
+          KIND.responseMode,
+          'trip.responseMode',
+          codes(g, 'immediateCodes', 'Immediate Response Modes', KIND.responseMode, [
+            '2223001',
+            '2223003',
+            '2223007'
+          ])
+        )
+      ])
+    },
+    {
       id: 'crewEmergency',
-      label: 'No Response Mode, and the Crew Reported an Emergency Level',
-      reason: 'No response mode, and the crew reported an emergency level',
-      holds: allOf(g, 'crewEmergency', 'No Response Mode and an Emergency Level', [
+      label: 'No Response Urgency or Mode, and the Crew Reported an Emergency Level',
+      reason: 'No response urgency or mode, and the crew reported an emergency level',
+      holds: allOf(g, 'crewEmergency', 'No Urgency or Mode, and an Emergency Level', [
+        noUrgency,
         noMode,
         isIn(
           g,
@@ -992,9 +1089,10 @@ const emergencyStatus = (): GraphDef => {
     },
     {
       id: 'emergencyCall',
-      label: 'No Response Mode, and an Emergency Call',
-      reason: 'No response mode, and an emergency call',
-      holds: allOf(g, 'emergencyCall', 'No Response Mode and an Emergency Call', [
+      label: 'No Response Urgency or Mode, and an Emergency Call',
+      reason: 'No response urgency or mode, and an emergency call',
+      holds: allOf(g, 'emergencyCall', 'No Urgency or Mode, and an Emergency Call', [
+        noUrgency,
         noMode,
         isIn(
           g,
@@ -1029,7 +1127,7 @@ const loadedMiles = (): GraphDef => {
         'loadedMiles',
         'number',
         'Loaded Miles',
-        'Miles with the patient on board, from the scene and destination odometer readings, rounded up to the tenth; nothing when a reading is missing.',
+        'Miles with the patient on board, from the scene and destination odometer readings, rounded up as CMS asks: to the tenth under 100 miles, to the whole mile from 100; nothing when a reading is missing.',
         true
       )
     ]
@@ -1041,16 +1139,38 @@ const loadedMiles = (): GraphDef => {
     b: 'odometer.scene'
   });
   node(g, 'positive', 'std.math.max', 'Never Below Zero', { a: 'distance.result', b: fixed(0) });
-  node(
+  const roundUp = (id: string, label: string, digits: number) =>
+    node(
+      g,
+      id,
+      'std.math.round',
+      label,
+      { value: 'positive.result', digits: fixed(digits) },
+      { direction: 'up' }
+    );
+  roundUp('tenth', 'Up to the Tenth', 1);
+  roundUp('whole', 'Up to the Whole Mile', 0);
+  const long = atLeast(
     g,
-    'rounded',
-    'std.math.round',
-    'Up to the Tenth',
-    { value: 'positive.result', digits: fixed(1) },
-    { direction: 'up' }
+    'long',
+    '100 Miles or More',
+    'number',
+    orZero(g, 'milesOrZero', 'Miles or Zero', 'positive.result'),
+    100
   );
   g.ret('return');
-  g.wire('rounded.result', 'return.loadedMiles');
+  g.wire(
+    select(
+      g,
+      'rounded',
+      'Whole Miles From 100, Else Tenths',
+      'number',
+      long,
+      'whole.result',
+      'tenth.result'
+    ),
+    'return.loadedMiles'
+  );
   return g.def;
 };
 
@@ -1139,19 +1259,19 @@ const diagnoses = (): GraphDef => {
         'diagnoses',
         listOf(icd10),
         'Diagnoses',
-        'The primary impression, then the secondary ones, each once and at most twelve.'
+        'The primary impression, then the secondary impressions, the primary symptom and the other symptoms, each once and at most twelve.'
       )
     ]
   );
   breakRecord(g, 'trip', 'Encounter', ENCOUNTER, 'entry.encounter');
-  const primary = makeList(g, 'primary', 'Primary Impression', icd10, ['trip.primaryImpression']);
-  const all = joinLists(g, 'all', 'Primary, Then Secondary', icd10, [
-    primary,
-    'trip.secondaryImpressions'
+  const all = joinLists(g, 'all', 'Impressions, Then Symptoms', icd10, [
+    makeList(g, 'primary', 'Primary Impression', icd10, ['trip.primaryImpression']),
+    'trip.secondaryImpressions',
+    makeList(g, 'symptom', 'Primary Symptom', icd10, ['trip.primarySymptom']),
+    'trip.otherSymptoms'
   ]);
   const config = { type: icd10 };
-  node(g, 'present', 'std.list.compact', 'Impressions Given', { list: all }, config);
-  node(g, 'once', 'std.list.unique', 'Each Once', { list: 'present.list' }, config);
+  node(g, 'once', 'std.list.unique', 'Each Once', { list: all }, config);
   node(
     g,
     'twelve',
@@ -1177,6 +1297,12 @@ export const serviceGraphs: SeedGraph[] = [
     'Refusal Criteria',
     'Whether the patient refused: refused care, or refused both care and transport.',
     refusalCriteria()
+  ),
+  asRule(
+    'billing.pronounced-dead-criteria',
+    'Pronounced Dead Criteria',
+    'Whether the patient was pronounced dead before being loaded: dead at the scene without transport, or expired in the field and not transported. CMS pays the BLS base rate with the QL modifier and no mileage.',
+    pronouncedDeadCriteria()
   ),
   asRule(
     'billing.no-transport-criteria',
@@ -1247,13 +1373,13 @@ export const serviceGraphs: SeedGraph[] = [
   asRule(
     'billing.emergency-status',
     'Emergency Status',
-    'Whether a trip is an emergency: an immediate response, or, with no response mode, an emergency call or an emergency level the crew reported.',
+    'Whether a trip is an emergency: the immediate response urgency the crew reported, else an immediate response mode, else, with neither, an emergency call or an emergency level the crew reported.',
     emergencyStatus()
   ),
   asRule(
     'billing.loaded-miles',
     'Loaded Miles',
-    'Miles with the patient on board: the destination odometer less the scene odometer, never below zero, rounded up to the tenth.',
+    'Miles with the patient on board: the destination odometer less the scene odometer, never below zero, rounded up to the tenth under 100 miles and to the whole mile from 100, as CMS asks.',
     loadedMiles()
   ),
   asRule(
@@ -1271,7 +1397,7 @@ export const serviceGraphs: SeedGraph[] = [
   asRule(
     'billing.diagnoses',
     'Diagnoses',
-    'The diagnoses of a claim: the primary impression, then the secondary impressions, each once and at most twelve.',
+    'The diagnoses of a claim: the primary impression, then the secondary impressions, the primary symptom and the other symptoms, each once and at most twelve.',
     diagnoses()
   )
 ];

@@ -69,50 +69,53 @@ The API records the import and emits the event in one transaction; an upload is 
 
 ### Encounter to Claim (on `encounter.created`) and Revised Encounter to Claim (on `encounter.revised`)
 
-Read Encounter → **Build Claim**: Trip Classification → Billable?
+Read Encounter → **Build Claim**: Trip Classification → Is Billable
 
 - No → Not Billable, with the classification and its reasons.
 - Yes → Resolve Patient → Determine Payers → Assign Charges → Make Claim → Save Claim (Needs Review; a revised encounter replaces its claim).
 
-| Graph                  | Kind  | Built from                                                                                                                                                                      |
-| ---------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Trip Classification    | rule  | Not Billable, Refusal, No Transport, Transport and Scheduled Criteria; the first kind of trip that holds (Choose Value over Selects), billable when it is in the billable kinds |
-| Not Billable Criteria  | rule  | Incident, unit and transport dispositions and service type, each tested against a code list (Contains, Equal, Not, And)                                                         |
-| Refusal Criteria       | rule  | Refused care, or a refused evaluation and transport                                                                                                                             |
-| No Transport Criteria  | rule  | Treated and not transported, or not transported by this unit                                                                                                                    |
-| Transport Criteria     | rule  | Transported by this unit, by incident or transport disposition                                                                                                                  |
-| Scheduled Criteria     | rule  | Scheduled or interfacility service type                                                                                                                                         |
-| Service Details        | rule  | Service Date, Level of Service, Emergency Status, Loaded Miles                                                                                                                  |
-| Level of Service       | rule  | IV Medication and ALS2 Procedure under Keep Items Where, counted; the highest of SCT, ALS2 and ALS1 Criteria that holds, else BLS                                               |
-| By This Unit           | rule  | Not before this unit arrived and not by another unit (Equal, Or, Not), so only this unit's care counts                                                                          |
-| IV Medication          | rule  | Given by this unit, IV or IO, and not an IV solution (two code lists), per medication                                                                                           |
-| ALS2 Procedure         | rule  | Performed by this unit and in the ALS2 code list, per procedure                                                                                                                 |
-| SCT Criteria           | rule  | Critical care, or crew-reported SCT, on an interfacility transport                                                                                                              |
-| ALS2 Criteria          | rule  | An ALS2 procedure, three or more IV/IO medications, or crew-reported ALS2                                                                                                       |
-| ALS1 Criteria          | rule  | ALS assessment, crew-reported ALS1, or an IV/IO medication                                                                                                                      |
-| Emergency Status       | rule  | Response mode, or the call type or crew level when there is none                                                                                                                |
-| Loaded Miles           | rule  | Destination less scene odometer, never below zero, rounded up to the tenth                                                                                                      |
-| Service Date           | rule  | The first time recorded: at patient, at scene, notified, call                                                                                                                   |
-| Diagnoses              | rule  | Primary then secondary impressions, each once, at most twelve                                                                                                                   |
-| Origin Letter          | rule  | The first that holds of the pickup location type (Starts with) and the service type (Contains)                                                                                  |
-| Origin and Destination | rule  | Origin Letter; destination from the Destination Letters table; neither unless both                                                                                              |
-| Resolve Patient        | stage | Match Patient; Incomplete → task Complete the Patient, then Match Patient again                                                                                                 |
-| Match Patient          | stage | Find Patient → Matched; Not Found → Save Patient; Similar → task Choose the Patient (Patient Choice)                                                                            |
-| Determine Payers       | stage | Billing Order, then Resolve Coverage for each insurance                                                                                                                         |
-| Billing Order          | rule  | Keep Items Where Has Priority (primary, secondary, tertiary), then Has Other Priority, joined                                                                                   |
-| Has Priority           | rule  | The insurance has the billing priority given, per insurance                                                                                                                     |
-| Has Other Priority     | rule  | The insurance is not ranked primary, secondary or tertiary, per insurance                                                                                                       |
-| Resolve Coverage       | stage | Find Payer → Found; Similar → task Match the Payer (Payer Choice); relationship from the Insured Relationships table                                                            |
-| Assign Charges         | stage | Charge Lines, then Price Line for each, and the total                                                                                                                           |
-| Charge Lines           | rule  | Base Rate Code, and A0425 for loaded miles of a transport, each with the origin and destination modifier                                                                        |
-| Base Rate Code         | rule  | A0998 without transport, else the Base Rate Codes table by level and emergency                                                                                                  |
-| Price Line             | stage | Find Fee times units to the cent, or no price with the reason                                                                                                                   |
+| Graph                    | Kind  | Built from                                                                                                                                                                                       |
+| ------------------------ | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Trip Classification      | rule  | Not Billable, Refusal, Pronounced Dead, No Transport, Transport and Scheduled Criteria; the first kind of trip that holds (Choose Value over Selects), billable when it is in the billable kinds |
+| Not Billable Criteria    | rule  | Incident, unit and transport dispositions and service type, each tested against a code list (Contains, Equal, Not, And)                                                                          |
+| Refusal Criteria         | rule  | Refused care, or a refused evaluation and transport                                                                                                                                              |
+| Pronounced Dead Criteria | rule  | Dead at the scene without transport, or expired in the field and not transported                                                                                                                 |
+| No Transport Criteria    | rule  | Treated and not transported, or not transported by this unit                                                                                                                                     |
+| Transport Criteria       | rule  | Transported by this unit, by incident or transport disposition                                                                                                                                   |
+| Scheduled Criteria       | rule  | Scheduled or interfacility service type                                                                                                                                                          |
+| Service Details          | rule  | Service Date, Level of Service, Emergency Status, Loaded Miles                                                                                                                                   |
+| Level of Service         | rule  | IV Medication and ALS2 Procedure under Keep Items Where, counted; the highest of SCT, ALS2 and ALS1 Criteria that holds, else BLS                                                                |
+| By This Unit             | rule  | Not before this unit arrived and not by another unit (Equal, Or, Not), so only this unit's care counts                                                                                           |
+| IV Medication            | rule  | Given by this unit, IV or IO, and not an IV solution (two code lists), per medication                                                                                                            |
+| ALS2 Procedure           | rule  | Performed by this unit and in the ALS2 code list, per procedure                                                                                                                                  |
+| SCT Criteria             | rule  | Critical care, or crew-reported SCT, on an interfacility transport                                                                                                                               |
+| ALS2 Criteria            | rule  | An ALS2 procedure, three or more IV/IO medications, or crew-reported ALS2                                                                                                                        |
+| ALS1 Criteria            | rule  | ALS assessment, crew-reported ALS1, or an IV/IO medication                                                                                                                                       |
+| Emergency Status         | rule  | The response urgency; without it the response mode; without either the call type or crew level                                                                                                   |
+| Loaded Miles             | rule  | Destination less scene odometer, never below zero, rounded up to the tenth under 100 miles and to the whole mile from 100                                                                        |
+| Service Date             | rule  | The first time recorded: at patient, at scene, notified, call                                                                                                                                    |
+| Diagnoses                | rule  | Primary and secondary impressions, then primary and other symptoms, each once, at most twelve                                                                                                    |
+| Origin Letter            | rule  | The first that holds of the pickup location type (Starts With) and the service type (Contains)                                                                                                   |
+| Origin and Destination   | rule  | Origin Letter; destination from the Destination Letters table; neither unless both                                                                                                               |
+| Resolve Patient          | stage | Match Patient; Incomplete → task Complete the Patient, then Match Patient again                                                                                                                  |
+| Match Patient            | stage | Find Patient → Matched; Not Found → Save Patient; Similar → task Choose the Patient (Patient Choice)                                                                                             |
+| Determine Payers         | stage | Billing Order, then Resolve Coverage for each insurance                                                                                                                                          |
+| Billing Order            | rule  | Keep Items Where Has Priority (primary, secondary, tertiary), then Has Other Priority, joined                                                                                                    |
+| Has Priority             | rule  | The insurance has the billing priority given, per insurance                                                                                                                                      |
+| Has Other Priority       | rule  | The insurance is not ranked primary, secondary or tertiary, per insurance                                                                                                                        |
+| Resolve Coverage         | stage | Find Payer → Found; Similar → task Match the Payer (Payer Choice); relationship from the Insured Relationships table                                                                             |
+| Assign Charges           | stage | Charge Lines, then Price Line for each, and the total                                                                                                                                            |
+| Charge Lines             | rule  | Base Rate Code, Line Modifiers and Covered Miles; the vehicle from the Vehicles table; mileage from the Mileage Codes table and A0888 for non-covered miles, for a transport                     |
+| Base Rate Code           | rule  | A0998 without transport, else the Base Rate Codes table by the aircraft, or by level and emergency for ground; BLS when pronounced dead                                                          |
+| Line Modifiers           | rule  | Origin and destination letters, QL when pronounced dead, GM when more than one patient was transported                                                                                           |
+| Covered Miles            | rule  | Miles to the closest facility covered and the rest non-covered when the transport reason is B or C, else every loaded mile                                                                       |
+| Price Line               | stage | Find Fee times units to the cent, or no price with the reason                                                                                                                                    |
 
 ## Customizing
 
 | An agency wants                                                     | It overrides                                                            |
 | ------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| A different base rate or code                                       | The Base Rate Codes table or its fee schedule                           |
+| A different base rate or code                                       | The Base Rate Codes or Mileage Codes table, or its fee schedule         |
 | A different code list (IV solutions, ALS2 procedures, dispositions) | The rule that holds it (IV Medication, ALS2 Procedure, a criteria rule) |
 | Its own payer order                                                 | Billing Order                                                           |
 | An extra charge (oxygen, a second attendant)                        | Charge Lines, adding a line from its own rule                           |

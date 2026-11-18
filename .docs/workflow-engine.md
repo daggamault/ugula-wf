@@ -57,7 +57,7 @@ Pure primitives tolerate missing data: math nodes give nothing when a number is 
 
 Primitives that keep decisions readable on the canvas:
 
-- Tests are small typed primitives: a **Constant** list of codes and **Contains**, **Equal** and **Not Equal**, **Greater Than** and the other comparisons, **Is Null** and **Starts with**; **And**, **Or** and **Not** combine them, **Select** gives a value when a test holds, and **Choose Value** picks by case or the first that is set. A rule that returns a decision with reasons gives each reason with a Select and drops the empty ones (Make List, Drop Empty).
+- Tests are small typed primitives: a **Constant** list of codes and **Contains**, **Equal** and **Not Equal**, **Greater Than** and the other comparisons, **Is Null** and **Starts with**; **And** and **Or** combine any number of them (set how many conditions they take) and **Not** turns one around, **Select** gives a value when a test holds, and **Choose Value** picks by case or the first that is set. A rule that returns a decision with reasons gives each reason with a Select and collects them with Make List, which leaves out the empty ones.
 - **Round** rounds to the nearest, up or down (`direction`); **Start of Period** and **Time Between** do the date math.
 - Text: **Join** takes a **Last Separator** ("a, b and c"), **Count with Noun** writes "1 warning" or "3 warnings", **Capitalize** capitalizes the first letter, **Text Template** fills a fixed pattern with optional parts, and **Fill Template** fills a pattern that arrives on a wire, such as a message from a table.
 

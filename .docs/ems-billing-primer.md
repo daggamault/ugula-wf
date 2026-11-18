@@ -72,7 +72,8 @@ What the app does today is in [Workflows](workflows.md); everything else is rebu
 | 837P submission and acknowledgments (TA1, 999, 277CA)                                            | To rebuild; the X12 builders and readers exist                             |
 | Claim status (276/277)                                                                           | To rebuild                                                                 |
 | 835 posting, denial routing by CARC, corrected claims, appeals                                   | To rebuild; the 835 reader exists                                          |
-| QL, GM, GY, GA/GZ modifiers; A0888 non-covered miles; NTE narrative                              | To rebuild                                                                 |
+| QL and GM modifiers; A0888 non-covered miles; air base rates and mileage                         | Built: Line Modifiers, Covered Miles, Vehicles table                       |
+| GY, GA/GZ modifiers; NTE narrative                                                               | To rebuild                                                                 |
 | Documents in the PCR (facesheet, PCS, signature, ABN, MSP)                                       | Attachments are stored on the Encounter; reading them is next              |
 | Patient statements, payment plans, collections, refunds, balance-billing laws                    | To rebuild                                                                 |
 | Facility invoicing and deadlines (timely filing, appeals, records, PCS expiry)                   | To rebuild                                                                 |

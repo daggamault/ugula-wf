@@ -5,6 +5,7 @@ export type ServiceLevel = (typeof SERVICE_LEVELS)[number];
 export const CLASSIFICATIONS = [
   'emergency',
   'scheduled',
+  'pronouncedDead',
   'treatNoTransport',
   'refusal',
   'notBillable'
@@ -15,6 +16,7 @@ export type Classification = (typeof CLASSIFICATIONS)[number];
 export const CLASSIFICATION_LABELS: Record<Classification, string> = {
   emergency: 'Emergency Transport',
   scheduled: 'Scheduled Transport',
+  pronouncedDead: 'Pronounced Dead Before Loading',
   treatNoTransport: 'Treated, Not Transported',
   refusal: 'Refused Care',
   notBillable: 'Not Billable'

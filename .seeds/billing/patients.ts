@@ -3,6 +3,7 @@ import type { SeedGraph } from '../graphs.ts';
 import {
   asRule,
   asStage,
+  type Builder,
   breakRecord,
   choiceRule,
   choicesFor,
@@ -12,7 +13,8 @@ import {
   PERSON,
   QUEUE,
   stage,
-  T
+  T,
+  template
 } from './shared.ts';
 
 const PERSON_IN = d('person', T.person, 'Person', 'The patient as the report names them.');
@@ -21,15 +23,11 @@ const PATIENT_OUT = d('patientId', ID.patient, 'Patient', 'The patient the encou
 
 const IDENTITY = ['firstName', 'lastName', 'birthDate'];
 
-const subjectOf = (g: ReturnType<typeof stage>) => {
-  g.add('subject', 'std.text.template', {
-    label: 'Patient Name',
-    config: { template: '{lastName}, {firstName}' }
+const subjectOf = (g: Builder) =>
+  template(g, 'subject', 'Patient Name', '{lastName}, {firstName}', {
+    lastName: 'person.lastName',
+    firstName: 'person.firstName'
   });
-  g.wire('person.lastName', 'subject.lastName');
-  g.wire('person.firstName', 'subject.firstName');
-  return 'subject.text' as const;
-};
 
 const matchPatient = (): GraphDef => {
   const g = stage([PERSON_IN], [{ ...PATIENT_OUT, optional: true }], {

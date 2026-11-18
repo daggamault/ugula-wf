@@ -1,3 +1,4 @@
+import * as v from 'valibot';
 import { adoptsType, pin, pureNode } from '../define.ts';
 import { fail } from '../errors.ts';
 import { deepEqual } from '../json.ts';
@@ -65,22 +66,42 @@ const equalNode = (
     compute: ({ a, b }) => ({ result: fn(a ?? null, b ?? null) })
   });
 
-const boolNode = (
-  key: string,
-  title: string,
-  description: string,
-  fn: (a: boolean, b: boolean) => boolean
-) =>
-  pureNode({
+const gateConfig = v.object({
+  count: v.optional(v.pipe(v.number(), v.integer(), v.minValue(2), v.maxValue(20)), 2)
+});
+
+type GateConfig = v.InferOutput<typeof gateConfig>;
+
+type Gate = {
+  key: string;
+  title: string;
+  description: string;
+  keywords: string[];
+  summary: (count: number) => string;
+  fn: (conditions: boolean[]) => boolean;
+};
+
+const gateNode = ({ key, title, description, keywords, summary, fn }: Gate) =>
+  pureNode<GateConfig>({
     type: `std.logic.${key}`,
     title,
     category: CATEGORY,
     description,
     level: 'basic',
-    keywords: ['condition', 'boolean'],
-    inputs: [pin('a', 'boolean', A), pin('b', 'boolean', B)],
+    keywords: ['condition', 'boolean', 'gate', ...keywords],
+    summary: ({ count }) => summary(count),
+    config: gateConfig,
+    inputs: ({ count }) =>
+      Array.from({ length: count }, (_, i) =>
+        pin(`condition${i + 1}`, 'boolean', {
+          label: `Condition ${i + 1}`,
+          description: 'A condition to combine.'
+        })
+      ),
     outputs: [RESULT],
-    compute: ({ a, b }) => ({ result: fn(a === true, b === true) })
+    compute: (inputs, { count }) => ({
+      result: fn(Array.from({ length: count }, (_, i) => inputs[`condition${i + 1}`] === true))
+    })
   });
 
 export const logicNodes: NodeDef[] = [
@@ -102,9 +123,33 @@ export const logicNodes: NodeDef[] = [
   compareNode('greater-or-equal', 'Greater or Equal', 'at least', (a, b) => a >= b),
   compareNode('less', 'Less Than', 'less than', (a, b) => a < b),
   compareNode('less-or-equal', 'Less or Equal', 'at most', (a, b) => a <= b),
-  boolNode('and', 'And', 'True only when both values are true.', (a, b) => a && b),
-  boolNode('or', 'Or', 'True when at least one of the values is true.', (a, b) => a || b),
-  boolNode('xor', 'Xor', 'True when exactly one of the two values is true.', (a, b) => a !== b),
+  gateNode({
+    key: 'and',
+    title: 'And',
+    description: 'True only when every condition is true.',
+    keywords: ['all', 'every', 'both'],
+    summary: (count) => `All ${count} conditions`,
+    fn: (conditions) => conditions.every(Boolean)
+  }),
+  gateNode({
+    key: 'or',
+    title: 'Or',
+    description: 'True when at least one condition is true.',
+    keywords: ['any', 'either'],
+    summary: (count) => `Any of ${count} conditions`,
+    fn: (conditions) => conditions.some(Boolean)
+  }),
+  pureNode({
+    type: 'std.logic.xor',
+    title: 'Xor',
+    category: CATEGORY,
+    description: 'True when exactly one of the two values is true.',
+    level: 'basic',
+    keywords: ['condition', 'boolean', 'exclusive'],
+    inputs: [pin('a', 'boolean', A), pin('b', 'boolean', B)],
+    outputs: [RESULT],
+    compute: ({ a, b }) => ({ result: (a === true) !== (b === true) })
+  }),
   pureNode({
     type: 'std.logic.not',
     title: 'Not',

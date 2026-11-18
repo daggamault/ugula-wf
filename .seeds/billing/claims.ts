@@ -13,6 +13,7 @@ import {
   ID,
   joinLists,
   listOf,
+  PAYMENT,
   stage,
   T
 } from './shared.ts';
@@ -51,8 +52,9 @@ const buildClaim = (): GraphDef => {
     }
   );
   breakRecord(g, 'trip', 'Encounter', ENCOUNTER, 'entry.encounter');
+  breakRecord(g, 'payment', 'Payment', PAYMENT, 'trip.payment');
   g.add('classify', 'billing.trip-classification', { label: 'Trip Classification' });
-  g.add('billable', 'std.flow.branch', { label: 'Billable?' });
+  g.add('billable', 'std.flow.branch', { label: 'Is Billable' });
   g.add('patient', 'billing.resolve-patient', { label: 'Resolve Patient' });
   g.add('service', 'billing.service-details', { label: 'Service Details' });
   g.add('diagnoses', 'billing.diagnoses', { label: 'Diagnoses' });
@@ -79,6 +81,10 @@ const buildClaim = (): GraphDef => {
   g.wire('primary.item', 'primaryPayer.coverage');
   g.wire('primaryPayer.payerId', 'charges.payerId');
   g.wire('classify.classification', 'charges.classification', 'claim.classification');
+  g.wire('trip.transportMethod', 'charges.transportMethod');
+  g.wire('trip.patientsTransported', 'charges.patientsTransported');
+  g.wire('payment.transportReason', 'charges.transportReason');
+  g.wire('payment.closestFacilityMiles', 'charges.closestFacilityMiles');
   for (const pin of ['level', 'emergency', 'loadedMiles']) {
     g.wire(`service.${pin}`, `charges.${pin}`, `claim.${pin}`);
   }
