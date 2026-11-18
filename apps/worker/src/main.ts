@@ -124,7 +124,7 @@ if (import.meta.main) {
           patients: createPatientStore(db),
           payers: createPayerStore(db),
           fees: createFeeStore(db),
-          claims: announceClaims(createClaimStore(db), announce)
+          claims: announceClaims(createClaimStore(db, boss), announce)
         }
       }),
       loadDefinitions: (ids) => findDefinitions(db, ids),

@@ -1,5 +1,6 @@
 import type { ClaimInput, ClaimStore } from '@ugula/billing';
-import type { Database } from '@ugula/db';
+import { type Database, sqlExecutor } from '@ugula/db';
+import { cancel, enqueueRuns, type RunQueueClient } from '@ugula/run-queue';
 import { type Kysely, sql } from 'kysely';
 import { isUuid } from '../../shared/ids.ts';
 import { runAgency } from '../../shared/tenancy.ts';
@@ -20,7 +21,34 @@ const claimColumns = (c: ClaimInput) => ({
   reasons: c.reasons
 });
 
-export const createClaimStore = (db: Kysely<Database>): ClaimStore => ({
+const REVIEW_PERMISSION = 'claims:approve';
+
+const supersededReviews = (
+  tx: Kysely<Database>,
+  agencyId: string,
+  runId: string,
+  encounterId: string
+) =>
+  tx
+    .selectFrom('workflow_runs as r')
+    .select('r.id')
+    .where('r.agency_id', '=', agencyId)
+    .where('r.id', '<>', runId)
+    .where('r.status', '=', 'suspended')
+    .where(sql<string>`r.inputs ->> 'encounterId'`, '=', encounterId)
+    .where((eb) =>
+      eb.exists(
+        eb
+          .selectFrom('tasks as t')
+          .select(sql`1`.as('one'))
+          .whereRef('t.run_id', '=', 'r.id')
+          .where('t.status', '=', 'open')
+          .where('t.permission', '=', REVIEW_PERMISSION)
+      )
+    )
+    .execute();
+
+export const createClaimStore = (db: Kysely<Database>, boss: RunQueueClient): ClaimStore => ({
   saveClaim: (runId, claim) =>
     db.transaction().execute(async (tx) => {
       if (!isUuid(claim.encounterId))
@@ -48,6 +76,14 @@ export const createClaimStore = (db: Kysely<Database>): ClaimStore => ({
         )
         .returning(['id', 'agency_id', 'revision', sql<boolean>`xmax = 0`.as('inserted')])
         .executeTakeFirstOrThrow();
+      if (!saved.inserted) {
+        const stale = await supersededReviews(tx, saved.agency_id, runId, claim.encounterId);
+        await enqueueRuns(
+          boss,
+          sqlExecutor(tx),
+          stale.map((r) => cancel(r.id))
+        );
+      }
       await tx.deleteFrom('claim_lines').where('claim_id', '=', saved.id).execute();
       await tx.deleteFrom('claim_coverages').where('claim_id', '=', saved.id).execute();
       await tx.deleteFrom('claim_diagnoses').where('claim_id', '=', saved.id).execute();

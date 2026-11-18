@@ -265,7 +265,7 @@ export const claimGraphs: SeedGraph[] = [
   asStage(
     'billing.review-claim',
     'Review Claim',
-    'Ends every claim on review by a biller, as the law requires before a claim goes to the clearinghouse: a Review the Claim task that only someone allowed to approve claims can complete. Approved makes the claim ready for the clearinghouse; On Hold keeps it back with a note. A claim revised during the review is decided in its own review.',
+    'Ends every claim on review by a biller, as the law requires before a claim goes to the clearinghouse: a Review the Claim task that only someone allowed to approve claims can complete. Approved makes the claim ready for the clearinghouse; On Hold keeps it back with a note. A claim revised during the review is decided in its own review, and the review of the earlier revision is cancelled.',
     reviewClaim()
   ),
   asStage(
