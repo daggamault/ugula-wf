@@ -44,6 +44,10 @@ const ENCOUNTER_PIN = pin('encounter', ENCOUNTER_TYPE, {
 
 const ENCOUNTER_ID = { id: 'encounter' } as const;
 
+const REPORT_ID = { id: 'report' } as const;
+
+const IMPORT_ID = { id: 'import' } as const;
+
 export const createNemsisNodes = (stores: NemsisStores | null): NodeDef[] => {
   const storesOf = () => {
     if (!stores) throw new Error('Encounter nodes need storage, which only the worker provides');
@@ -51,17 +55,17 @@ export const createNemsisNodes = (stores: NemsisStores | null): NodeDef[] => {
   };
   return [
     actionNode({
-      type: 'encounter.read-pcr-file',
+      type: 'pcr-file.read',
       title: 'Read PCR File',
       category: CATEGORY,
       description:
-        'Reads a NEMSIS 3.4 or 3.5 file, stores each patient care report in it and records them against the import. Give each report to Read PCR to get its encounter.',
+        'Reads a NEMSIS 3.4 or 3.5 file, stores each patient care report in it and records them against the import. Give each PCR to Read PCR to get its encounter.',
       level: 'basic',
       keywords: ['import', 'epcr', 'xml', 'nemsis', 'file'],
       effect: true,
       inputs: [
         pin('file', BLOB, { description: 'The stored NEMSIS file.' }),
-        pin('importId', 'string', {
+        pin('importId', IMPORT_ID, {
           optional: true,
           label: 'Import',
           description: 'The import the file arrived with; a new one when empty.'
@@ -70,12 +74,12 @@ export const createNemsisNodes = (stores: NemsisStores | null): NodeDef[] => {
       outputs: [
         pin(
           'reports',
-          { list: { id: 'report' } },
-          { description: 'Each patient care report in the file, in file order.' }
+          { list: REPORT_ID },
+          { label: 'PCRs', description: 'Each patient care report in the file, in file order.' }
         ),
         pin('count', 'integer', {
-          label: 'Reports',
-          description: 'How many reports the file held.'
+          label: 'PCR Count',
+          description: 'How many patient care reports the file held.'
         })
       ],
       compute: async (inputs, _, ctx) => {
@@ -95,7 +99,7 @@ export const createNemsisNodes = (stores: NemsisStores | null): NodeDef[] => {
       }
     }),
     actionNode({
-      type: 'encounter.read-pcr',
+      type: 'report.read',
       title: 'Read PCR',
       category: CATEGORY,
       description:
@@ -103,12 +107,14 @@ export const createNemsisNodes = (stores: NemsisStores | null): NodeDef[] => {
       level: 'basic',
       keywords: ['epcr', 'pcr', 'patient care report', 'encounter', 'nemsis'],
       effect: true,
-      inputs: [pin('report', { id: 'report' }, { description: 'The stored patient care report.' })],
+      inputs: [
+        pin('report', REPORT_ID, { label: 'PCR', description: 'The stored patient care report.' })
+      ],
       outputs: [ENCOUNTER_PIN],
       compute: async (inputs, _, ctx) => {
         const { reports } = storesOf();
         const found = await reports.findReport(ctx.runId, inputs.report);
-        if (!found) throw new Error(`Report ${inputs.report} was not found`);
+        if (!found) throw new Error(`PCR ${inputs.report} was not found`);
         const data = await reports.getJson(ctx.runId, found.report);
         const files = await mapLimited(attachmentsOf(data), UPLOAD_CONCURRENCY, (a, i) =>
           reports.putBytes(ctx.runId, attachmentKey(found.report, i), bytesOf(a.data))

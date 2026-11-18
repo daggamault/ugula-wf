@@ -5,7 +5,6 @@ import { Badge } from '../../shared/ui/badge.tsx';
 import { ButtonLink } from '../../shared/ui/button.tsx';
 import { JsonField } from '../../shared/ui/value-field.tsx';
 import type { EffectiveTable } from './client.ts';
-import { ConditionEditor } from './condition-editor.tsx';
 import { ConfigForm } from './config-form.tsx';
 import { ExpressionEditor, ListFormulaEditor } from './expression-editor.tsx';
 import {
@@ -16,7 +15,6 @@ import {
   RuleEditor,
   RuleTestEditor,
   VariableEditor,
-  WhereEditor,
   WorkflowEditor
 } from './node-editors.tsx';
 import type { SettingsEditorProps } from './settings-editor.ts';
@@ -45,10 +43,7 @@ export const SETTINGS_EDITORS: Readonly<Record<string, ComponentType<SettingsEdi
   'std.flow.start-workflow': WorkflowEditor,
   'std.flow.map-workflow': WorkflowEditor,
   'std.flow.spawn-workflows': WorkflowEditor,
-  'std.logic.condition': ConditionEditor,
-  'std.flow.if': ConditionEditor,
   'std.value': ConstantEditor,
-  'std.list.where': WhereEditor,
   'std.object.get-field': FieldEditor,
   'std.object.set-field': FieldEditor,
   'std.convert.to-code': CodeSetEditor,

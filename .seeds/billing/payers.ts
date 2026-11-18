@@ -6,6 +6,8 @@ import {
   breakRecord,
   choiceRule,
   choicesFor,
+  code,
+  codes,
   codeTable,
   d,
   ENCOUNTER,
@@ -14,21 +16,84 @@ import {
   fixed,
   ID,
   INSURANCE,
+  isIn,
   joinLists,
   keepWhere,
   listOf,
   lookup,
+  node,
+  not,
   QUEUE,
   rule,
   stage,
   T
 } from './shared.ts';
 
-const PRIORITIES = {
-  primary: ['Primary Insurance', '2611003'],
-  secondary: ['Secondary Insurance', '2611005'],
-  tertiary: ['Tertiary Insurance', '2611007']
-} as const;
+const PRIORITY = 'billingPriority';
+
+const PRIORITIES = [
+  { id: 'primary', label: 'Primary Insurance', code: '2611003' },
+  { id: 'secondary', label: 'Secondary Insurance', code: '2611005' },
+  { id: 'tertiary', label: 'Tertiary Insurance', code: '2611007' }
+];
+
+const INSURANCE_IN = d(
+  'insurance',
+  T.insurance,
+  'Insurance',
+  'One insurance as the report gives it.'
+);
+
+const resultOut = (description: string) => d('result', 'boolean', 'Result', description);
+
+const hasPriority = (): GraphDef => {
+  const g = rule(
+    [
+      INSURANCE_IN,
+      d('priority', code(PRIORITY), 'Billing Priority', 'The billing priority to look for.')
+    ],
+    [resultOut('Whether the insurance has that billing priority.')]
+  );
+  breakRecord(g, 'insurance', 'Insurance', INSURANCE, 'entry.insurance');
+  node(
+    g,
+    'same',
+    'std.logic.equal',
+    'Same Priority',
+    { a: 'insurance.priority', b: 'entry.priority' },
+    {
+      type: code(PRIORITY)
+    }
+  );
+  g.ret('return');
+  g.wire('same.result', 'return.result');
+  return g.def;
+};
+
+const hasOtherPriority = (): GraphDef => {
+  const g = rule(
+    [INSURANCE_IN],
+    [resultOut('Whether the insurance is not ranked primary, secondary or tertiary.')]
+  );
+  breakRecord(g, 'insurance', 'Insurance', INSURANCE, 'entry.insurance');
+  const ranked = isIn(
+    g,
+    'ranked',
+    'Ranked First, Second or Third',
+    PRIORITY,
+    'insurance.priority',
+    codes(
+      g,
+      'rankedCodes',
+      'Primary, Secondary and Tertiary',
+      PRIORITY,
+      PRIORITIES.map((r) => r.code)
+    )
+  );
+  g.ret('return');
+  g.wire(not(g, 'other', 'Any Other Priority', ranked), 'return.result');
+  return g.def;
+};
 
 const billingOrder = (): GraphDef => {
   const g = rule(
@@ -44,20 +109,23 @@ const billingOrder = (): GraphDef => {
       )
     ]
   );
-  for (const [id, [label, code]] of Object.entries(PRIORITIES)) {
-    keepWhere(g, id, label, 'entry.insurances', { field: 'priority', op: 'is', value: code });
+  for (const r of PRIORITIES) {
+    keepWhere(g, r.id, r.label, 'billing.has-priority', 'insurance', 'entry.insurances', {
+      priority: fixed(r.code)
+    });
   }
-  keepWhere(g, 'others', 'Other Insurances', 'entry.insurances', {
-    field: 'priority',
-    op: 'notOneOf',
-    value: Object.values(PRIORITIES).map(([, code]) => code)
-  });
+  keepWhere(
+    g,
+    'others',
+    'Other Insurances',
+    'billing.has-other-priority',
+    'insurance',
+    'entry.insurances'
+  );
   g.ret('return');
   g.wire(
     joinLists(g, 'ordered', 'Primary, Then Secondary, Then Tertiary, Then Others', T.insurance, [
-      'primary.list',
-      'secondary.list',
-      'tertiary.list',
+      ...PRIORITIES.map((r) => `${r.id}.list` as const),
       'others.list'
     ]),
     'return.insurances'
@@ -69,6 +137,7 @@ const RELATIONSHIPS = codeTable(
   'billing.insured-relationships',
   'Insured Relationships',
   'The X12 code for how the patient is related to the insured, for each NEMSIS relationship (ePayment.22). A relationship the report leaves out is self (18).',
+  code('x12Relationship'),
   {
     '2622001': '18',
     '2622003': '01',
@@ -192,6 +261,18 @@ const determinePayers = (): GraphDef => {
 };
 
 export const payerGraphs: SeedGraph[] = [
+  asRule(
+    'billing.has-priority',
+    'Has Priority',
+    'Whether one insurance has the billing priority given, such as primary.',
+    hasPriority()
+  ),
+  asRule(
+    'billing.has-other-priority',
+    'Has Other Priority',
+    'Whether one insurance is ranked other than primary, secondary or tertiary.',
+    hasOtherPriority()
+  ),
   asRule(
     'billing.billing-order',
     'Billing Order',

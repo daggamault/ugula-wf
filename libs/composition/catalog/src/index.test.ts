@@ -8,6 +8,7 @@ import {
   createStdNodes,
   EVENT_TYPE_PATTERN,
   type GraphDef,
+  isTitleCase,
   nodeDocumentationIssues,
   STD_KINDS,
   stdGraphInfo,
@@ -23,35 +24,6 @@ const UNWIRED: GraphDef = {
   nodes: [],
   edges: []
 };
-
-const MINOR_WORDS = new Set([
-  'a',
-  'an',
-  'the',
-  'and',
-  'but',
-  'or',
-  'nor',
-  'as',
-  'of',
-  'to',
-  'in',
-  'on',
-  'for',
-  'at',
-  'by',
-  'from',
-  'per',
-  'via',
-  'vs',
-  'with'
-]);
-
-const lowerWordOf = (title: string) =>
-  title
-    .split(/\s+/)
-    .map((w) => w.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, ''))
-    .find((w, i) => /^[a-z]/.test(w) && !(i > 0 && MINOR_WORDS.has(w)));
 
 describe('createNodeCatalog', () => {
   it('lists the standard, encounter, billing and record nodes in that order', () => {
@@ -85,20 +57,20 @@ describe('createNodeCatalog', () => {
       ...createNodeCatalog({ fetch }).map((n) => n.title),
       ...Object.values(stdGraphInfo).map((g) => g.title)
     ];
-    for (const title of titles) assert.equal(lowerWordOf(title), undefined, title);
+    assert.deepEqual(
+      titles.filter((t) => !isTitleCase(t)),
+      []
+    );
   });
 
-  it('labels pins and model fields in words rather than raw camelCase names', () => {
-    const rawName = /(^|\s)[a-z]+[A-Z]\w*\s*(·|$)/;
-    const labels = [
-      ...createNodeCatalog({ fetch }).flatMap((node) =>
-        typeof node.signature === 'function'
-          ? []
-          : [...node.signature.inputs, ...node.signature.outputs].map((p) => p.label ?? '')
-      ),
-      ...[...encounterModels, ...billingModels].flatMap((m) => m.fields.map((f) => f.label))
-    ];
-    for (const label of labels) assert.doesNotMatch(label, rawName, label);
+  it('labels every model field in Title Case and describes it', () => {
+    const fields = [...encounterModels, ...billingModels].flatMap((m) =>
+      m.fields.map((f) => ({ ...f, model: m.key }))
+    );
+    assert.deepEqual(
+      fields.filter((f) => !isTitleCase(f.label) || !f.description.endsWith('.')),
+      []
+    );
   });
 
   it('documents every input, output and exit of every registered node', () => {
@@ -150,7 +122,7 @@ describe('workflowEvents', () => {
     assert.equal(new Set(types).size, types.length);
     for (const e of workflowEvents) {
       assert.match(e.type, EVENT_TYPE_PATTERN);
-      assert.equal(lowerWordOf(e.label), undefined, e.label);
+      assert.ok(isTitleCase(e.label), e.label);
       assert.ok(e.description.endsWith('.'), e.type);
     }
   });
@@ -158,10 +130,7 @@ describe('workflowEvents', () => {
   it('documents every payload field with a declared kind', () => {
     for (const e of workflowEvents) {
       for (const p of e.payload) {
-        assert.ok(
-          p.label && lowerWordOf(p.label) === undefined && p.description,
-          `${e.type}.${p.name}`
-        );
+        assert.ok(p.label && isTitleCase(p.label) && p.description, `${e.type}.${p.name}`);
         assert.deepEqual(unknownKinds(p.type, valueKinds), [], `${e.type}.${p.name}`);
       }
     }

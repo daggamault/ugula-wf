@@ -1,5 +1,5 @@
 import * as v from 'valibot';
-import { pin, pureNode } from '../define.ts';
+import { adoptsType, pin, pureNode } from '../define.ts';
 import { toText } from '../json.ts';
 import { valueTypeSchema } from '../schemas.ts';
 import type { Json, NodeDef, PinSpec } from '../types.ts';
@@ -81,6 +81,7 @@ export const chooseNodes: NodeDef[] = [
           ? `${cases.map((c) => c.when).join(', ')} or otherwise`
           : null,
     config: chooseConfig,
+    adopts: adoptsType(/^(option\d+|case\d+|otherwise)$/),
     inputs: inputPins,
     outputs: ({ type }) => [pin('value', type, { description: 'The chosen value.' })],
     compute: (inputs, config) => ({ value: choose(inputs, config) })

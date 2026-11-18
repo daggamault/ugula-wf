@@ -11,16 +11,20 @@ const PERSON: Model = {
   category: 'Test',
   description: 'a person',
   fields: [
-    { name: 'name', type: 'string', label: 'Name' },
-    { name: 'age', type: 'integer', label: 'Age' }
+    { name: 'name', type: 'string', label: 'Name', description: 'What the person is called.' },
+    { name: 'age', type: 'integer', label: 'Age', description: 'How old the person is.' }
   ]
 };
 
 const PERSON_TYPE = { object: { name: 'string', age: 'integer' } } as const;
 
 const FIELD_PINS = [
-  pin('name', 'string', { label: 'Name', optional: true, description: 'Name.' }),
-  pin('age', 'integer', { label: 'Age', optional: true, description: 'Age.' })
+  pin('name', 'string', {
+    label: 'Name',
+    optional: true,
+    description: 'What the person is called.'
+  }),
+  pin('age', 'integer', { label: 'Age', optional: true, description: 'How old the person is.' })
 ];
 
 const nodes = () => {

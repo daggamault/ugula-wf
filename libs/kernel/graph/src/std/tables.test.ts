@@ -221,7 +221,7 @@ describe('shared tables', () => {
     assert.deepEqual(tableRefOf({ id: 'x', type: 'std.math.add', version: 1, config: ref }), null);
   });
 
-  it('fits a table to a node by its fields, or by its keys alone for Where', () => {
+  it('fits a table to a node by its fields', () => {
     const node = (type: string, config: Json): NodeInstance => ({
       id: 'x',
       type,
@@ -230,10 +230,6 @@ describe('shared tables', () => {
     });
     assert.equal(tableFits(node('std.table.decide', ref), LEVELS), true);
     assert.equal(tableFits(node('std.table.decide', ref), { ...LEVELS, outputs: [] }), false);
-    assert.equal(
-      tableFits(node('std.list.where', { table: { key: 'k' } }), { type: 'integer', rows: [] }),
-      true
-    );
     assert.equal(tableFits(node('std.table.lookup', null), { rows: [] }), false);
     assert.equal(
       tableFits(node('std.table.lookup', { table: { key: 'k' } }), { type: 'string', rows: [] }),
@@ -244,7 +240,7 @@ describe('shared tables', () => {
       false
     );
     assert.equal(tableRefOf(node('std.table.lookup', { table: 'billing.codes' })), null);
-    assert.deepEqual(tableRefOf(node('std.list.where', { table: { key: 'billing.codes' } })), {
+    assert.deepEqual(tableRefOf(node('std.table.lookup', { table: { key: 'billing.codes' } })), {
       kind: 'lookup',
       key: 'billing.codes'
     });

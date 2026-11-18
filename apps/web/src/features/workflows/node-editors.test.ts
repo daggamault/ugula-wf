@@ -18,9 +18,7 @@ import {
   ruleOptions,
   VariableEditor,
   versionsOf,
-  WhereEditor,
   WorkflowEditor,
-  whereWithOp,
   workflowOptions
 } from './node-editors.tsx';
 import type { SettingsEditorProps } from './settings-editor.ts';
@@ -379,93 +377,5 @@ describe('GraphInputEditor', () => {
   it('asks for an input when none is chosen', () => {
     show(GraphInputEditor, {});
     assert.equal(shown('Input'), 'Choose an input');
-  });
-});
-
-describe('whereWithOp', () => {
-  const table = { key: 'billing.codes' };
-
-  it('drops the value for a table test', () => {
-    assert.deepEqual(whereWithOp({ field: 'code', op: 'is', value: 'x' }, 'listed'), {
-      field: 'code',
-      op: 'listed'
-    });
-  });
-
-  it('keeps the table between table tests', () => {
-    assert.deepEqual(whereWithOp({ op: 'listed', table }, 'notListed'), { op: 'notListed', table });
-  });
-
-  it('drops the table for a value test', () => {
-    assert.deepEqual(whereWithOp({ op: 'listed', table }, 'is'), { op: 'is' });
-  });
-
-  it('keeps the value between value tests and drops it for presence tests', () => {
-    assert.deepEqual(whereWithOp({ op: 'is', value: 'x' }, 'gt'), { op: 'gt', value: 'x' });
-    assert.deepEqual(whereWithOp({ op: 'is', value: 'x' }, 'present'), { op: 'present' });
-  });
-});
-
-describe('WhereEditor', () => {
-  it('tests a field against a list of values', () => {
-    show(WhereEditor, { field: 'code', op: 'oneOf', value: ['A0427', 'A0429'] });
-    assert.equal(textbox('Field').value, 'code');
-    assert.equal(shown('Test'), 'Is One of');
-    assert.equal(textbox('Value').value, 'A0427, A0429');
-    assert.equal(hintOf(textbox('Value')), 'Separate items with commas.');
-    assert.ok(!screen.queryByRole('textbox', { name: 'Table' }));
-  });
-
-  it('tests a field against the keys of a shared table', () => {
-    show(WhereEditor, { field: 'code', op: 'listed', table: { key: 'billing.codes' } });
-    assert.equal(textbox('Table').value, 'billing.codes');
-    assert.ok(!screen.queryByRole('textbox', { name: 'Value' }));
-  });
-
-  it('asks for no value when the test only checks presence', () => {
-    show(WhereEditor, { op: 'empty' });
-    assert.ok(!screen.queryByRole('textbox', { name: 'Value' }));
-    assert.ok(!screen.queryByRole('textbox', { name: 'Table' }));
-  });
-
-  it('tests for equality when no test is set', () => {
-    show(WhereEditor, {});
-    assert.equal(shown('Test'), 'Is');
-    assert.equal(textbox('Value').value, '');
-  });
-
-  it('sends the field and drops it once cleared', async () => {
-    const { sent, user } = show(WhereEditor, { op: 'is' });
-    await user.type(textbox('Field'), 'a');
-    await user.clear(textbox('Field'));
-    assert.deepEqual(sent, [{ op: 'is', field: 'a' }, { op: 'is' }]);
-  });
-
-  it('sends the typed value and drops it once cleared', async () => {
-    const { sent, user } = show(WhereEditor, { op: 'oneOf' });
-    await user.type(textbox('Value'), 'a,b');
-    assert.deepEqual(sent.at(-1), { op: 'oneOf', value: ['a', 'b'] });
-    await user.clear(textbox('Value'));
-    assert.deepEqual(sent.at(-1), { op: 'oneOf' });
-  });
-
-  it('sends the trimmed table key and drops it once cleared', async () => {
-    const { sent, user } = show(WhereEditor, { op: 'listed' });
-    await user.type(textbox('Table'), ' t ');
-    assert.deepEqual(sent.at(-1), { op: 'listed', table: { key: 't' } });
-    await user.clear(textbox('Table'));
-    assert.deepEqual(sent.at(-1), { op: 'listed' });
-  });
-
-  it('switches to a table test', async () => {
-    const { last, user } = show(WhereEditor, { field: 'code', op: 'is', value: 'x' });
-    await user.click(option('Test', 'Is Listed in Table'));
-    assert.deepEqual(last(), { field: 'code', op: 'listed' });
-    assert.equal(textbox('Table').value, '');
-  });
-
-  it('locks every field when read-only', () => {
-    show(WhereEditor, { op: 'is' }, false);
-    assert.equal(screen.getByRole('group').hasAttribute('disabled'), true);
   });
 });

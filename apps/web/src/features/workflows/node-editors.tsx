@@ -1,13 +1,4 @@
-import {
-  type ConditionOp,
-  fieldPaths,
-  formatType,
-  isListedOp,
-  isRecord,
-  type Json,
-  pathLabel,
-  type ValueType
-} from '@ugula/graph';
+import { fieldPaths, formatType, type Json, pathLabel, type ValueType } from '@ugula/graph';
 import { useContext } from 'react';
 import type { PublishedNode } from '../../shared/graph/catalog.ts';
 import { pinLabel, ValueKindsContext } from '../../shared/graph/pins.ts';
@@ -17,8 +8,6 @@ import { Select, type SelectOption } from '../../shared/ui/select.tsx';
 import { ValueField } from '../../shared/ui/value-field.tsx';
 import { asValueType, recordOf, withEntry } from './config-schema.ts';
 import type { SettingsEditorProps } from './settings-editor.ts';
-import { conditionValue, OPS, takesList, takesValue } from './table-config.ts';
-import { CellInput } from './table-editors.tsx';
 
 const textOf = (value: Json | undefined) => (typeof value === 'string' ? value : '');
 
@@ -298,64 +287,3 @@ export const VariableEditor = namePicker('name', 'Variable', 'Choose a variable'
 export const GraphInputEditor = namePicker('pin', 'Input', 'Choose an input', ({ def }) =>
   def.signature.inputs.map((p) => ({ value: p.name, label: pinLabel(p) }))
 );
-
-const WHERE_OPS = [
-  ...OPS.filter((o) => o.value !== ''),
-  { value: 'listed', label: 'Is Listed in Table' },
-  { value: 'notListed', label: 'Is Not Listed in Table' }
-];
-
-export const whereWithOp = (record: Readonly<Record<string, Json>>, op: string) => {
-  const { value, table, ...rest } = record;
-  const next = { ...rest, op };
-  return isListedOp(op)
-    ? withEntry(next, 'table', table)
-    : withEntry(next, 'value', takesValue(op as ConditionOp) ? value : undefined);
-};
-
-export const WhereEditor = ({ nodeId, config, editable, onConfig }: SettingsEditorProps) => {
-  const record = recordOf(config);
-  const op = textOf(record.op) || 'is';
-  const test = op as ConditionOp;
-  const tableKey = isRecord(record.table) ? textOf(record.table.key) : '';
-  return (
-    <fieldset disabled={!editable} className="flex min-w-0 flex-col gap-5">
-      <Input
-        id={`${nodeId}-field`}
-        label="Field"
-        hint="The path of the field each item is tested by, or empty to test the item itself."
-        value={textOf(record.field)}
-        onChange={(e) => onConfig(withEntry(record, 'field', e.currentTarget.value || undefined))}
-      />
-      <Select
-        id={`${nodeId}-op`}
-        label="Test"
-        options={WHERE_OPS}
-        value={op}
-        onChange={(next) => onConfig(whereWithOp(record, next))}
-      />
-      {isListedOp(op) ? (
-        <Input
-          id={`${nodeId}-table`}
-          label="Table"
-          hint="The key of a shared lookup table, such as billing.transport-codes."
-          isMonospace
-          value={tableKey}
-          onChange={(e) => {
-            const key = e.currentTarget.value.trim();
-            onConfig(withEntry(record, 'table', key ? { key } : undefined));
-          }}
-        />
-      ) : takesValue(test) ? (
-        <CellInput
-          id={`${nodeId}-value`}
-          label="Value"
-          hint={takesList(test) ? 'Separate items with commas.' : undefined}
-          value={record.value}
-          parse={(text) => conditionValue(test, text, 'string')}
-          onValue={(value) => onConfig(withEntry(record, 'value', value ?? undefined))}
-        />
-      ) : null}
-    </fieldset>
-  );
-};

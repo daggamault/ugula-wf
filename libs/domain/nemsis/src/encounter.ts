@@ -1,10 +1,15 @@
-import { isRecord, type Json, type Model, modelType, type ValueType } from '@ugula/graph';
+import {
+  isRecord,
+  type Json,
+  type Model,
+  modelType,
+  nameLabel,
+  type ValueType
+} from '@ugula/graph';
 import { elementLabel } from './elements.ts';
 import { BLOB } from './reports.ts';
 
-type Kind = 'text' | 'texts' | 'number' | 'integer' | 'datetime' | 'icd10' | 'icd10s';
-
-type Element = { name: string; element: string; kind: Kind };
+type Element = { name: string; element: string; type: ValueType };
 
 type Fields = Record<string, Json>;
 
@@ -18,26 +23,22 @@ type Part = {
 
 const CATEGORY = 'Encounter';
 
-const TYPES: Record<Kind, ValueType> = {
-  text: 'string',
-  texts: { list: 'string' },
-  number: 'number',
-  integer: 'integer',
-  datetime: 'datetime',
-  icd10: { code: 'icd10' },
-  icd10s: { list: { code: 'icd10' } }
-};
-
-const el = (name: string, element: string, kind: Kind = 'text'): Element => ({
+const el = (name: string, element: string, type: ValueType = 'string'): Element => ({
   name,
   element,
-  kind
+  type
 });
+
+const coded = (name: string, element: string, kind: string) => el(name, element, { code: kind });
+
+const codedList = (name: string, element: string, kind: string) =>
+  el(name, element, { list: { code: kind } });
 
 const fieldOf = (e: Element) => ({
   name: e.name,
-  type: TYPES[e.kind],
-  label: `${elementLabel(e.element) ?? e.name} · ${e.element}`
+  type: e.type,
+  label: elementLabel(e.element) ?? nameLabel(e.name),
+  description: `NEMSIS ${e.element}, as the report gives it.`
 });
 
 const partModel = (p: Part): Model => ({
@@ -57,13 +58,20 @@ const addressOf = (line: string, city: string, county: string, state: string, zi
   el('postalCode', zip)
 ];
 
+const field = (name: string, type: ValueType, label: string, description: string) => ({
+  name,
+  type,
+  label,
+  description
+});
+
 const ADDRESS_FIELDS = [
-  { name: 'line', type: 'string', label: 'Street address' },
-  { name: 'city', type: 'string', label: 'City' },
-  { name: 'county', type: 'string', label: 'County' },
-  { name: 'state', type: 'string', label: 'State' },
-  { name: 'postalCode', type: 'string', label: 'ZIP code' }
-] as const;
+  field('line', 'string', 'Street Address', 'The street address.'),
+  field('city', 'string', 'City', 'The city, named even when the report gave its code.'),
+  field('county', 'string', 'County', 'The county, named even when the report gave its code.'),
+  field('state', 'string', 'State', 'The state, named even when the report gave its code.'),
+  field('postalCode', 'string', 'ZIP Code', 'The ZIP code.')
+];
 
 const ADDRESS: Model = {
   key: 'address',
@@ -100,9 +108,9 @@ const PERSON_ELEMENTS = [
   el('lastName', 'ePatient.02'),
   el('birthDate', 'ePatient.17'),
   el('age', 'ePatient.15', 'integer'),
-  el('ageUnits', 'ePatient.16'),
-  el('sex', 'ePatient.25'),
-  el('gender', 'ePatient.13'),
+  coded('ageUnits', 'ePatient.16', 'ageUnits'),
+  coded('sex', 'ePatient.25', 'sex'),
+  coded('gender', 'ePatient.13', 'gender'),
   el('phone', 'ePatient.18'),
   el('weightKg', 'eExam.01', 'number')
 ];
@@ -115,20 +123,43 @@ const PERSON: Model = {
   description: 'a person as the report names them: name, birth date, sex, address and phone',
   fields: [
     ...PERSON_ELEMENTS.map(fieldOf),
-    { name: 'address', type: ADDRESS_TYPE, label: 'Home address' }
+    field('address', ADDRESS_TYPE, 'Home Address', 'Where the patient lives.')
   ]
 };
 
-const LOCATION: Model = {
-  key: 'location',
-  name: 'location',
-  title: 'Location',
+const SCENE: Model = {
+  key: 'scene',
+  name: 'scene',
+  title: 'Scene',
   category: CATEGORY,
-  description: 'a place the trip started or ended: its name, type and address',
+  description: 'where the patient was picked up: its name, type of location and address',
   fields: [
-    { name: 'name', type: 'string', label: 'Name of the facility or place' },
-    { name: 'type', type: 'string', label: 'Type of place (NEMSIS code)' },
-    { name: 'address', type: ADDRESS_TYPE, label: 'Address' }
+    field('name', 'string', 'Name', 'The facility or location name, NEMSIS eScene.13.'),
+    field(
+      'type',
+      { code: 'locationType' },
+      'Location Type',
+      'The type of location, NEMSIS eScene.09.'
+    ),
+    field('address', ADDRESS_TYPE, 'Address', 'Where the patient was picked up.')
+  ]
+};
+
+const DESTINATION: Model = {
+  key: 'destination',
+  name: 'destination',
+  title: 'Destination',
+  category: CATEGORY,
+  description: 'where the patient was taken: its name, type of destination and address',
+  fields: [
+    field('name', 'string', 'Name', 'The destination name, NEMSIS eDisposition.01.'),
+    field(
+      'type',
+      { code: 'destinationType' },
+      'Destination Type',
+      'The type of destination, NEMSIS eDisposition.21.'
+    ),
+    field('address', ADDRESS_TYPE, 'Address', 'Where the patient was taken.')
   ]
 };
 
@@ -170,17 +201,17 @@ const PAYMENT: Part = {
   description:
     'what the report records for billing: payment method, physician certification, transport reason and conditions',
   elements: [
-    el('method', 'ePayment.01'),
-    el('certification', 'ePayment.02'),
+    coded('method', 'ePayment.01', 'paymentMethod'),
+    coded('certification', 'ePayment.02', 'yesNo'),
     el('certificationDate', 'ePayment.03'),
-    el('certificationReason', 'ePayment.04'),
-    el('transportReason', 'ePayment.44'),
-    el('ambulanceConditions', 'ePayment.47', 'texts'),
+    coded('certificationReason', 'ePayment.04', 'certificationReason'),
+    coded('transportReason', 'ePayment.44', 'transportReason'),
+    codedList('ambulanceConditions', 'ePayment.47', 'ambulanceCondition'),
     el('closestFacilityMiles', 'ePayment.48', 'number'),
-    el('alsAssessment', 'ePayment.49'),
-    el('serviceLevel', 'ePayment.50'),
-    el('conditionCodes', 'ePayment.51', 'texts'),
-    el('transportIndicators', 'ePayment.52', 'texts'),
+    coded('alsAssessment', 'ePayment.49', 'yesNo'),
+    coded('serviceLevel', 'ePayment.50', 'cmsServiceLevel'),
+    codedList('conditionCodes', 'ePayment.51', 'conditionCode'),
+    codedList('transportIndicators', 'ePayment.52', 'transportIndicator'),
     el('priorAuthorization', 'ePayment.53')
   ]
 };
@@ -193,12 +224,12 @@ const INSURANCE: Part = {
   elements: [
     el('companyId', 'ePayment.09'),
     el('companyName', 'ePayment.10'),
-    el('priority', 'ePayment.11'),
+    coded('priority', 'ePayment.11', 'billingPriority'),
     el('groupId', 'ePayment.17'),
     el('memberId', 'ePayment.18'),
     el('insuredLastName', 'ePayment.19'),
     el('insuredFirstName', 'ePayment.20'),
-    el('relationship', 'ePayment.22')
+    coded('relationship', 'ePayment.22', 'relationship')
   ]
 };
 
@@ -209,10 +240,10 @@ const MEDICATION: Part = {
   description: 'one medication the crew gave',
   elements: [
     el('givenAt', 'eMedications.01', 'datetime'),
-    el('code', 'eMedications.03'),
-    el('route', 'eMedications.04'),
+    coded('code', 'eMedications.03', 'rxnorm'),
+    coded('route', 'eMedications.04', 'medicationRoute'),
     el('dosage', 'eMedications.05', 'number'),
-    el('dosageUnits', 'eMedications.06')
+    coded('dosageUnits', 'eMedications.06', 'dosageUnits')
   ]
 };
 
@@ -221,7 +252,10 @@ const PROCEDURE: Part = {
   name: 'procedure',
   title: 'Procedure',
   description: 'one procedure the crew performed',
-  elements: [el('performedAt', 'eProcedures.01', 'datetime'), el('code', 'eProcedures.03')]
+  elements: [
+    el('performedAt', 'eProcedures.01', 'datetime'),
+    coded('code', 'eProcedures.03', 'snomed')
+  ]
 };
 
 const VITAL: Part = {
@@ -247,10 +281,10 @@ const SIGNATURE: Part = {
   title: 'Signature',
   description: 'one signature collected or attempted',
   elements: [
-    el('signer', 'eOther.12'),
-    el('reasons', 'eOther.13', 'texts'),
+    coded('signer', 'eOther.12', 'signerType'),
+    codedList('reasons', 'eOther.13', 'signatureReason'),
     el('representative', 'eOther.14'),
-    el('status', 'eOther.15'),
+    coded('status', 'eOther.15', 'signatureStatus'),
     el('signedAt', 'eOther.19', 'datetime'),
     el('lastName', 'eOther.20'),
     el('firstName', 'eOther.21')
@@ -262,11 +296,15 @@ const CREW_MEMBER: Part = {
   name: 'crewMember',
   title: 'Crew Member',
   description: 'one member of the crew',
-  elements: [el('id', 'eCrew.01'), el('level', 'eCrew.02'), el('role', 'eCrew.03')]
+  elements: [
+    el('id', 'eCrew.01'),
+    coded('level', 'eCrew.02', 'crewLevel'),
+    coded('role', 'eCrew.03', 'crewRole')
+  ]
 };
 
 const ATTACHMENT_ELEMENTS = [
-  el('documentType', 'eOther.09'),
+  coded('documentType', 'eOther.09', 'documentType'),
   el('fileType', 'eOther.10'),
   el('name', 'eOther.22')
 ];
@@ -277,7 +315,10 @@ const ATTACHMENT: Model = {
   title: 'Attachment',
   category: CATEGORY,
   description: 'one file attached to the report, such as a facesheet or a physician certification',
-  fields: [...ATTACHMENT_ELEMENTS.map(fieldOf), { name: 'file', type: BLOB, label: 'Stored file' }]
+  fields: [
+    ...ATTACHMENT_ELEMENTS.map(fieldOf),
+    field('file', BLOB, 'Stored File', 'Where the attached file is stored.')
+  ]
 };
 
 const typeOf = (p: Part) => modelType(partModel(p));
@@ -286,33 +327,33 @@ const listOf = (t: ValueType): ValueType => ({ list: t });
 
 const TRIP_ELEMENTS = [
   el('incidentNumber', 'eResponse.03'),
-  el('serviceType', 'eResponse.05'),
+  coded('serviceType', 'eResponse.05', 'serviceType'),
   el('unitNumber', 'eResponse.13'),
   el('callSign', 'eResponse.14'),
-  el('responseMode', 'eResponse.23'),
-  el('responseModifiers', 'eResponse.24', 'texts'),
-  el('incidentDisposition', 'eDisposition.12'),
-  el('unitDisposition', 'eDisposition.27'),
-  el('patientEvaluation', 'eDisposition.28'),
-  el('crewDisposition', 'eDisposition.29'),
-  el('transportDisposition', 'eDisposition.30'),
-  el('levelOfCare', 'eDisposition.32'),
-  el('transportMode', 'eDisposition.17'),
-  el('destinationReasons', 'eDisposition.20', 'texts'),
-  el('patientsAtScene', 'eScene.06'),
+  coded('responseMode', 'eResponse.23', 'responseMode'),
+  codedList('responseModifiers', 'eResponse.24', 'responseModifier'),
+  coded('incidentDisposition', 'eDisposition.12', 'incidentDisposition'),
+  coded('unitDisposition', 'eDisposition.27', 'unitDisposition'),
+  coded('patientEvaluation', 'eDisposition.28', 'patientEvaluation'),
+  coded('crewDisposition', 'eDisposition.29', 'crewDisposition'),
+  coded('transportDisposition', 'eDisposition.30', 'transportDisposition'),
+  coded('levelOfCare', 'eDisposition.32', 'levelOfCare'),
+  coded('transportMode', 'eDisposition.17', 'transportMode'),
+  codedList('destinationReasons', 'eDisposition.20', 'destinationReason'),
+  coded('patientsAtScene', 'eScene.06', 'patientsAtScene'),
   el('patientsTransported', 'eDisposition.11', 'integer')
 ];
 
 const CLINICAL_ELEMENTS = [
   el('complaint', 'eSituation.04'),
-  el('primarySymptom', 'eSituation.09'),
-  el('otherSymptoms', 'eSituation.10', 'texts'),
-  el('primaryImpression', 'eSituation.11', 'icd10'),
-  el('secondaryImpressions', 'eSituation.12', 'icd10s'),
-  el('workRelated', 'eSituation.14'),
-  el('injuryCauses', 'eInjury.01', 'texts'),
-  el('cardiacArrest', 'eArrest.01'),
-  el('arrestOutcome', 'eArrest.18')
+  coded('primarySymptom', 'eSituation.09', 'icd10'),
+  codedList('otherSymptoms', 'eSituation.10', 'icd10'),
+  coded('primaryImpression', 'eSituation.11', 'icd10'),
+  codedList('secondaryImpressions', 'eSituation.12', 'icd10'),
+  coded('workRelated', 'eSituation.14', 'yesNo'),
+  codedList('injuryCauses', 'eInjury.01', 'icd10'),
+  coded('cardiacArrest', 'eArrest.01', 'cardiacArrest'),
+  coded('arrestOutcome', 'eArrest.18', 'arrestOutcome')
 ];
 
 export const ENCOUNTER: Model = {
@@ -323,26 +364,61 @@ export const ENCOUNTER: Model = {
   description:
     'one patient care report: the trip, the patient, the care given and the billing details',
   fields: [
-    { name: 'id', type: { id: 'encounter' }, label: 'Encounter ID' },
-    { name: 'pcrNumber', type: 'string', label: 'Patient care report number · eRecord.01' },
-    { name: 'revision', type: 'integer', label: 'Revision, 1 for the first copy received' },
-    { name: 'reportId', type: { id: 'report' }, label: 'Report this copy was read from' },
+    field('id', { id: 'encounter' }, 'Encounter', 'The encounter, once saved.'),
+    field(
+      'pcrNumber',
+      'string',
+      'PCR Number',
+      'The patient care report number, NEMSIS eRecord.01.'
+    ),
+    field('revision', 'integer', 'Revision', 'Which copy this is, 1 for the first one received.'),
+    field('reportId', { id: 'report' }, 'PCR', 'The patient care report this copy was read from.'),
     ...TRIP_ELEMENTS.map(fieldOf),
-    { name: 'times', type: typeOf(TIMES), label: 'Times' },
-    { name: 'odometer', type: typeOf(ODOMETER), label: 'Odometer' },
-    { name: 'patient', type: modelType(PERSON), label: 'Patient' },
-    { name: 'pickup', type: modelType(LOCATION), label: 'Pickup (the scene)' },
-    { name: 'destination', type: modelType(LOCATION), label: 'Destination' },
+    field(
+      'times',
+      typeOf(TIMES),
+      'Times',
+      'The times of the trip, from the call to back in service.'
+    ),
+    field('odometer', typeOf(ODOMETER), 'Odometer', 'The odometer at each point of the trip.'),
+    field('patient', modelType(PERSON), 'Patient', 'The patient as the report names them.'),
+    field('pickup', modelType(SCENE), 'Pickup', 'Where the patient was picked up.'),
+    field('destination', modelType(DESTINATION), 'Destination', 'Where the patient was taken.'),
     ...CLINICAL_ELEMENTS.map(fieldOf),
-    { name: 'medications', type: listOf(typeOf(MEDICATION)), label: 'Medications given' },
-    { name: 'procedures', type: listOf(typeOf(PROCEDURE)), label: 'Procedures performed' },
-    { name: 'vitals', type: listOf(typeOf(VITAL)), label: 'Vital signs' },
-    { name: 'payment', type: typeOf(PAYMENT), label: 'Payment' },
-    { name: 'insurances', type: listOf(typeOf(INSURANCE)), label: 'Insurances as reported' },
-    { name: 'signatures', type: listOf(typeOf(SIGNATURE)), label: 'Signatures' },
-    { name: 'crew', type: listOf(typeOf(CREW_MEMBER)), label: 'Crew' },
-    { name: 'narrative', type: 'string', label: 'Narrative · eNarrative.01' },
-    { name: 'attachments', type: listOf(modelType(ATTACHMENT)), label: 'Attached files' }
+    field(
+      'medications',
+      listOf(typeOf(MEDICATION)),
+      'Medications',
+      'Each medication the crew gave.'
+    ),
+    field(
+      'procedures',
+      listOf(typeOf(PROCEDURE)),
+      'Procedures',
+      'Each procedure the crew performed.'
+    ),
+    field('vitals', listOf(typeOf(VITAL)), 'Vital Signs', 'Each set of vital signs taken.'),
+    field('payment', typeOf(PAYMENT), 'Payment', 'How the trip is paid for and why it was needed.'),
+    field(
+      'insurances',
+      listOf(typeOf(INSURANCE)),
+      'Insurances',
+      'Each insurance as the report gives it, before it is matched to a payer.'
+    ),
+    field(
+      'signatures',
+      listOf(typeOf(SIGNATURE)),
+      'Signatures',
+      'Each signature collected or attempted.'
+    ),
+    field('crew', listOf(typeOf(CREW_MEMBER)), 'Crew', 'Each member of the crew.'),
+    field('narrative', 'string', 'Narrative', 'The crew narrative, NEMSIS eNarrative.01.'),
+    field(
+      'attachments',
+      listOf(modelType(ATTACHMENT)),
+      'Attachments',
+      'Each file attached to the report.'
+    )
   ]
 };
 
@@ -354,7 +430,8 @@ export const encounterModels: Model[] = [
   partModel(ODOMETER),
   PERSON,
   ADDRESS,
-  LOCATION,
+  SCENE,
+  DESTINATION,
   ...[PAYMENT, INSURANCE, MEDICATION, PROCEDURE, VITAL, SIGNATURE, CREW_MEMBER].map(partModel),
   ATTACHMENT
 ];
@@ -398,25 +475,19 @@ const numberOf = (text: string | null) => {
   return Number.isFinite(n) ? n : null;
 };
 
-const elementValue = (x: unknown, { element, kind }: Element): Json => {
+const elementValue = (x: unknown, { element, type }: Element): Json => {
   const found = find(x, element);
   const texts = (Array.isArray(found) ? found : [found]).map(textOf);
   const first = texts.find((t) => t !== null) ?? null;
-  switch (kind) {
-    case 'texts':
-    case 'icd10s':
-      return texts.filter((t): t is string => t !== null);
-    case 'number':
-      return numberOf(first);
-    case 'integer': {
-      const n = numberOf(first);
-      return n !== null && Number.isInteger(n) ? n : null;
-    }
-    case 'text':
-    case 'datetime':
-    case 'icd10':
-      return first;
+  if (typeof type === 'object' && 'list' in type) {
+    return texts.filter((t): t is string => t !== null);
   }
+  if (type === 'number') return numberOf(first);
+  if (type === 'integer') {
+    const n = numberOf(first);
+    return n !== null && Number.isInteger(n) ? n : null;
+  }
+  return first;
 };
 
 const read = (x: unknown, elements: readonly Element[]): Fields =>

@@ -24,7 +24,7 @@ export const nemsisEvents: EventDef[] = [
     label: 'PCR File Received',
     description: 'A NEMSIS file of patient care reports was uploaded or arrived over SFTP.',
     payload: [
-      p('importId', 'string', 'Import', 'The import the file started.'),
+      p('importId', { id: 'import' }, 'Import', 'The import the file started.'),
       p('file', BLOB, 'File', 'Where the file is stored.'),
       p('fileName', 'string', 'File Name', 'The name the file arrived with.')
     ]

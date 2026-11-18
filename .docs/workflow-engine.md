@@ -35,7 +35,7 @@ Pin, variable and field types are `ValueType`s, written as text by `formatType` 
 
 At run time a kind is plain text (`checkValue`); `isTextType` tells the types entered as text.
 
-The engine knows no kinds of its own beyond `run` (`STD_KINDS`); kind names only have to be camelCase (`a-z` first). Each domain declares the kinds it owns with their labels (`billingKinds`: `claim`, `patient`, `payer`, `task` and `hcpcs`, `icd10`, `modifier`; `nemsisKinds`: `encounter` and `report`), and `valueKinds` in `libs/composition/catalog` merges them (`mergeKinds`). `createRegistry(nodes, graphs, kinds)` carries them, and `validateGraph` reports any graph pin, variable or node pin using a kind nobody declared (`unknownKinds`), so the API save and the seed gate catch typos. The editor names a kind by its label, or by its name in Title Case.
+The engine knows no kinds of its own beyond `run` (`STD_KINDS`); kind names only have to be camelCase (`a-z` first). Each domain declares the kinds it owns with their labels (`billingKinds`: `claim`, `patient`, `payer`, `task` and `hcpcs`, `icd10`, `modifier`, `tripClassification`, `levelOfService`, `placeCode`, `x12Relationship`; `nemsisKinds`: `encounter`, `import`, `report` and one code kind per NEMSIS code set the Encounter reads, such as `incidentDisposition`, `serviceType`, `locationType`, `destinationType`, `medicationRoute`, `rxnorm` and `snomed`), and `valueKinds` in `libs/composition/catalog` merges them (`mergeKinds`). `createRegistry(nodes, graphs, kinds)` carries them, and `validateGraph` reports any graph pin, variable or node pin using a kind nobody declared (`unknownKinds`), so the API save and the seed gate catch typos. The editor names a kind by its label, or by its name in Title Case.
 
 ## Nodes
 
@@ -43,12 +43,13 @@ Nodes are defined with `pureNode`, `actionNode` or `branchNode` and `pin()` (`li
 
 A node definition (`NodeDef`) also carries what the editor shows:
 
-- `level`: `basic` for what billers compose rules from (service nodes, tables, human tasks, conditions, Choose Value, comparisons, logic, math, text, time, list basics, rules run per item, fields, Make and Break, Constant, branch, switch, for each, sequence, run and start workflow, Reroute), `advanced` for internals (formulas, variables, untyped paths, JSON, loop and gate machinery).
+- `level`: `basic` for what billers compose rules from (service nodes, tables, human tasks, Select, Choose Value, comparisons, logic, math, text, time, list basics, rules run per item, fields, Make and Break, Constant, branch, switch, for each, sequence, run and start workflow, Reroute), `advanced` for internals (formulas, variables, untyped paths, JSON, loop and gate machinery).
 - `keywords`: more words the palette search matches.
 - `exits`: a label and description per exec output, as in `signature.exits`. `branchNode` takes them as `exits: { name: { label, description } }`, whose keys are its exec outputs.
 - `summary(config)`: one line describing the configured node on the canvas (the formula, `Table: <key>`, `Task: <title>`, the switch cases, the variable or workflow), or `null`.
+- `adopts`: which input pins set which config key when a typed wire is first connected (`adoptsType`, `adoptsItemType`, or a record for Get and Set Field). Generic primitives take a `type` config (`any` by default) that types their pins: list nodes, Equal, Not Equal and the comparisons, Select, Coalesce, Choose Value, Make and Join List, For Each and Reroute. The editor reads `adopts` from the catalog (`adoptionsOf`), so once Contains has a `list<code<serviceType>>` wired in, its item only takes a `code<serviceType>`.
 
-`nodeDocumentationIssues(def)` checks a node as first placed: every input and output described, every exit other than `then` labelled or described, labels in Title Case. The catalog test runs it over every registered node.
+`nodeDocumentationIssues(def)` checks a node as first placed: a Title Case title and a description, every input and output described, every exit other than `then` labelled or described, pin and exit labels in Title Case (`isTitleCase`). The catalog test runs it over every registered node, and checks that every model field has a Title Case label and a description.
 
 **Run Rule for Each**, **Keep Items Where** and **Find Item Where** (`std.list.map-rule`, `filter-rule`, `find-rule`) run a rule (a pure `node` graph, set as `{ rule, version, item }`, plus `test` for the last two) once per list item. `item` names the rule input each item goes to; the rule's other inputs become the node's own and are the same for every item. Their pins take their types from the rule (`SignatureContext.signatureOf`), the engine runs the rule through `NodeContext.evaluate`, and `graphRefs` counts the rule as a subgraph, so it is validated, pinned and retargeted like one. This is how per-item logic stays on the canvas instead of in a formula.
 
@@ -56,8 +57,7 @@ Pure primitives tolerate missing data: math nodes give nothing when a number is 
 
 Primitives that keep decisions readable on the canvas:
 
-- **Condition** tests its inputs and reads as a sentence ("Loaded Miles is more than 500"); a test can compare an input with a value or with another input (`input`), so a limit wired from a table needs no arithmetic first. **Choose Value** picks by case or the first that is set, and And, Or and Not combine tests.
-- **Where** keeps the items whose field passes a test, including `listed` and `notListed` against the keys of a shared table (`table: { key }`), so a code set stays a table.
+- Tests are small typed primitives: a **Constant** list of codes and **Contains**, **Equal** and **Not Equal**, **Greater Than** and the other comparisons, **Is Null** and **Starts with**; **And**, **Or** and **Not** combine them, **Select** gives a value when a test holds, and **Choose Value** picks by case or the first that is set. A rule that returns a decision with reasons gives each reason with a Select and drops the empty ones (Make List, Drop Empty).
 - **Round** rounds to the nearest, up or down (`direction`); **Start of Period** and **Time Between** do the date math.
 - Text: **Join** takes a **Last Separator** ("a, b and c"), **Count with Noun** writes "1 warning" or "3 warnings", **Capitalize** capitalizes the first letter, **Text Template** fills a fixed pattern with optional parts, and **Fill Template** fills a pattern that arrives on a wire, such as a message from a table.
 
@@ -65,22 +65,22 @@ Node titles are Title Case with minor words in lowercase (Greater or Equal, Wait
 
 `std.flow.reroute` is a knot on a wire: it passes `value` through unchanged, typed by its `type` setting (`any` by default).
 
-| Kind      | Examples                                                                                                                                                                                                                                                                                                                    |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Standard  | flow (branch, switch, reroute, for-each, while, try, wait, wait for signal, run/start/map/spawn workflows), variables, math, logic, text, lists, objects, time, tables (Decision Table, Lookup Table, inline or a shared table by key; Where can keep items listed in a shared table), human task, HTTP                     |
-| Records   | A **Break** and a **Make** node per record (`createModelNodes`): the Encounter and its parts in `libs/domain/nemsis` (Person, Address, Location, Times, Odometer, Payment, Insurance, Medication, Procedure, Vital Signs, Signature, Crew Member, Attachment), the Claim, Coverage and Charge Line in `libs/domain/billing` |
-| Services  | Nodes that do I/O: Read PCR File, Read PCR, Save Encounter and Read Encounter (`libs/domain/nemsis/src/nodes.ts`); Find Patient, Save Patient, Find Payer, Find Fee and Save Claim (`libs/domain/billing/src/nodes.ts`). They reach the database through store ports the worker implements                                  |
-| Composite | Any published `node` graph, called like a node                                                                                                                                                                                                                                                                              |
+| Kind      | Examples                                                                                                                                                                                                                                                                                                                              |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Standard  | flow (branch, switch, reroute, for-each, while, try, wait, wait for signal, run/start/map/spawn workflows), variables, math, logic, text, lists, objects, time, tables (Decision Table, Lookup Table, inline or a shared table by key), human task, HTTP                                                                              |
+| Records   | A **Break** and a **Make** node per record (`createModelNodes`): the Encounter and its parts in `libs/domain/nemsis` (Person, Address, Scene, Destination, Times, Odometer, Payment, Insurance, Medication, Procedure, Vital Signs, Signature, Crew Member, Attachment), the Claim, Coverage and Charge Line in `libs/domain/billing` |
+| Services  | Nodes that do I/O: Read PCR File (`pcr-file.read`), Read PCR (`report.read`), Save Encounter and Read Encounter (`libs/domain/nemsis/src/nodes.ts`); Find Patient, Save Patient, Find Payer, Find Fee and Save Claim (`libs/domain/billing/src/nodes.ts`). They reach the database through store ports the worker implements          |
+| Composite | Any published `node` graph, called like a node                                                                                                                                                                                                                                                                                        |
 
 ## Triggers and events
 
 Like an Unreal **Event** node or an n8n trigger, a workflow's start node (`Entry`) says what starts it (`config.trigger`, `triggerSchema` in `libs/kernel/graph/src/triggers.ts`):
 
-| Trigger  | Config                              | Starts                                                                                     |
-| -------- | ----------------------------------- | ------------------------------------------------------------------------------------------ |
-| Manual   | `{ kind: 'manual' }` (the default)  | From the app, the API or another graph (run, start, map and spawn workflow nodes)          |
-| On Event | `{ kind: 'event', event, where }`   | Once per event of that type whose payload passes every `where` test (the Condition tests)  |
-| Schedule | `{ kind: 'schedule', every, hour }` | Every day, every Monday or the first of every month, at the hour in the agency's time zone |
+| Trigger  | Config                              | Starts                                                                                                                                            |
+| -------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Manual   | `{ kind: 'manual' }` (the default)  | From the app, the API or another graph (run, start, map and spawn workflow nodes)                                                                 |
+| On Event | `{ kind: 'event', event, where }`   | Once per event of that type whose payload passes every `where` test (is, one of, more than and the other condition tests, as in a Decision Table) |
+| Schedule | `{ kind: 'schedule', every, hour }` | Every day, every Monday or the first of every month, at the hour in the agency's time zone                                                        |
 
 - **Events** are typed: each domain declares an `EventDef` (`type` such as `encounter.created`, `label`, `description` and `payload` pins), and `workflowEvents` in `libs/composition/catalog` merges them. `createRegistry(nodes, graphs, kinds, events)` carries them, and `validateGraph` (`triggerIssues`) checks that the event exists, that each tested field is in its payload, and that every input of the workflow is a payload field of an assignable type, optional or defaulted; a scheduled workflow gets no inputs, so each needs a default. Only a `workflow` graph may have a trigger (`SUBWORKFLOW_TRIGGER`, checked on save, publish and seed). A run takes the payload fields its inputs name (`triggerInputs`).
 - **Outbox:** an event is a row in `events`, written in the same transaction as the change it reports. Code writes one with `emitEvent` (`libs/data/db/src/events.ts`); encounters, claims and tasks write theirs with database triggers (`.migrations/events.ts`), so no code path can save an encounter or claim without its event. Every insert notifies `workflow_events`.

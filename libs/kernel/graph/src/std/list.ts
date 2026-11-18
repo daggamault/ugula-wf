@@ -1,13 +1,12 @@
 import * as v from 'valibot';
-import { pin, pureNode } from '../define.ts';
+import { adoptsItemType, adoptsType, pin, pureNode } from '../define.ts';
 import { fail } from '../errors.ts';
 import { createEvaluator, parseExpr } from '../expr.ts';
 import { MAX_RANGE, sortKey } from '../expr-functions.ts';
-import { deepEqual, getPath, groupBy, isTruthy, toText } from '../json.ts';
-import { jsonSchema, type TypeConfig, typeConfig, valueTypeSchema } from '../schemas.ts';
+import { deepEqual, getPath, groupBy, isTruthy } from '../json.ts';
+import { type TypeConfig, typeConfig, valueTypeSchema } from '../schemas.ts';
 import type { Json, NodeDef, PinSpec, Values, ValueType } from '../types.ts';
 import { type ExpressionConfig, expressionConfig, identifierPins, oneLine } from './expression.ts';
-import { CONDITION_OPS, holds, tableRefSchema, unresolved } from './tables.ts';
 
 const CATEGORY = 'Lists';
 const ANY_LIST: ValueType = { list: 'any' };
@@ -17,27 +16,27 @@ const LIST_IN = pin('list', ANY_LIST, {
   description: 'The list to work on; an empty list when missing.'
 });
 const LIST_OUT = pin('list', ANY_LIST, { description: 'The resulting list.' });
-const VALUES_OUT = pin('list', ANY_LIST, { description: 'The resulting list.' });
-const ITEM_OUT = pin('item', 'any', { description: 'The item, or nothing.' });
 const RESULT = pin('result', 'boolean', { description: 'True or false.' });
-const ITEM_IN = pin('item', 'any', { optional: true, description: 'The item.' });
-const OTHER_IN = pin('other', ANY_LIST, { description: 'The list to add after it.' });
 
-const ITEM_PINS: ReadonlySet<PinSpec> = new Set([ITEM_IN, ITEM_OUT]);
+const listIn = (type: ValueType) => ({ ...LIST_IN, type: { list: type } });
 
-const LIST_PINS: ReadonlySet<PinSpec> = new Set([LIST_IN, LIST_OUT, OTHER_IN]);
+const listOut = (type: ValueType) => ({ ...LIST_OUT, type: { list: type } });
 
-const ofType = (pins: PinSpec[], type: ValueType) =>
-  pins.map((p) =>
-    ITEM_PINS.has(p) ? { ...p, type } : LIST_PINS.has(p) ? { ...p, type: { list: type } } : p
-  );
+const itemIn = (type: ValueType) => pin('item', type, { optional: true, description: 'The item.' });
+
+const itemOut = (type: ValueType) => pin('item', type, { description: 'The item, or nothing.' });
+
+const otherIn = (type: ValueType) =>
+  pin('other', { list: type }, { description: 'The list to add after it.' });
+
+type TypedPins = (type: ValueType) => PinSpec[];
 
 const listNode = (
   key: string,
   title: string,
   description: string,
-  inputs: PinSpec[],
-  outputs: PinSpec[],
+  inputs: TypedPins,
+  outputs: TypedPins,
   compute: (inputs: Values) => Values
 ) =>
   pureNode<TypeConfig>({
@@ -48,8 +47,9 @@ const listNode = (
     level: 'basic',
     keywords: ['list'],
     config: typeConfig,
-    inputs: ({ type }) => ofType([LIST_IN, ...inputs], type),
-    outputs: ({ type }) => ofType(outputs, type),
+    adopts: [...adoptsItemType(/^(list|other)$/), ...adoptsType(/^item$/)],
+    inputs: ({ type }) => [listIn(type), ...inputs(type)],
+    outputs: ({ type }) => outputs(type),
     compute
   });
 
@@ -85,28 +85,6 @@ const items = (x: Values) => (x.list ?? []) as Json[];
 const fieldOf = (item: Json, field: Json) =>
   typeof field === 'string' && field ? getPath(item, field) : item;
 
-const LISTED_OPS = ['listed', 'notListed'] as const;
-
-export const isListedOp = (op: string): op is (typeof LISTED_OPS)[number] =>
-  (LISTED_OPS as readonly string[]).includes(op);
-
-const whereConfig = v.pipe(
-  v.object({
-    field: v.optional(v.string(), ''),
-    op: v.optional(v.picklist([...CONDITION_OPS, ...LISTED_OPS]), 'is'),
-    value: v.optional(jsonSchema),
-    table: v.optional(tableRefSchema),
-    rows: v.optional(v.array(v.object({ key: v.string() })))
-  }),
-  v.check(
-    ({ op, value, table, rows }) =>
-      isListedOp(op)
-        ? value === undefined && (table !== undefined || rows !== undefined)
-        : table === undefined && rows === undefined,
-    'Name a shared table for is listed and is not listed, and only for them'
-  )
-);
-
 const makeConfig = v.object({
   count: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(32)), 2),
   type: v.optional(valueTypeSchema, 'any')
@@ -133,8 +111,8 @@ export const listNodes: NodeDef[] = [
     'length',
     'Length',
     'Counts the items of a list.',
-    [],
-    [pin('length', 'integer', { description: 'How many items the list has.' })],
+    () => [],
+    () => [pin('length', 'integer', { description: 'How many items the list has.' })],
     (x) => ({
       length: items(x).length
     })
@@ -143,16 +121,16 @@ export const listNodes: NodeDef[] = [
     'get',
     'Get Item',
     'Gives the item at a position, counting from 0; a negative position counts from the end.',
-    [pin('index', 'integer', { description: 'The position of the item.' })],
-    [ITEM_OUT],
+    () => [pin('index', 'integer', { description: 'The position of the item.' })],
+    (t) => [itemOut(t)],
     (x) => ({ item: items(x).at(x.index as number) ?? null })
   ),
   listNode(
     'first',
     'First',
     'Gives the first item of a list, or nothing when the list is empty.',
-    [],
-    [ITEM_OUT],
+    () => [],
+    (t) => [itemOut(t)],
     (x) => ({
       item: items(x)[0] ?? null
     })
@@ -161,8 +139,8 @@ export const listNodes: NodeDef[] = [
     'last',
     'Last',
     'Gives the last item of a list, or nothing when the list is empty.',
-    [],
-    [ITEM_OUT],
+    () => [],
+    (t) => [itemOut(t)],
     (x) => ({
       item: items(x).at(-1) ?? null
     })
@@ -171,30 +149,30 @@ export const listNodes: NodeDef[] = [
     'append',
     'Append',
     'Gives a copy of the list with the item added at the end.',
-    [ITEM_IN],
-    [LIST_OUT],
+    (t) => [itemIn(t)],
+    (t) => [listOut(t)],
     (x) => ({ list: [...items(x), x.item ?? null] })
   ),
   listNode(
     'concat',
     'Concat',
     "Joins two lists into one, with the first list's items first.",
-    [OTHER_IN],
-    [LIST_OUT],
+    (t) => [otherIn(t)],
+    (t) => [listOut(t)],
     (x) => ({ list: [...items(x), ...(x.other as Json[])] })
   ),
   listNode(
     'slice',
     'Slice',
     'Takes the items from the start position up to but not including the end position.',
-    [
+    () => [
       pin('start', 'integer', { default: 0, description: 'Where to start, counting from 0.' }),
       pin('end', 'integer', {
         optional: true,
         description: 'Where to stop; the end of the list when empty.'
       })
     ],
-    [LIST_OUT],
+    (t) => [listOut(t)],
     (x) => ({
       list: items(x).slice(x.start as number, x.end === null ? undefined : (x.end as number))
     })
@@ -203,27 +181,34 @@ export const listNodes: NodeDef[] = [
     'contains',
     'Contains',
     'True when the list holds an item equal to the one given.',
-    [ITEM_IN],
-    [RESULT],
+    (t) => [itemIn(t)],
+    () => [RESULT],
     (x) => ({ result: items(x).some((y) => deepEqual(y, x.item ?? null)) })
   ),
   listNode(
     'index-of',
     'Index of',
     'Gives the position of the first equal item, counting from 0, or -1 when there is none.',
-    [ITEM_IN],
-    [pin('index', 'integer', { description: 'The position, or -1.' })],
+    (t) => [itemIn(t)],
+    () => [pin('index', 'integer', { description: 'The position, or -1.' })],
     (x) => ({ index: items(x).findIndex((y) => deepEqual(y, x.item ?? null)) })
   ),
-  listNode('reverse', 'Reverse', 'Gives the list in reverse order.', [], [LIST_OUT], (x) => ({
-    list: [...items(x)].reverse()
-  })),
+  listNode(
+    'reverse',
+    'Reverse',
+    'Gives the list in reverse order.',
+    () => [],
+    (t) => [listOut(t)],
+    (x) => ({
+      list: [...items(x)].reverse()
+    })
+  ),
   listNode(
     'unique',
     'Unique',
     'Gives the list with repeated items left out, keeping the first of each.',
-    [],
-    [LIST_OUT],
+    () => [],
+    (t) => [listOut(t)],
     (x) => ({
       list: items(x).filter((x, i, all) => all.findIndex((y) => deepEqual(x, y)) === i)
     })
@@ -232,8 +217,8 @@ export const listNodes: NodeDef[] = [
     'flatten',
     'Flatten',
     'Turns a list of lists into a single list.',
-    [],
-    [VALUES_OUT],
+    () => [],
+    () => [LIST_OUT],
     (x) => ({
       list: items(x).flatMap((x) => (Array.isArray(x) ? x : [x]))
     })
@@ -242,30 +227,30 @@ export const listNodes: NodeDef[] = [
     'pluck',
     'Pluck Field',
     'Gives the value at a path, such as code or payer.name, of every item.',
-    [pin('field', 'string', { description: 'Where the value is in each item.' })],
-    [VALUES_OUT],
+    () => [pin('field', 'string', { description: 'Where the value is in each item.' })],
+    () => [LIST_OUT],
     (x) => ({ list: items(x).map((item) => fieldOf(item, x.field ?? null)) })
   ),
   listNode(
     'compact',
     'Drop Empty',
     'Gives the list without its empty items.',
-    [],
-    [LIST_OUT],
+    () => [],
+    (t) => [listOut(t)],
     (x) => ({ list: items(x).filter((item) => !isBlank(item)) })
   ),
   listNode(
     'sort-by-field',
     'Sort by Field',
     'Sorts items by the value at a field path, smallest first unless descending. Empty values sort last.',
-    [
+    () => [
       pin('field', 'string', {
         optional: true,
         description: 'Where the value to sort by is in each item; the item itself when empty.'
       }),
       pin('descending', 'boolean', { default: false, description: 'Largest first instead.' })
     ],
-    [LIST_OUT],
+    (t) => [listOut(t)],
     (x) => {
       const dir = x.descending === true ? -1 : 1;
       const keyed = items(x).map((item) => ({ item, k: fieldOf(item, x.field ?? null) }));
@@ -281,42 +266,6 @@ export const listNodes: NodeDef[] = [
       };
     }
   ),
-  pureNode<v.InferOutput<typeof whereConfig>>({
-    type: 'std.list.where',
-    title: 'Where',
-    category: CATEGORY,
-    description:
-      'Keeps the items whose field passes a condition, such as route is one of a list of codes, or is listed as a key of a shared table, and counts them.',
-    level: 'basic',
-    keywords: ['list', 'filter', 'condition', 'keep'],
-    summary: ({ field, op, value, table }) =>
-      [
-        field || 'Item',
-        op,
-        ...(table
-          ? [table.key]
-          : value === undefined
-            ? []
-            : [Array.isArray(value) ? value.map(toText).join(', ') : toText(value)])
-      ].join(' '),
-    config: whereConfig,
-    inputs: [LIST_IN],
-    outputs: [
-      pin('list', ANY_LIST, { description: 'The items kept.' }),
-      pin('count', 'integer', { description: 'How many items were kept.' })
-    ],
-    compute: ({ list }, { field, op, value, table, rows }) => {
-      if (table) throw unresolved(table.key);
-      const test = isListedOp(op)
-        ? {
-            op: op === 'listed' ? ('oneOf' as const) : ('notOneOf' as const),
-            value: (rows ?? []).map((r) => r.key)
-          }
-        : { op, value: value ?? null };
-      const kept = ((list ?? []) as Json[]).filter((item) => holds(test, fieldOf(item, field)));
-      return { list: kept, count: kept.length };
-    }
-  }),
   pureNode<v.InferOutput<typeof reshapeConfig>>({
     type: 'std.list.reshape',
     title: 'Reshape Items',
@@ -364,6 +313,7 @@ export const listNodes: NodeDef[] = [
     level: 'basic',
     keywords: ['list', 'build', 'create', 'array'],
     config: makeConfig,
+    adopts: adoptsType(/^item\d+$/),
     inputs: ({ count, type }) =>
       Array.from({ length: count }, (_, i) =>
         pin(`item${i + 1}`, type, { optional: true, description: 'An item of the list.' })
@@ -384,6 +334,7 @@ export const listNodes: NodeDef[] = [
     level: 'basic',
     keywords: ['list', 'join', 'concat', 'combine', 'merge', 'append'],
     config: makeConfig,
+    adopts: adoptsItemType(/^list\d+$/),
     inputs: ({ count, type }) =>
       Array.from({ length: count }, (_, i) =>
         pin(`list${i + 1}`, { list: type }, { optional: true, description: 'A list to add.' })

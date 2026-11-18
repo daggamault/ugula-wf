@@ -9,11 +9,11 @@ describe('elementLabel', () => {
         elementLabel
       ),
       [
-        'Date of birth',
-        'Incident facility or location name',
-        'Level of care provided',
-        'Patients transported in this unit',
-        'Reason for physician certification statement'
+        'Date of Birth',
+        'Incident Facility or Location Name',
+        'Level of Care Provided',
+        'Patients Transported in This Unit',
+        'Reason for Physician Certification Statement'
       ]
     );
   });

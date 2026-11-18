@@ -172,6 +172,8 @@ export type SignatureContext = {
 
 export type NodeLevel = 'basic' | 'advanced';
 
+export type Adoption = { pins: RegExp; key: string; from: 'value' | 'item' | 'record' };
+
 export type NodeDef<C = unknown> = NodeRef & {
   title: string;
   category: string;
@@ -180,6 +182,7 @@ export type NodeDef<C = unknown> = NodeRef & {
   keywords?: string[];
   exits?: Record<string, ExitDoc>;
   summary?: (config: C) => string | null;
+  adopts?: readonly Adoption[];
   config?: v.GenericSchema<unknown, C>;
   signature: Signature | ((config: C, ctx: SignatureContext) => Signature);
   effect?: boolean;

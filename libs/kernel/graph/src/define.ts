@@ -1,5 +1,6 @@
 import type * as v from 'valibot';
 import type {
+  Adoption,
   ExitDoc,
   Invocation,
   Json,
@@ -54,7 +55,12 @@ type NodeMeta<C> = {
   level?: NodeLevel;
   keywords?: string[];
   summary?: (config: C) => string | null;
+  adopts?: readonly Adoption[];
 };
+
+export const adoptsType = (pins: RegExp): Adoption[] => [{ pins, key: 'type', from: 'value' }];
+
+export const adoptsItemType = (pins: RegExp): Adoption[] => [{ pins, key: 'type', from: 'item' }];
 
 type Computed<C, I, R> = {
   inputs: I;
@@ -128,7 +134,8 @@ const metaOf = <C>(m: NodeMeta<C>) => ({
   ...(m.config ? { config: m.config } : {}),
   ...(m.level ? { level: m.level } : {}),
   ...(m.keywords ? { keywords: m.keywords } : {}),
-  ...(m.summary ? { summary: m.summary } : {})
+  ...(m.summary ? { summary: m.summary } : {}),
+  ...(m.adopts ? { adopts: m.adopts } : {})
 });
 
 const computeWith = async <C, I, R>(o: Computed<C, I, R>, inv: Invocation<C>) =>

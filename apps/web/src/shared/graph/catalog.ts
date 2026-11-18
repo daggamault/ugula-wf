@@ -1,4 +1,5 @@
 import {
+  type Adoption,
   combineSources,
   createRegistry,
   ENTRY_TYPE,
@@ -91,6 +92,7 @@ export type Catalog = {
   opensAs: (inst: NodeInstance) => Opens | null;
   publishedOf: (inst: NodeInstance) => PublishedNode | undefined;
   kindOf: (inst: NodeInstance, signature: Signature | null) => NodeKind;
+  adoptionsOf: (inst: NodeInstance) => readonly Adoption[];
 };
 
 const workflowRefOf = (inst: NodeInstance): NodeRef | null => {
@@ -260,6 +262,7 @@ export const createCatalog = (
     graphOf,
     opensAs,
     publishedOf,
+    adoptionsOf: (inst) => registry.node(inst)?.adopts ?? [],
     kindOf: (inst, signature) => {
       if (inst.type === ENTRY_TYPE || inst.type === RETURN_TYPE) return 'entry';
       if (opensAs(inst)) return 'call';

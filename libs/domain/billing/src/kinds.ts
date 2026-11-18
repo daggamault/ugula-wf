@@ -10,6 +10,10 @@ export const billingKinds: ValueKinds = {
   code: {
     hcpcs: 'HCPCS Code',
     icd10: 'ICD-10 Code',
-    modifier: 'Modifier'
+    levelOfService: 'Level of Service',
+    modifier: 'Modifier',
+    placeCode: 'Origin or Destination Code',
+    tripClassification: 'Trip Classification',
+    x12Relationship: 'X12 Relationship Code'
   }
 };

@@ -2,7 +2,12 @@ import { type Model, type ModelField, modelType, type ValueType } from '@ugula/g
 
 const CATEGORY = 'Claim';
 
-const f = (name: string, type: ValueType, label: string): ModelField => ({ name, type, label });
+const f = (name: string, type: ValueType, label: string, description: string): ModelField => ({
+  name,
+  type,
+  label,
+  description
+});
 
 const model = (
   key: string,
@@ -18,11 +23,11 @@ export const CHARGE_LINE = model(
   'Charge Line',
   'one charge on a claim: the HCPCS code, its modifiers, units and price',
   [
-    f('code', { code: 'hcpcs' }, 'HCPCS code'),
-    f('modifiers', { list: { code: 'modifier' } }, 'Modifiers, up to four'),
-    f('units', 'number', 'Units (miles for mileage, 1 otherwise)'),
-    f('unitCents', 'integer', 'Price of one unit, in cents'),
-    f('totalCents', 'integer', 'Price of the line, in cents')
+    f('code', { code: 'hcpcs' }, 'HCPCS Code', 'The HCPCS code charged.'),
+    f('modifiers', { list: { code: 'modifier' } }, 'Modifiers', 'Up to four modifiers, in order.'),
+    f('units', 'number', 'Units', 'Loaded miles for mileage, 1 for anything else.'),
+    f('unitCents', 'integer', 'Unit Price', 'The price of one unit, in cents.'),
+    f('totalCents', 'integer', 'Line Total', 'The price of the line, in cents.')
   ]
 );
 
@@ -32,13 +37,23 @@ export const COVERAGE = model(
   'Coverage',
   'one payer billed for a claim, and who holds the policy',
   [
-    f('payerId', { id: 'payer' }, 'Payer from the directory'),
-    f('payerName', 'string', 'Payer name, as reported when no directory payer matched'),
-    f('memberId', 'string', 'Member ID'),
-    f('groupId', 'string', 'Group ID'),
-    f('relationship', 'string', 'Patient relationship to the insured (X12 code, 18 for self)'),
-    f('insuredFirstName', 'string', 'Insured first name'),
-    f('insuredLastName', 'string', 'Insured last name')
+    f('payerId', { id: 'payer' }, 'Payer', 'The payer in the directory, when one matched.'),
+    f(
+      'payerName',
+      'string',
+      'Payer Name',
+      'The payer name as reported, kept when no directory payer matched.'
+    ),
+    f('memberId', 'string', 'Member ID', 'The member ID on the policy.'),
+    f('groupId', 'string', 'Group ID', 'The group ID on the policy.'),
+    f(
+      'relationship',
+      { code: 'x12Relationship' },
+      'Relationship to the Insured',
+      'The X12 code of how the patient is related to the insured, 18 for self.'
+    ),
+    f('insuredFirstName', 'string', 'Insured First Name', 'The first name of the insured.'),
+    f('insuredLastName', 'string', 'Insured Last Name', 'The last name of the insured.')
   ]
 );
 
@@ -48,20 +63,35 @@ export const CLAIM = model(
   'Claim',
   'a claim for one encounter: what was done, who pays and what it costs',
   [
-    f('encounterId', { id: 'encounter' }, 'Encounter billed'),
-    f('patientId', { id: 'patient' }, 'Patient'),
-    f('classification', 'string', 'Classification'),
-    f('serviceDate', 'string', 'Date of service (YYYY-MM-DD)'),
-    f('level', 'string', 'Level of service (BLS, ALS1, ALS2 or SCT)'),
-    f('emergency', 'boolean', 'Emergency'),
-    f('loadedMiles', 'number', 'Loaded miles'),
-    f('originCode', 'string', 'Origin modifier letter'),
-    f('destinationCode', 'string', 'Destination modifier letter'),
-    f('diagnoses', { list: { code: 'icd10' } }, 'Diagnoses, primary first'),
-    f('coverages', { list: modelType(COVERAGE) }, 'Payers, in billing order'),
-    f('lines', { list: modelType(CHARGE_LINE) }, 'Charge lines'),
-    f('totalCents', 'integer', 'Total charge, in cents'),
-    f('reasons', { list: 'string' }, 'Why the claim was built this way')
+    f('encounterId', { id: 'encounter' }, 'Encounter', 'The encounter billed.'),
+    f('patientId', { id: 'patient' }, 'Patient', 'The patient billed for.'),
+    f(
+      'classification',
+      { code: 'tripClassification' },
+      'Classification',
+      'What kind of trip it was.'
+    ),
+    f('serviceDate', 'string', 'Service Date', 'The date of service, as YYYY-MM-DD.'),
+    f('level', { code: 'levelOfService' }, 'Level of Service', 'BLS, ALS1, ALS2 or SCT.'),
+    f('emergency', 'boolean', 'Emergency', 'Whether the trip is billed as an emergency.'),
+    f('loadedMiles', 'number', 'Loaded Miles', 'Miles with the patient on board.'),
+    f('originCode', { code: 'placeCode' }, 'Origin', 'The origin letter of the modifier.'),
+    f(
+      'destinationCode',
+      { code: 'placeCode' },
+      'Destination',
+      'The destination letter of the modifier.'
+    ),
+    f('diagnoses', { list: { code: 'icd10' } }, 'Diagnoses', 'The diagnoses, primary first.'),
+    f(
+      'coverages',
+      { list: modelType(COVERAGE) },
+      'Coverages',
+      'The payers billed, in billing order.'
+    ),
+    f('lines', { list: modelType(CHARGE_LINE) }, 'Charge Lines', 'The lines charged, priced.'),
+    f('totalCents', 'integer', 'Total Charge', 'The total charge, in cents.'),
+    f('reasons', { list: 'string' }, 'Reasons', 'Why the claim was built this way.')
   ]
 );
 

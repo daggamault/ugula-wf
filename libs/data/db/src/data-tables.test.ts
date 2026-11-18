@@ -13,7 +13,7 @@ import { createDummyDb, createRecordingDb } from './testing.ts';
 const flat = (q: CompiledQuery | undefined) => q?.sql.replace(/\s+/g, ' ').trim();
 
 const TABLE_KEYS_PATH =
-  '$.nodes[*] ? (@.type == "std.table.decide" || @.type == "std.table.lookup" || @.type == "std.list.where").config.table.key';
+  '$.nodes[*] ? (@.type == "std.table.decide" || @.type == "std.table.lookup").config.table.key';
 
 const resolvedSql = (key: string, agency: string) =>
   `( select v.id from data_tables t join data_table_versions v on v.table_id = t.id left join lateral ( select sv.contract from data_tables st join data_table_versions sv on sv.table_id = st.id where st.key = t.key and st.agency_id is null and sv.published_at is not null order by sv.version desc limit 1 ) base on true where t.key = ${key} and t.is_active and v.published_at is not null and ( t.agency_id is null or ( t.agency_id = ${agency}::uuid and (base.contract is null or v.contract = base.contract) ) ) order by t.agency_id is null, v.version desc limit 1 )`;

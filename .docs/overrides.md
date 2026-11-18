@@ -9,7 +9,7 @@ Every built-in graph and shared table can be customized without code for one age
 | **Table override** | The rows of a shared decision or lookup table, as a form (`/tables/:id`) | None: the graphs that use it stay as-is      |
 | **Graph override** | A copy of one rule, stage or workflow                                    | Tracked: compare, Keep Mine, Start From Base |
 
-Tables hold only reference data: code sets, code labels and pure code mappings. Every billing decision is a rule drawn on the canvas (conditions, first-that-applies choices, logic gates, rules run per item), so an agency changes a number or a code set by overriding its table, and changes how something is decided by overriding the rule (a graph override, `workflows:update`). Ugula ships one complete base set; an agency overrides only the graphs it needs, and drift on a copy is handled by Compare, Keep Mine and Start From Base.
+Tables hold only reference data: code labels and pure code mappings. Every billing decision is a rule drawn on the canvas (code lists tested with Contains and Equal, first-that-applies choices, logic gates, rules run per item), so an agency changes a mapping by overriding its table, and changes a code list or how something is decided by overriding the rule that holds it (a graph override, `workflows:update`). Ugula ships one complete base set; an agency overrides only the graphs it needs, and drift on a copy is handled by Compare, Keep Mine and Start From Base.
 
 ## Two levels
 
@@ -40,10 +40,9 @@ Decision and lookup table nodes either carry their rules inline or reference a s
 - When a run starts, `pinRunGraphs` also pins every table its graphs reference into `workflow_run_tables`, agency first, then system; an agency copy applies only while its contract matches the newest system version. Child runs reuse their parent's pins.
 - The worker inlines the pinned tables into the graphs before running them (`inlineTables`). A table that is missing or no longer has the node's fields faults the node with a clear message.
 - The seeds declare shared tables with `codeTable(...)` in `.seeds/billing/`, all reference data (where they are used is in [Workflows](workflows.md)):
-  - **Code sets:** IV Solutions (`billing.iv-solutions`) and ALS2 Procedures (`billing.als2-procedures`), read by Level of Service.
-  - **Code mappings:** Base Rate Codes (`billing.base-rate-codes`, the HCPCS base rate by level of service and emergency, read by Base Rate Code), Destination Letters (`billing.destination-letters`, destination type → modifier letter, read by Origin and Destination) and Insured Relationships (`billing.insured-relationships`, NEMSIS relationship → X12 code, read by Resolve Coverage).
+  - **Code mappings:** Base Rate Codes (`billing.base-rate-codes`, the HCPCS base rate by level of service and emergency, read by Base Rate Code), Destination Letters (`billing.destination-letters`, destination type → modifier letter, read by Origin and Destination) and Insured Relationships (`billing.insured-relationships`, NEMSIS relationship → X12 code, read by Resolve Coverage). Each is typed to the code kind it gives (`code<hcpcs>`, `code<placeCode>`, `code<x12Relationship>`).
 - The seed checks every reference resolves to a table with the same fields.
-- A Where node can keep the items whose field is listed (or not listed) as a key of a shared table (`op: listed` or `notListed` with `table: { key }`), which is how a rule tests a code set; a Lookup Table also looks up a list of keys at once (`keys` → `values`).
+- A Lookup Table also looks up a list of keys at once (`keys` → `values`), and its **Found** output tells whether the table lists a key.
 
 ## Contracts
 

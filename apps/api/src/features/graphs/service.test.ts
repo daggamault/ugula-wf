@@ -294,9 +294,9 @@ describe('customization map', () => {
         ...flow.nodes,
         {
           id: 'w',
-          type: 'std.list.where',
+          type: 'std.table.lookup',
           version: 1,
-          config: { field: 'code', op: 'listed', table: { key: 'acme.rates' } }
+          config: { table: { key: 'acme.rates' } }
         }
       ]
     };

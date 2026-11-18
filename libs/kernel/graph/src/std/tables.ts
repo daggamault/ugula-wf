@@ -97,11 +97,8 @@ const decideRef = v.pipe(
 
 export const TABLE_NODE_KINDS = {
   'std.table.decide': 'decide',
-  'std.table.lookup': 'lookup',
-  'std.list.where': 'lookup'
+  'std.table.lookup': 'lookup'
 } as const;
-
-const KEYS_ONLY: ReadonlySet<string> = new Set(['std.list.where']);
 
 export type TableKind = (typeof TABLE_NODE_KINDS)[keyof typeof TABLE_NODE_KINDS];
 
@@ -124,8 +121,7 @@ export const tableContract = (definition: Json) =>
   isRecord(definition) ? contractOfFields(definition) : '';
 
 export const tableFits = (node: NodeInstance, definition: Json) =>
-  KEYS_ONLY.has(node.type) ||
-  (isRecord(node.config) && tableContract(definition) === contractOfFields(node.config));
+  isRecord(node.config) && tableContract(definition) === contractOfFields(node.config);
 
 const tableKindOf = (type: string): TableKind | undefined =>
   Object.hasOwn(TABLE_NODE_KINDS, type)

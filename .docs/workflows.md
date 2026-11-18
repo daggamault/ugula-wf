@@ -4,47 +4,48 @@ How billing is built on the engine: a few events start workflows, workflows are 
 
 ## Principles
 
-1. **Records, not facts nodes.** Data moves as a few typed records (Encounter, Person, Location, Insurance, Claim, Charge Line). Each has one Break and one Make node with every field; a field that holds another record is a typed pin you Break again. Every field may be empty: the XML requires little, so rules never assume a field is there.
-2. **Primitives decide.** Every choice (is it billable, what level, which payer first, which modifier) is drawn from conditions, choices, logic gates, math, lists and lookups, so a biller can read it and an agency can override it.
+1. **Records, not facts nodes.** Data moves as a few typed records (Encounter, Person, Scene, Destination, Insurance, Claim, Charge Line). Each has one Break and one Make node with every field; a field that holds another record is a typed pin you Break again. Every field may be empty: the XML requires little, so rules never assume a field is there.
+2. **Primitives decide.** Every choice (is it billable, what level, which payer first, which modifier) is drawn from code lists, Contains and Equal, comparisons, And, Or and Not, Select and Choose Value, math, lists and lookups, so a biller can read it and an agency can override it. Small criteria rules (each giving Holds and Reasons) compose into the decisions, and per-item rules run under Keep Items Where.
 3. **Services only touch the world.** A service reads or writes a record, matches, parses or prices, and never decides anything a rule could. There are few, and each is named for what it does to which record (Read PCR File, Save Encounter, Find Patient, Save Claim).
 4. **Small graphs, named by what they give.** A rule is a pure graph named for the decision it returns (Trip Classification, Level of Service), and returns its reasons. A stage is a graph with a way in, named by its verb (Resolve Patient, Assign Charges). A workflow is named by its job and starts from one event.
 5. **Events join workflows.** A workflow ends by saving a record, and the database emits the event for the change in the same transaction, so the next workflow starts from it. No workflow calls a later one by name.
-6. **Reference data in tables.** Code sets and code mappings are tables an agency edits as forms, and prices are its fee schedules; decisions on top of them are drawn.
+6. **Reference data in tables.** Code mappings are tables an agency edits as forms, and prices are its fee schedules; a code list is a Constant inside the rule that tests it, changed by overriding that rule; decisions on top of them are drawn.
+7. **Typed all the way.** NEMSIS coded fields and billing values (classification, level of service, origin and destination letters, X12 relationship) are code kinds, and generic primitives take the type of their first wire, so the editor refuses a wire between different code sets.
 
 ## Palette
 
-| Group      | Nodes                                                                                                                                                                                              |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Events     | The workflow's start, shown as the event it waits for (On PCR File Received, On Encounter Created) with the event's fields as pins, or On Schedule                                                 |
-| Records    | Break and Make for Encounter, Times, Odometer, Person, Address, Location, Payment, Insurance, Medication, Procedure, Vital Signs, Signature, Crew Member, Attachment, Claim, Coverage, Charge Line |
-| Primitives | Condition, Choose Value, And/Or/Not, compare, math, text, time, lists (Where, Keep Items Where, Run Rule for Each, Find Item Where), Lookup Table, Branch, Switch, For Each, Sequence              |
-| Services   | Read PCR File, Read PCR, Save Encounter, Read Encounter, Find Patient, Save Patient, Find Payer, Find Fee, Save Claim                                                                              |
-| Endings    | Return, Fail                                                                                                                                                                                       |
-| Graphs     | Every rule, stage and workflow, called like a node                                                                                                                                                 |
+| Group      | Nodes                                                                                                                                                                                                           |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Events     | The workflow's start, shown as the event it waits for (On PCR File Received, On Encounter Created) with the event's fields as pins, or On Schedule                                                              |
+| Records    | Break and Make for Encounter, Times, Odometer, Person, Address, Scene, Destination, Payment, Insurance, Medication, Procedure, Vital Signs, Signature, Crew Member, Attachment, Claim, Coverage, Charge Line    |
+| Primitives | Constant, Contains, Equal, compare, Is Null, And/Or/Not, Select, Choose Value, math, text, time, lists (Keep Items Where, Run Rule for Each, Find Item Where), Lookup Table, Branch, Switch, For Each, Sequence |
+| Services   | Read PCR File, Read PCR, Save Encounter, Read Encounter, Find Patient, Save Patient, Find Payer, Find Fee, Save Claim                                                                                           |
+| Endings    | Return, Fail                                                                                                                                                                                                    |
+| Graphs     | Every rule, stage and workflow, called like a node                                                                                                                                                              |
 
 ## Records
 
-**Encounter** is one patient care report, typed and named in billing terms instead of NEMSIS elements, with place codes turned into names. It is built in code from the report, because mapping hundreds of elements is parsing, not policy.
+**Encounter** is one patient care report, typed and named in billing terms instead of NEMSIS elements, with place codes turned into names. It is built in code from the report, because mapping hundreds of elements is parsing, not policy. Each field has a Title Case label and a description naming its element (`NEMSIS eDisposition.12, as the report gives it.`); coded fields are code kinds declared in `libs/domain/nemsis/src/kinds.ts`.
 
 | Field                                                                                                                                    | Type                                                                                                                                                                                                        |
 | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`, `pcrNumber`, `revision`, `reportId`                                                                                                | `id<encounter>`, text, integer, `id<report>` (the stored report this copy was read from)                                                                                                                    |
-| `incidentNumber`, `serviceType`, `unitNumber`, `callSign`, `responseMode`, `responseModifiers`                                           | text and NEMSIS codes                                                                                                                                                                                       |
-| `incidentDisposition`, `unitDisposition`, `patientEvaluation`, `crewDisposition`, `transportDisposition`, `levelOfCare`, `transportMode` | NEMSIS codes                                                                                                                                                                                                |
+| `id`, `pcrNumber`, `revision`, `reportId`                                                                                                | `id<encounter>`, text, integer, `id<report>` (the stored PCR this copy was read from)                                                                                                                       |
+| `incidentNumber`, `serviceType`, `unitNumber`, `callSign`, `responseMode`, `responseModifiers`                                           | text, `code<serviceType>`, text, text, `code<responseMode>`, `list<code<responseModifier>>`                                                                                                                 |
+| `incidentDisposition`, `unitDisposition`, `patientEvaluation`, `crewDisposition`, `transportDisposition`, `levelOfCare`, `transportMode` | each a code of its own kind (`code<incidentDisposition>` and so on)                                                                                                                                         |
 | `destinationReasons`, `patientsAtScene`, `patientsTransported`                                                                           | codes, a code, an integer                                                                                                                                                                                   |
 | `times`                                                                                                                                  | Times: call, notified, en route, at scene, at patient, left scene, at destination, transfer of care, back in service                                                                                        |
 | `odometer`                                                                                                                               | Odometer: begin, scene, destination, end                                                                                                                                                                    |
 | `patient`                                                                                                                                | Person                                                                                                                                                                                                      |
-| `pickup`, `destination`                                                                                                                  | Location                                                                                                                                                                                                    |
+| `pickup`, `destination`                                                                                                                  | Scene (name, `code<locationType>`, Address) and Destination (name, `code<destinationType>`, Address)                                                                                                        |
 | `complaint`, `primarySymptom`, `otherSymptoms`, `primaryImpression`, `secondaryImpressions`, `workRelated`, `injuryCauses`               | text and codes; the impressions are `code<icd10>`                                                                                                                                                           |
-| `cardiacArrest`, `arrestOutcome`                                                                                                         | codes                                                                                                                                                                                                       |
+| `cardiacArrest`, `arrestOutcome`                                                                                                         | `code<cardiacArrest>`, `code<arrestOutcome>`                                                                                                                                                                |
 | `medications`, `procedures`, `vitals`                                                                                                    | lists of Medication, Procedure and Vital Signs                                                                                                                                                              |
 | `payment`                                                                                                                                | Payment: method, certification (statement, date, reason), transport reason, ambulance conditions, closest facility miles, ALS assessment, crew-reported service level, condition codes, prior authorization |
 | `insurances`, `signatures`, `crew`                                                                                                       | lists of Insurance (as reported), Signature and Crew Member                                                                                                                                                 |
 | `narrative`                                                                                                                              | text                                                                                                                                                                                                        |
 | `attachments`                                                                                                                            | list of Attachment (document type, file type, name, stored file)                                                                                                                                            |
 
-**Person** (name parts, birth date, age, sex and gender, phone, weight and an Address), **Address** (street, city named from its place code, county, state, ZIP), **Location** (name, type of place and an Address), **Insurance** (company ID and name, priority, group, member ID, insured name and relationship), **Claim** (encounter, patient, classification, service date, level, emergency, loaded miles, origin and destination letters, diagnoses, coverages, lines, total, reasons), **Coverage** (directory payer or reported name, member and group ID, X12 relationship, insured name) and **Charge Line** (HCPCS code, modifiers, units, unit and total price in cents) are the rest.
+**Person** (name parts, birth date, age, sex and gender, phone, weight and an Address), **Address** (street, city named from its place code, county, state, ZIP), **Insurance** (company ID and name, `code<billingPriority>`, group, member ID, insured name and `code<relationship>`), **Medication** (`code<rxnorm>`, `code<medicationRoute>`, dosage), **Procedure** (`code<snomed>`), **Claim** (encounter, patient, `code<tripClassification>`, service date, `code<levelOfService>`, emergency, loaded miles, origin and destination letters as `code<placeCode>`, diagnoses, coverages, lines, total, reasons), **Coverage** (directory payer or reported name, member and group ID, `code<x12Relationship>`, insured name) and **Charge Line** (HCPCS code, modifiers, units, unit and total price in cents) are the rest.
 
 ## Events
 
@@ -62,7 +63,7 @@ Seeded in `.seeds/billing`; every graph key starts with `billing.`.
 
 ### Import PCR File (on `pcr_file.received`)
 
-Read PCR File → For Each report → Try **Save PCR** (Read PCR → Save Encounter: Created, Revised or Unchanged) → count each outcome, and count a report that fails as Failed so the rest go on → Return the counts.
+Read PCR File → For Each PCR → Try **Save PCR** (Read PCR → Save Encounter: Created, Revised or Unchanged) → count each outcome, and count a report that fails as Failed so the rest go on → Return the counts.
 
 The API records the import and emits the event in one transaction; an upload is refused when no published workflow starts on it, so an agency can add its own workflow next to this one.
 
@@ -73,35 +74,49 @@ Read Encounter → **Build Claim**: Trip Classification → Billable?
 - No → Not Billable, with the classification and its reasons.
 - Yes → Resolve Patient → Determine Payers → Assign Charges → Make Claim → Save Claim (Needs Review; a revised encounter replaces its claim).
 
-| Graph                  | Kind  | Built from                                                                                                                                |
-| ---------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Trip Classification    | rule  | Conditions on dispositions and service type: not billable, refusal, treated without transport, scheduled, emergency, the first that holds |
-| Service                | rule  | Service Date, Level of Service, Emergency Status, Loaded Miles                                                                            |
-| Level of Service       | rule  | SCT, ALS2, ALS1 conditions on procedures (ALS2 Procedures table), IV/IO medications (IV Solutions table), ALS assessment, crew level; BLS |
-| Emergency Status       | rule  | Response mode, or the call type or crew level when there is none                                                                          |
-| Loaded Miles           | rule  | Destination less scene odometer, never below zero, rounded up to the tenth                                                                |
-| Service Date           | rule  | The first time recorded: at patient, at scene, notified, call                                                                             |
-| Diagnoses              | rule  | Primary then secondary impressions, each once, at most twelve                                                                             |
-| Origin and Destination | rule  | Origin from the pickup type or service type; destination from the Destination Letters table; neither unless both                          |
-| Resolve Patient        | stage | Match Patient; Incomplete → task Complete the Patient, then Match Patient again                                                           |
-| Match Patient          | stage | Find Patient → Matched; Not Found → Save Patient; Similar → task Choose the Patient (Patient Choice)                                      |
-| Determine Payers       | stage | Billing Order, then Resolve Coverage for each insurance                                                                                   |
-| Billing Order          | rule  | Primary, secondary, tertiary, then others                                                                                                 |
-| Resolve Coverage       | stage | Find Payer → Found; Similar → task Match the Payer (Payer Choice); relationship from the Insured Relationships table                      |
-| Assign Charges         | stage | Charge Lines, then Price Line for each, and the total                                                                                     |
-| Charge Lines           | rule  | Base Rate Code, and A0425 for loaded miles of a transport, each with the origin and destination modifier                                  |
-| Base Rate Code         | rule  | A0998 without transport, else the Base Rate Codes table by level and emergency                                                            |
-| Price Line             | stage | Find Fee times units to the cent, or no price with the reason                                                                             |
+| Graph                  | Kind  | Built from                                                                                                                                                                      |
+| ---------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Trip Classification    | rule  | Not Billable, Refusal, No Transport, Transport and Scheduled Criteria; the first kind of trip that holds (Choose Value over Selects), billable when it is in the billable kinds |
+| Not Billable Criteria  | rule  | Incident, unit and transport dispositions and service type, each tested against a code list (Contains, Equal, Not, And)                                                         |
+| Refusal Criteria       | rule  | Refused care, or a refused evaluation and transport                                                                                                                             |
+| No Transport Criteria  | rule  | Treated and not transported, or not transported by this unit                                                                                                                    |
+| Transport Criteria     | rule  | Transported by this unit, by incident or transport disposition                                                                                                                  |
+| Scheduled Criteria     | rule  | Scheduled or interfacility service type                                                                                                                                         |
+| Service Details        | rule  | Service Date, Level of Service, Emergency Status, Loaded Miles                                                                                                                  |
+| Level of Service       | rule  | IV Medication and ALS2 Procedure under Keep Items Where, counted; the highest of SCT, ALS2 and ALS1 Criteria that holds, else BLS                                               |
+| IV Medication          | rule  | Given IV or IO and not an IV solution (two code lists), per medication                                                                                                          |
+| ALS2 Procedure         | rule  | The procedure is in the ALS2 code list, per procedure                                                                                                                           |
+| SCT Criteria           | rule  | Critical care, or crew-reported SCT, on an interfacility transport                                                                                                              |
+| ALS2 Criteria          | rule  | An ALS2 procedure, three or more IV/IO medications, or crew-reported ALS2                                                                                                       |
+| ALS1 Criteria          | rule  | ALS assessment, crew-reported ALS1, or an IV/IO medication                                                                                                                      |
+| Emergency Status       | rule  | Response mode, or the call type or crew level when there is none                                                                                                                |
+| Loaded Miles           | rule  | Destination less scene odometer, never below zero, rounded up to the tenth                                                                                                      |
+| Service Date           | rule  | The first time recorded: at patient, at scene, notified, call                                                                                                                   |
+| Diagnoses              | rule  | Primary then secondary impressions, each once, at most twelve                                                                                                                   |
+| Origin Letter          | rule  | The first that holds of the pickup location type (Starts with) and the service type (Contains)                                                                                  |
+| Origin and Destination | rule  | Origin Letter; destination from the Destination Letters table; neither unless both                                                                                              |
+| Resolve Patient        | stage | Match Patient; Incomplete → task Complete the Patient, then Match Patient again                                                                                                 |
+| Match Patient          | stage | Find Patient → Matched; Not Found → Save Patient; Similar → task Choose the Patient (Patient Choice)                                                                            |
+| Determine Payers       | stage | Billing Order, then Resolve Coverage for each insurance                                                                                                                         |
+| Billing Order          | rule  | Keep Items Where Has Priority (primary, secondary, tertiary), then Has Other Priority, joined                                                                                   |
+| Has Priority           | rule  | The insurance has the billing priority given, per insurance                                                                                                                     |
+| Has Other Priority     | rule  | The insurance is not ranked primary, secondary or tertiary, per insurance                                                                                                       |
+| Resolve Coverage       | stage | Find Payer → Found; Similar → task Match the Payer (Payer Choice); relationship from the Insured Relationships table                                                            |
+| Assign Charges         | stage | Charge Lines, then Price Line for each, and the total                                                                                                                           |
+| Charge Lines           | rule  | Base Rate Code, and A0425 for loaded miles of a transport, each with the origin and destination modifier                                                                        |
+| Base Rate Code         | rule  | A0998 without transport, else the Base Rate Codes table by level and emergency                                                                                                  |
+| Price Line             | stage | Find Fee times units to the cent, or no price with the reason                                                                                                                   |
 
 ## Customizing
 
-| An agency wants                              | It overrides                                               |
-| -------------------------------------------- | ---------------------------------------------------------- |
-| A different base rate or code                | The Base Rate Codes table or its fee schedule              |
-| Its own payer order                          | Billing Order                                              |
-| An extra charge (oxygen, a second attendant) | Charge Lines, adding a line from its own rule              |
-| Its own handling of one payer                | Resolve Coverage or Billing Order, branching on that payer |
-| Something after every claim                  | Nothing: a new workflow on `claim.created`                 |
+| An agency wants                                                     | It overrides                                                            |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| A different base rate or code                                       | The Base Rate Codes table or its fee schedule                           |
+| A different code list (IV solutions, ALS2 procedures, dispositions) | The rule that holds it (IV Medication, ALS2 Procedure, a criteria rule) |
+| Its own payer order                                                 | Billing Order                                                           |
+| An extra charge (oxygen, a second attendant)                        | Charge Lines, adding a line from its own rule                           |
+| Its own handling of one payer                                       | Resolve Coverage or Billing Order, branching on that payer              |
+| Something after every claim                                         | Nothing: a new workflow on `claim.created`                              |
 
 ## Next
 

@@ -392,19 +392,6 @@ describe('NodeInspector', () => {
       show('rates', { graph: withNode(rates) });
       assert.ok(region('Settings').getByText('This table is not available to your agency.'));
     });
-
-    it('keeps the settings of a node that tests items against a shared table', () => {
-      show('known', {
-        graph: withNode({
-          id: 'known',
-          type: 'std.list.where',
-          version: 1,
-          config: { field: 'code', op: 'listed', table: { key: 'billing.codes' } }
-        })
-      });
-      assert.equal(screen.getByRole('button', { name: 'Test' }).textContent, 'Is Listed in Table');
-      assert.equal(field('Table').value, 'billing.codes');
-    });
   });
 });
 

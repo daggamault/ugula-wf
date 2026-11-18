@@ -6,7 +6,7 @@ const OUTCOMES = ['created', 'revised', 'unchanged'] as const;
 
 const savePcr = (): GraphDef => {
   const g = stage(
-    [d('report', ID.report, 'Report', 'A patient care report stored from a PCR file.')],
+    [d('report', ID.report, 'PCR', 'A patient care report stored from a PCR file.')],
     [d('encounterId', ID.encounter, 'Encounter', 'The encounter the report was saved as.')],
     {
       created: exit('Created', 'The report was a new PCR number, saved as a new encounter.'),
@@ -14,7 +14,7 @@ const savePcr = (): GraphDef => {
       unchanged: exit('Unchanged', 'The report matched the encounter already saved.')
     }
   );
-  g.add('read', 'encounter.read-pcr', { label: 'Read PCR' });
+  g.add('read', 'report.read', { label: 'Read PCR' });
   g.add('save', 'encounter.save', { label: 'Save Encounter' });
   g.wire('entry.exec', 'read.exec');
   g.wire('entry.report', 'read.report');
@@ -44,7 +44,7 @@ const importPcrFile = (): GraphDef => {
     [
       d(
         'importId',
-        'string',
+        ID.import,
         'Import',
         'The import the file arrived with; a new one when empty.',
         true
@@ -52,14 +52,14 @@ const importPcrFile = (): GraphDef => {
       d('file', T.blob, 'File', 'Where the NEMSIS file is stored.')
     ],
     [
-      d('reports', 'integer', 'Reports', 'How many patient care reports the file held.'),
+      d('reports', 'integer', 'PCRs', 'How many patient care reports the file held.'),
       ...counted.map((c) => d(c, 'integer', COUNTS[c][0], COUNTS[c][1]))
     ],
     counted.map((name) => ({ name, type: 'integer', default: 0 }))
   );
   g.trigger({ kind: 'event', event: 'pcr_file.received', where: {} });
-  g.add('read', 'encounter.read-pcr-file', { label: 'Read PCR File' });
-  g.add('each', 'std.flow.for-each', { label: 'Each Report' });
+  g.add('read', 'pcr-file.read', { label: 'Read PCR File' });
+  g.add('each', 'std.flow.for-each', { label: 'Each PCR' });
   g.add('try', 'std.flow.try', { label: 'Save It, or Count It as Failed' });
   g.add('save', 'billing.save-pcr', { label: 'Save PCR' });
   for (const c of counted) {

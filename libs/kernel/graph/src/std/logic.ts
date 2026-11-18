@@ -1,4 +1,4 @@
-import { pin, pureNode } from '../define.ts';
+import { adoptsType, pin, pureNode } from '../define.ts';
 import { fail } from '../errors.ts';
 import { deepEqual } from '../json.ts';
 import { type TypeConfig, typeConfig } from '../schemas.ts';
@@ -32,6 +32,7 @@ const compareNode = (
     level: 'basic',
     keywords: ['compare', 'condition'],
     config: typeConfig,
+    adopts: adoptsType(/^(a|b)$/),
     inputs: ({ type }) => [pin('a', type, A), pin('b', type, B)],
     outputs: [RESULT],
     compute: ({ a, b }) => {
@@ -45,7 +46,7 @@ const equalNode = (
   title: string,
   description: string,
   keywords: string[],
-  fn: (same: boolean) => boolean
+  fn: (a: Json, b: Json) => boolean
 ) =>
   pureNode<TypeConfig>({
     type: `std.logic.${key}`,
@@ -55,12 +56,13 @@ const equalNode = (
     level: 'basic',
     keywords,
     config: typeConfig,
+    adopts: adoptsType(/^(a|b)$/),
     inputs: ({ type }) => [
       pin('a', type, { optional: true, ...A }),
       pin('b', type, { optional: true, ...B })
     ],
     outputs: [RESULT],
-    compute: ({ a, b }) => ({ result: fn(deepEqual(a ?? null, b ?? null)) })
+    compute: ({ a, b }) => ({ result: fn(a ?? null, b ?? null) })
   });
 
 const boolNode = (
@@ -87,14 +89,14 @@ export const logicNodes: NodeDef[] = [
     'Equal',
     'True when both values are the same, including lists and records.',
     ['compare', 'same', 'equals'],
-    (same) => same
+    deepEqual
   ),
   equalNode(
     'not-equal',
     'Not Equal',
     'True when the two values differ.',
     ['compare', 'different'],
-    (same) => !same
+    (a, b) => !deepEqual(a, b)
   ),
   compareNode('greater', 'Greater Than', 'greater than', (a, b) => a > b),
   compareNode('greater-or-equal', 'Greater or Equal', 'at least', (a, b) => a >= b),
@@ -133,6 +135,7 @@ export const logicNodes: NodeDef[] = [
     level: 'basic',
     keywords: ['default', 'fallback', 'first'],
     config: typeConfig,
+    adopts: adoptsType(/^(value|fallback)$/),
     inputs: ({ type }) => [
       pin('value', type, { optional: true, description: 'The value to use when it is there.' }),
       pin('fallback', type, { optional: true, description: 'The value to use otherwise.' })
@@ -148,6 +151,7 @@ export const logicNodes: NodeDef[] = [
     level: 'basic',
     keywords: ['if', 'choose', 'pick'],
     config: typeConfig,
+    adopts: adoptsType(/^(whenTrue|whenFalse)$/),
     inputs: ({ type }) => [
       pin('condition', 'boolean', { description: 'Which value to give.' }),
       pin('whenTrue', type, {

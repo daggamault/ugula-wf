@@ -209,7 +209,8 @@ describe('encounter models', () => {
         'Odometer',
         'Person',
         'Address',
-        'Location',
+        'Scene',
+        'Destination',
         'Payment',
         'Insurance',
         'Medication',
@@ -224,7 +225,8 @@ describe('encounter models', () => {
     assert.deepEqual(impression, {
       name: 'primaryImpression',
       type: { code: 'icd10' },
-      label: 'Primary impression · eSituation.11'
+      label: 'Primary Impression',
+      description: 'NEMSIS eSituation.11, as the report gives it.'
     });
   });
 });

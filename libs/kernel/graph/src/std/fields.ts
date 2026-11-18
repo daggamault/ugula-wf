@@ -3,7 +3,7 @@ import { pin, pureNode } from '../define.ts';
 import { pathLabel } from '../documentation.ts';
 import { getPath, setPath } from '../json.ts';
 import { valueTypeSchema } from '../schemas.ts';
-import type { NodeDef, ValueType } from '../types.ts';
+import type { Adoption, NodeDef, ValueType } from '../types.ts';
 import { fieldType } from '../value-types.ts';
 
 const CATEGORY = 'Objects';
@@ -36,6 +36,8 @@ const valuePin = (c: FieldConfig, description: string, optional = false) =>
       ]
     : [];
 
+const ADOPTS_RECORD: Adoption[] = [{ pins: /^record$/, key: 'record', from: 'record' }];
+
 export const fieldNodes: NodeDef[] = [
   pureNode<FieldConfig>({
     type: 'std.object.get-field',
@@ -47,6 +49,7 @@ export const fieldNodes: NodeDef[] = [
     keywords: ['field', 'get', 'read', 'property', 'record', 'prepopulate'],
     summary,
     config: fieldConfig,
+    adopts: ADOPTS_RECORD,
     inputs: ({ record }) => [
       pin('record', record, { optional: true, description: 'The record to read.' })
     ],
@@ -63,6 +66,7 @@ export const fieldNodes: NodeDef[] = [
     keywords: ['field', 'set', 'write', 'update', 'property', 'record', 'prepopulate'],
     summary,
     config: fieldConfig,
+    adopts: ADOPTS_RECORD,
     inputs: (c) => [
       pin('record', c.record, { optional: true, description: 'The record to change.' }),
       ...valuePin(c, 'The new value of the field.', true)

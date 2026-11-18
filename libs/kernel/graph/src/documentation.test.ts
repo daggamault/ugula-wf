@@ -107,17 +107,22 @@ describe('nodeDocumentationIssues', () => {
     assert.deepEqual(nodeDocumentationIssues(act), []);
   });
 
-  it('lists undescribed pins and undocumented exits other than then, leaving label case to the editor', () => {
+  it('lists a lowercase title or label, a missing description, undescribed pins and undocumented exits other than then', () => {
     const grade = branchNode({
       ...base,
       type: 't.grade',
+      title: 'grade a score',
+      description: ' ',
       inputs: [pin('score', 'number')],
       outputs: [pin('margin', 'number', { label: 'the margin', description: 'How far off.' })],
       exits: { pass: { label: 'pass' }, fail: {} },
       compute
     });
     assert.deepEqual(nodeDocumentationIssues(grade), [
+      { node: 't.grade', message: 'Write the title "grade a score" in Title Case' },
+      { node: 't.grade', message: 'Describe the node' },
       { node: 't.grade', message: 'Describe the input "score"' },
+      { node: 't.grade', message: 'Write the output label "the margin" in Title Case' },
       { node: 't.grade', message: 'Write the exit label "pass" in Title Case' },
       { node: 't.grade', message: 'Label or describe the exit "fail"' }
     ]);

@@ -101,16 +101,22 @@ const placedSignature = (def: NodeDef): Signature | null => {
 
 export const nodeDocumentationIssues = (def: NodeDef): Issue[] => {
   const signature = placedSignature(def);
-  const issues = signature
-    ? [
-        ...undescribed('input', signature.inputs),
-        ...undescribed('output', signature.outputs),
-        ...exitIssues(
-          signature.execOut.filter((name) => name !== 'then'),
-          def.exits
-        )
-      ]
-    : exitIssues(Object.keys(def.exits ?? {}), def.exits);
+  const issues = [
+    ...(isTitleCase(def.title)
+      ? []
+      : [{ message: `Write the title "${def.title}" in Title Case` }]),
+    ...(def.description.trim() ? [] : [{ message: 'Describe the node' }]),
+    ...(signature
+      ? [
+          ...pinIssues('input', signature.inputs),
+          ...pinIssues('output', signature.outputs),
+          ...exitIssues(
+            signature.execOut.filter((name) => name !== 'then'),
+            def.exits
+          )
+        ]
+      : exitIssues(Object.keys(def.exits ?? {}), def.exits))
+  ];
   return issues.map((i) => ({ ...i, node: def.type }));
 };
 

@@ -139,7 +139,7 @@ describe('createNemsisNodes', () => {
       { documentType: null, fileType: null, name: 'pcs.pdf', file: { bucket: 'ugula', key } }
     ]);
     assert.equal(blobs.get(key), 'Hi');
-    await assert.rejects(run(readPcr, { report: 'report-9' }), /report-9 was not found/);
+    await assert.rejects(run(readPcr, { report: 'report-9' }), /PCR report-9 was not found/);
   });
 
   it('saves an encounter once, revises it when it changes and leaves it when it does not', async () => {

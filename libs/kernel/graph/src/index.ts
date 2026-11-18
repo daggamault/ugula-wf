@@ -12,7 +12,13 @@ export {
 } from './compile.ts';
 export { inputNode, triggerSummary } from './core.ts';
 export { actionNode, branchNode, pin, pureNode } from './define.ts';
-export { documentationIssues, nodeDocumentationIssues, pathLabel } from './documentation.ts';
+export {
+  documentationIssues,
+  isTitleCase,
+  nameLabel,
+  nodeDocumentationIssues,
+  pathLabel
+} from './documentation.ts';
 export { createEngine, type Engine } from './engine.ts';
 export { messageOf } from './errors.ts';
 export { exprProblem, freeIdentifiers } from './expr.ts';
@@ -34,7 +40,7 @@ export { stdGraphInfo, stdGraphSource, stdGraphs } from './std/composites.ts';
 export { isPublicAddress } from './std/http.ts';
 export { TASK_PREFILLS } from './std/human.ts';
 export { createStdNodes, type StdDeps } from './std/index.ts';
-export { isListedOp, LIST_FORMULA_NAMES } from './std/list.ts';
+export { LIST_FORMULA_NAMES } from './std/list.ts';
 export type { ConditionOp } from './std/tables.ts';
 export {
   inlineTables,

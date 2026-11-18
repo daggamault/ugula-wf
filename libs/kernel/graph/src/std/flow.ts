@@ -1,9 +1,18 @@
 import * as v from 'valibot';
-import { call, defineNode, next, pin, pureNode, suspend } from '../define.ts';
+import {
+  adoptsItemType,
+  adoptsType,
+  call,
+  defineNode,
+  next,
+  pin,
+  pureNode,
+  suspend
+} from '../define.ts';
 import { fail } from '../errors.ts';
 import { MAX_RANGE } from '../expr-functions.ts';
 import { isRecord, toText } from '../json.ts';
-import { valueTypeSchema } from '../schemas.ts';
+import { type TypeConfig, typeConfig, valueTypeSchema } from '../schemas.ts';
 import type { Json, NodeDef } from '../types.ts';
 
 const CATEGORY = 'Flow';
@@ -119,7 +128,7 @@ export const sequenceNode = defineNode<v.InferOutput<typeof sequenceConfig>>({
   }
 });
 
-export const forEachNode = defineNode({
+export const forEachNode = defineNode<TypeConfig>({
   type: 'std.flow.for-each',
   version: 1,
   title: 'For Each',
@@ -131,16 +140,18 @@ export const forEachNode = defineNode({
     body: { label: 'Each Item', description: 'Runs once for each item.' },
     completed: { label: 'Completed', description: 'Goes on once every item is done.' }
   },
+  config: typeConfig,
+  adopts: adoptsItemType(/^list$/),
   calls: () => ['body'],
-  signature: {
+  signature: ({ type }) => ({
     execIn: ['exec', 'break'],
     execOut: ['body', 'completed'],
-    inputs: [pin('list', { list: 'any' }, { description: 'The items to go through.' })],
+    inputs: [pin('list', { list: type }, { description: 'The items to go through.' })],
     outputs: [
-      pin('item', 'any', { description: 'The item of this pass.' }),
+      pin('item', type, { description: 'The item of this pass.' }),
       pin('index', 'integer', { description: 'The position of the item, counting from 0.' })
     ]
-  },
+  }),
   run: async ({ event, state, read }) => {
     if (isBreak(event)) return next('completed', {}, null);
     const loop = event.type === 'return' ? loopState(state) : null;
@@ -597,6 +608,7 @@ export const rerouteNode = pureNode<v.InferOutput<typeof rerouteConfig>>({
   level: 'basic',
   keywords: ['reroute', 'knot', 'wire', 'bend'],
   config: rerouteConfig,
+  adopts: adoptsType(/^value$/),
   inputs: ({ type }) => [
     pin('value', type, { optional: true, description: 'The value to pass on.' })
   ],

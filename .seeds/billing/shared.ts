@@ -23,11 +23,17 @@ export const ENCOUNTER = encounterModel('encounter');
 
 export const PERSON = encounterModel('person');
 
-export const LOCATION = encounterModel('location');
+export const SCENE = encounterModel('scene');
+
+export const DESTINATION = encounterModel('destination');
 
 export const INSURANCE = encounterModel('insurance');
 
 export const PAYMENT = encounterModel('payment');
+
+export const MEDICATION = encounterModel('medication');
+
+export const PROCEDURE = encounterModel('procedure');
 
 export const TIMES = encounterModel('times');
 
@@ -35,9 +41,12 @@ export const ODOMETER = encounterModel('odometer');
 
 export const listOf = (type: ValueType): ValueType => ({ list: type });
 
+export const code = (kind: string): ValueType => ({ code: kind });
+
 export const ID = {
   claim: { id: 'claim' },
   encounter: { id: 'encounter' },
+  import: { id: 'import' },
   patient: { id: 'patient' },
   payer: { id: 'payer' },
   report: { id: 'report' }
@@ -47,11 +56,21 @@ export const T = {
   encounter: modelType(ENCOUNTER),
   person: modelType(PERSON),
   insurance: modelType(INSURANCE),
+  medication: modelType(MEDICATION),
+  procedure: modelType(PROCEDURE),
   claim: modelType(CLAIM),
   coverage: modelType(COVERAGE),
   chargeLine: modelType(CHARGE_LINE),
   blob: { object: { bucket: 'string', key: 'string' } }
 } satisfies Record<string, ValueType>;
+
+export const CODE = {
+  classification: code('tripClassification'),
+  level: code('levelOfService'),
+  place: code('placeCode'),
+  hcpcs: code('hcpcs'),
+  modifier: code('modifier')
+} as const;
 
 export const QUEUE = 'billing';
 
@@ -114,74 +133,137 @@ export const asStage = seed('node', 'stage');
 
 export const asWorkflow = seed('workflow', 'workflow');
 
-export type Test = { field: string; op: string; value?: Json; input?: string };
-
 type Fixed = { value: Json };
+
+export type Source = Port | Fixed;
 
 export const fixed = (value: Json): Fixed => ({ value });
 
-const ACRONYMS: Record<string, string> = { als: 'ALS', als2: 'ALS2', iv: 'IV', pcr: 'PCR' };
+const outputOf = (id: string, pin: string): Port => `${id}.${pin}`;
 
-const MINOR = new Set(['a', 'an', 'and', 'as', 'at', 'by', 'for', 'from', 'in', 'of', 'on', 'or']);
-
-const words = (name: string) =>
-  name
-    .replace(/([a-z])([A-Z0-9])/g, '$1 $2')
-    .split(/[\s-]+/)
-    .filter(Boolean)
-    .map((w) => w.toLowerCase());
-
-const labelOf = (name: string) =>
-  words(name)
-    .map(
-      (w, i) => ACRONYMS[w] ?? (i > 0 && MINOR.has(w) ? w : `${w[0]?.toUpperCase()}${w.slice(1)}`)
-    )
-    .join(' ');
-
-type Inputs = Record<string, [ValueType, Port]>;
-
-const typed = (fields: Inputs) =>
-  Object.entries(fields).map(([name, [type]]) => ({ name, type, label: labelOf(name) }));
-
-const wireAll = (g: Builder, id: string, fields: Inputs) => {
-  for (const [name, [, port]] of Object.entries(fields)) g.wire(port, `${id}.${name}`);
+export const node = (
+  g: Builder,
+  id: string,
+  type: string,
+  label: string,
+  inputs: Record<string, Source | undefined> = {},
+  config?: Json
+) => {
+  const given = Object.entries(inputs).filter((e): e is [string, Source] => e[1] !== undefined);
+  const values = Object.fromEntries(
+    given.flatMap(([pin, from]) => (typeof from === 'string' ? [] : [[pin, from.value]]))
+  );
+  g.add(id, type, {
+    label,
+    ...(config === undefined ? {} : { config }),
+    ...(Object.keys(values).length ? { values } : {})
+  });
+  for (const [pin, from] of given) if (typeof from === 'string') g.wire(from, `${id}.${pin}`);
+  return id;
 };
 
-export const condition = (
+const numbered = (prefix: string, sources: Source[]) =>
+  Object.fromEntries(sources.map((s, i) => [`${prefix}${i + 1}`, s]));
+
+export const codes = (
   g: Builder,
   id: string,
   label: string,
-  inputs: Inputs,
-  rules: Test[],
-  match: 'all' | 'any' = 'all'
+  kind: string,
+  values: readonly string[]
 ) => {
-  g.add(id, 'std.logic.condition', {
-    label,
-    config: { ...(match === 'any' ? { match } : {}), inputs: typed(inputs), rules } as Json
-  });
-  wireAll(g, id, inputs);
-  return `${id}.result` as const;
+  node(g, id, 'std.value', label, {}, { type: listOf(code(kind)), value: [...values] });
+  return outputOf(id, 'value');
 };
+
+export const isIn = (
+  g: Builder,
+  id: string,
+  label: string,
+  kind: string,
+  item: Port,
+  list: Port
+) => {
+  node(g, id, 'std.list.contains', label, { list, item }, { type: code(kind) });
+  return outputOf(id, 'result');
+};
+
+export const isCode = (
+  g: Builder,
+  id: string,
+  label: string,
+  kind: string,
+  item: Port,
+  value: string
+) => {
+  node(g, id, 'std.logic.equal', label, { a: item, b: fixed(value) }, { type: code(kind) });
+  return outputOf(id, 'result');
+};
+
+export const not = (g: Builder, id: string, label: string, value: Port) => {
+  node(g, id, 'std.logic.not', label, { value });
+  return outputOf(id, 'result');
+};
+
+export const isMissing = (g: Builder, id: string, label: string, value: Port) => {
+  node(g, id, 'std.logic.is-null', label, { value });
+  return outputOf(id, 'result');
+};
+
+export const atLeast = (
+  g: Builder,
+  id: string,
+  label: string,
+  type: ValueType,
+  value: Port,
+  least: number
+) => {
+  node(g, id, 'std.logic.greater-or-equal', label, { a: value, b: fixed(least) }, { type });
+  return outputOf(id, 'result');
+};
+
+export const greaterThan = (
+  g: Builder,
+  id: string,
+  label: string,
+  type: ValueType,
+  value: Port,
+  than: number
+) => {
+  node(g, id, 'std.logic.greater', label, { a: value, b: fixed(than) }, { type });
+  return outputOf(id, 'result');
+};
+
+export const startsWith = (g: Builder, id: string, label: string, text: Port, part: string) => {
+  node(g, id, 'std.text.starts-with', label, { text, part: fixed(part) });
+  return outputOf(id, 'result');
+};
+
+const gates = (gate: 'and' | 'or') => (g: Builder, id: string, label: string, ports: Port[]) => {
+  const [first, ...rest] = ports;
+  if (!first) throw new Error(`${id} needs a test`);
+  return rest.reduce<Port>((acc, port, i) => {
+    const step = rest.length === 1 ? id : `${id}${i + 1}`;
+    node(g, step, `std.logic.${gate}`, label, { a: acc, b: port });
+    return outputOf(step, 'result');
+  }, first);
+};
+
+export const allOf = gates('and');
+
+export const anyOf = gates('or');
 
 export const select = (
   g: Builder,
   id: string,
   label: string,
-  when: Port,
-  whenTrue: Port | Fixed,
-  whenFalse?: Port | Fixed
+  type: ValueType,
+  condition: Port,
+  whenTrue: Source,
+  whenFalse?: Source
 ) => {
-  const pins = { condition: when, whenTrue, whenFalse };
-  const values = Object.fromEntries(
-    Object.entries(pins).flatMap(([pin, from]) =>
-      from && typeof from !== 'string' ? [[pin, from.value]] : []
-    )
-  );
-  g.add(id, 'std.logic.select', { label, ...(Object.keys(values).length ? { values } : {}) });
-  for (const [pin, from] of Object.entries(pins)) {
-    if (typeof from === 'string') g.wire(from, `${id}.${pin}`);
-  }
-  return `${id}.result` as const;
+  node(g, id, 'std.logic.select', label, { condition, whenTrue, whenFalse }, { type });
+  return outputOf(id, 'result');
 };
 
 export const firstSet = (
@@ -189,53 +271,16 @@ export const firstSet = (
   id: string,
   label: string,
   type: ValueType,
-  options: (Port | Fixed)[]
+  options: Source[]
 ) => {
-  const values = Object.fromEntries(
-    options.flatMap((o, i) => (typeof o === 'string' ? [] : [[`option${i + 1}`, o.value]]))
-  );
-  g.add(id, 'std.logic.choose', {
-    label,
-    config: { mode: 'first', type, count: options.length },
-    ...(Object.keys(values).length ? { values } : {})
-  });
-  for (const [i, o] of options.entries()) {
-    if (typeof o === 'string') g.wire(o, `${id}.option${i + 1}`);
-  }
-  return `${id}.value` as const;
-};
-
-type Case = { id: string; label: string; when: Port; value: Port | Fixed };
-
-export const firstThatHolds = (
-  g: Builder,
-  id: string,
-  label: string,
-  type: ValueType,
-  cases: Case[],
-  otherwise: Port | Fixed
-) =>
-  firstSet(g, id, label, type, [
-    ...cases.map((c) => select(g, c.id, c.label, c.when, c.value)),
-    otherwise
-  ]);
-
-export const either = (g: Builder, id: string, label: string, ports: Port[]) => {
-  const [first, ...rest] = ports;
-  if (!first) throw new Error(`${id} needs a test`);
-  return rest.reduce<Port>((acc, port, i) => {
-    const gate = rest.length === 1 ? id : `${id}${i + 1}`;
-    g.add(gate, 'std.logic.or', { label });
-    g.wire(acc, `${gate}.a`);
-    g.wire(port, `${gate}.b`);
-    return `${gate}.result`;
-  }, first);
+  const config = { mode: 'first', type, count: options.length };
+  node(g, id, 'std.logic.choose', label, numbered('option', options), config);
+  return outputOf(id, 'value');
 };
 
 export const makeList = (g: Builder, id: string, label: string, type: ValueType, items: Port[]) => {
-  g.add(id, 'std.list.make', { label, config: { count: items.length, type } });
-  for (const [i, port] of items.entries()) g.wire(port, `${id}.item${i + 1}`);
-  return `${id}.list` as const;
+  node(g, id, 'std.list.make', label, numbered('item', items), { count: items.length, type });
+  return outputOf(id, 'list');
 };
 
 export const presentOf = (
@@ -245,10 +290,9 @@ export const presentOf = (
   type: ValueType,
   items: Port[]
 ) => {
-  const all = makeList(g, `${id}Or`, `${label} or Nothing`, type, items);
-  g.add(id, 'std.list.compact', { label });
-  g.wire(all, `${id}.list`);
-  return `${id}.list` as const;
+  const list = makeList(g, `${id}Or`, `${label} or Nothing`, type, items);
+  node(g, id, 'std.list.compact', label, { list }, { type });
+  return outputOf(id, 'list');
 };
 
 export const joinLists = (
@@ -258,21 +302,40 @@ export const joinLists = (
   type: ValueType,
   lists: Port[]
 ) => {
-  g.add(id, 'std.list.join', { label, config: { count: lists.length, type } });
-  for (const [i, port] of lists.entries()) g.wire(port, `${id}.list${i + 1}`);
-  return `${id}.list` as const;
+  node(g, id, 'std.list.join', label, numbered('list', lists), { count: lists.length, type });
+  return outputOf(id, 'list');
 };
 
-export type Reason = { id: string; label: string; when: Port; reason: string };
+export type Criterion = { id: string; label: string; reason: string; holds: Port };
 
-export const reasonsOf = (g: Builder, id: string, label: string, reasons: Reason[]) =>
+export const reasonsOf = (g: Builder, id: string, label: string, criteria: Criterion[]) =>
   presentOf(
     g,
     id,
     label,
     'string',
-    reasons.map((r) => select(g, r.id, r.label, r.when, fixed(r.reason)))
+    criteria.map((c) =>
+      select(g, `${c.id}Reason`, `Reason When ${c.label}`, 'string', c.holds, fixed(c.reason))
+    )
   );
+
+export const CRITERIA_OUT = [
+  d('holds', 'boolean', 'Holds', 'Whether any of the criteria holds.'),
+  d('reasons', listOf('string'), 'Reasons', 'The reason of each criterion that holds.')
+];
+
+export const criteriaResult = (g: Builder, label: string, criteria: Criterion[]) => {
+  const holds = anyOf(
+    g,
+    'any',
+    `Any ${label} Criterion Holds`,
+    criteria.map((c) => c.holds)
+  );
+  g.ret('return');
+  g.wire(holds, 'return.holds');
+  g.wire(reasonsOf(g, 'reasons', `${label} Reasons`, criteria), 'return.reasons');
+  return g.def;
+};
 
 export const breakRecord = (
   g: Builder,
@@ -292,30 +355,41 @@ export const codeTable = (
   key: string,
   name: string,
   description: string,
+  type: ValueType,
   rows: Record<string, string>,
   fallback?: string
 ) =>
   shared.lookup(key, name, description, {
-    type: 'string',
+    type,
     rows: Object.entries(rows).map(([k, value]) => ({ key: k, value })),
     ...(fallback === undefined ? {} : { fallback })
   });
 
-export const lookup = (g: Builder, id: string, label: string, table: CodeTable, key: Port) => {
-  g.add(id, 'std.table.lookup', { label, config: table.lookup });
-  g.wire(key, `${id}.key`);
-  return id;
-};
+export const lookup = (g: Builder, id: string, label: string, table: CodeTable, key: Port) =>
+  node(g, id, 'std.table.lookup', label, { key }, table.lookup);
 
 export const keepWhere = (
   g: Builder,
   id: string,
   label: string,
+  ruleKey: string,
+  item: string,
   list: Port,
-  config: Record<string, Json>
+  given: Record<string, Source> = {}
 ) => {
-  g.add(id, 'std.list.where', { label, config });
-  g.wire(list, `${id}.list`);
+  node(
+    g,
+    id,
+    'std.list.filter-rule',
+    label,
+    { list, ...given },
+    {
+      rule: ruleKey,
+      version: 1,
+      item,
+      test: 'result'
+    }
+  );
   return id;
 };
 
@@ -365,13 +439,13 @@ export const choicesFor = (
   g: Builder,
   id: string,
   label: string,
-  rule: string,
+  ruleKey: string,
   field: string,
   candidates: Port
 ) => {
   g.add(`${id}List`, 'std.list.map-rule', {
     label: `${label} as Choices`,
-    config: { rule, version: 1, item: 'candidate' }
+    config: { rule: ruleKey, version: 1, item: 'candidate' }
   });
   g.add(id, 'std.object.make', {
     label,

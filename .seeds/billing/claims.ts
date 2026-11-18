@@ -5,6 +5,7 @@ import {
   asStage,
   asWorkflow,
   breakRecord,
+  CODE,
   d,
   ENCOUNTER,
   exit,
@@ -18,7 +19,7 @@ import {
 
 const CLASSIFICATION_OUT = d(
   'classification',
-  'string',
+  CODE.classification,
   'Classification',
   'What kind of trip the encounter was.'
 );
@@ -53,7 +54,7 @@ const buildClaim = (): GraphDef => {
   g.add('classify', 'billing.trip-classification', { label: 'Trip Classification' });
   g.add('billable', 'std.flow.branch', { label: 'Billable?' });
   g.add('patient', 'billing.resolve-patient', { label: 'Resolve Patient' });
-  g.add('service', 'billing.service', { label: 'Service' });
+  g.add('service', 'billing.service-details', { label: 'Service Details' });
   g.add('diagnoses', 'billing.diagnoses', { label: 'Diagnoses' });
   g.add('places', 'billing.origin-and-destination', { label: 'Origin and Destination' });
   g.add('payers', 'billing.determine-payers', { label: 'Determine Payers' });

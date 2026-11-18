@@ -1,4 +1,5 @@
 import {
+  type Adoption,
   ENTRY_TYPE,
   type ExitDoc,
   type GraphDef,
@@ -191,68 +192,23 @@ export const connectionKind = (def: GraphDef, catalog: Catalog, c: Connection) =
   return from.type && to.type && isAssignable(from.type, to.type) ? 'data' : null;
 };
 
-type Adoption = { pins: RegExp; key: string; from: (type: ValueType) => ValueType | null };
-
-const itemOf = (type: ValueType) => (typeof type === 'object' && 'list' in type ? type.list : null);
-
-const recordOf = (type: ValueType) => (typeof type === 'object' && 'object' in type ? type : null);
-
-const self = (type: ValueType) => type;
-
-const byValue = (pins: RegExp): Adoption[] => [{ pins, key: 'type', from: self }];
-
-const byList: Adoption[] = [
-  { pins: /^(list|other)$/, key: 'type', from: itemOf },
-  { pins: /^item$/, key: 'type', from: self }
-];
-
-const LIST_NODES = [
-  'length',
-  'get',
-  'first',
-  'last',
-  'append',
-  'concat',
-  'slice',
-  'contains',
-  'index-of',
-  'reverse',
-  'unique',
-  'flatten',
-  'pluck',
-  'compact',
-  'sort-by-field'
-];
-
-const COMPARE_NODES = [
-  'equal',
-  'not-equal',
-  'greater',
-  'greater-or-equal',
-  'less',
-  'less-or-equal'
-];
-
-const ADOPTIONS: Readonly<Record<string, readonly Adoption[]>> = {
-  'std.object.get-field': [{ pins: /^record$/, key: 'record', from: recordOf }],
-  'std.object.set-field': [{ pins: /^record$/, key: 'record', from: recordOf }],
-  'std.list.make': byValue(/^item\d+$/),
-  'std.list.join': [{ pins: /^list\d+$/, key: 'type', from: itemOf }],
-  'std.logic.choose': byValue(/^(option\d+|case\d+|otherwise)$/),
-  'std.logic.coalesce': byValue(/^(value|fallback)$/),
-  'std.logic.select': byValue(/^(whenTrue|whenFalse)$/),
-  'std.flow.reroute': byValue(/^value$/),
-  ...Object.fromEntries(COMPARE_NODES.map((k) => [`std.logic.${k}`, byValue(/^(a|b)$/)])),
-  ...Object.fromEntries(LIST_NODES.map((k) => [`std.list.${k}`, byList]))
+const ADOPTED: Readonly<Record<Adoption['from'], (type: ValueType) => ValueType | null>> = {
+  value: (type) => type,
+  item: (type) => (typeof type === 'object' && 'list' in type ? type.list : null),
+  record: (type) => (typeof type === 'object' && 'object' in type ? type : null)
 };
 
-const adopt = (inst: NodeInstance, pin: string, type: ValueType | undefined): NodeInstance => {
-  const rules = Object.hasOwn(ADOPTIONS, inst.type) ? ADOPTIONS[inst.type] : undefined;
-  const rule = rules?.find((r) => r.pins.test(pin));
+const adopt = (
+  catalog: Catalog,
+  inst: NodeInstance,
+  pin: string,
+  type: ValueType | undefined
+): NodeInstance => {
+  const rule = catalog.adoptionsOf(inst).find((r) => r.pins.test(pin));
   if (!rule || !type || type === 'any') return inst;
   const config = (inst.config ?? {}) as Record<string, Json>;
   const current = config[rule.key];
-  const adopted = rule.from(type);
+  const adopted = ADOPTED[rule.from](type);
   return adopted && (current === undefined || current === 'any')
     ? { ...inst, config: { ...config, [rule.key]: adopted as Json } }
     : inst;
@@ -272,7 +228,7 @@ export const connect = (def: GraphDef, catalog: Catalog, c: Connection): GraphDe
     kind === 'data'
       ? def.nodes.map((n) => {
           if (n.id !== edge.to) return n;
-          const typed = adopt(n, edge.toPin, from?.type ?? undefined);
+          const typed = adopt(catalog, n, edge.toPin, from?.type ?? undefined);
           if (!typed.inputs?.[edge.toPin]) return typed;
           const { [edge.toPin]: _, ...inputs } = typed.inputs;
           return { ...typed, inputs };

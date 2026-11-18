@@ -2,7 +2,7 @@ import { pin, pureNode } from './define.ts';
 import { isRecord } from './json.ts';
 import type { NodeDef, PinSpec, ValueType } from './types.ts';
 
-export type ModelField = { name: string; type: ValueType; label: string };
+export type ModelField = { name: string; type: ValueType; label: string; description: string };
 
 export type Model = {
   key: string;
@@ -19,7 +19,7 @@ export const modelType = (m: Pick<Model, 'fields'>): ValueType => ({
 
 const fieldPins = (m: Model): PinSpec[] =>
   m.fields.map((f) =>
-    pin(f.name, f.type, { label: f.label, optional: true, description: `${f.label}.` })
+    pin(f.name, f.type, { label: f.label, optional: true, description: f.description })
   );
 
 export const createModelNodes = (models: readonly Model[]): NodeDef[] =>
