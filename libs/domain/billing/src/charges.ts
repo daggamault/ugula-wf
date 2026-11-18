@@ -8,7 +8,8 @@ export const CLASSIFICATIONS = [
   'pronouncedDead',
   'treatNoTransport',
   'refusal',
-  'notBillable'
+  'notBillable',
+  'unknown'
 ] as const;
 
 export type Classification = (typeof CLASSIFICATIONS)[number];
@@ -19,7 +20,8 @@ export const CLASSIFICATION_LABELS: Record<Classification, string> = {
   pronouncedDead: 'Pronounced Dead Before Loading',
   treatNoTransport: 'Treated, Not Transported',
   refusal: 'Refused Care',
-  notBillable: 'Not Billable'
+  notBillable: 'Not Billable',
+  unknown: 'Needs Classification'
 };
 
 export const HCPCS_PATTERN = '^[A-Z][0-9]{4}$';

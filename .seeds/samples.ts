@@ -135,7 +135,7 @@ const EXPECTED: Record<string, Expected[]> = {
     }
   ],
   'missing-disposition.xml': [
-    { classification: 'notBillable', lines: ['A0429-SH x1'], payers: ['Blue Plan'] }
+    { classification: 'emergency', lines: ['A0429-SH x1', 'A0425-SH x8.3'], payers: ['Blue Plan'] }
   ],
   'missing-patient-details.xml': [
     {
@@ -165,7 +165,7 @@ const EXPECTED: Record<string, Expected[]> = {
   'refusal-unsigned.xml': [
     {
       classification: 'refusal',
-      lines: ['A0429 x1'],
+      lines: ['A0998 x1'],
       payers: ['Blue Plan'],
       claimChecks: [UNSIGNED]
     }
@@ -203,6 +203,7 @@ const EXPECTED: Record<string, Expected[]> = {
       checks: [A0998_CHECK]
     }
   ],
+  'unclear-trip.xml': [{ classification: 'unknown', lines: ['A0429 x1'], payers: ['Blue Plan'] }],
   'work-injury-msp.xml': [
     {
       classification: 'emergency',

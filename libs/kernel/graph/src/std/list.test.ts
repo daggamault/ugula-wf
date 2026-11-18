@@ -133,6 +133,14 @@ describe('reading list nodes', () => {
     });
     assert.deepEqual(await out('std.list.contains', { list: [1] }), { result: false });
     assert.deepEqual(await out('std.list.contains', { list: [1, null] }), { result: true });
+    assert.deepEqual(
+      await out('std.list.contains-any', { list: ['a', 'b', 'c'], other: ['x', 'c', 'a'] }),
+      { result: true, matches: ['c', 'a'] }
+    );
+    assert.deepEqual(await out('std.list.contains-any', { list: null, other: ['a'] }), {
+      result: false,
+      matches: []
+    });
     assert.deepEqual(await out('std.list.index-of', { list: ['a', 'b', 'b'], item: 'b' }), {
       index: 1
     });

@@ -186,6 +186,32 @@ export const listNodes: NodeDef[] = [
     (x) => ({ result: items(x).some((y) => deepEqual(y, x.item ?? null)) })
   ),
   listNode(
+    'contains-any',
+    'Contains Any',
+    'True when the list holds any of the items looked for, such as any of a list of codes; gives the items it holds.',
+    (t) => [
+      pin(
+        'other',
+        { list: t },
+        {
+          optional: true,
+          label: 'Items to Find',
+          description: 'The items to look for; nothing is found when empty.'
+        }
+      )
+    ],
+    (t) => [
+      RESULT,
+      pin('matches', { list: t }, { description: 'The items looked for that the list holds.' })
+    ],
+    (x) => {
+      const matches = ((x.other ?? []) as Json[]).filter((o) =>
+        items(x).some((y) => deepEqual(y, o))
+      );
+      return { result: matches.length > 0, matches };
+    }
+  ),
+  listNode(
     'index-of',
     'Index of',
     'Gives the position of the first equal item, counting from 0, or -1 when there is none.',

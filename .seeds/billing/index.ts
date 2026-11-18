@@ -7,9 +7,11 @@ import { patientGraphs } from './patients.ts';
 import { payerGraphs } from './payers.ts';
 import { serviceGraphs } from './service.ts';
 import { shared } from './shared.ts';
+import { tripGraphs } from './trip.ts';
 
 export const billingGraphs: SeedGraph[] = [
   ...importGraphs,
+  ...tripGraphs,
   ...serviceGraphs,
   ...patientGraphs,
   ...payerGraphs,

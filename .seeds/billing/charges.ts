@@ -27,6 +27,7 @@ import {
   listOf,
   lookup,
   makeList,
+  n,
   node,
   not,
   orZero,
@@ -418,11 +419,19 @@ const baseRateCode = (): GraphDef => {
     'entry.vehicle'
   );
   lookup(g, 'rate', 'Base Rate Codes', BASE_RATES, key);
-  const noTransport = isClassification(
+  const noTransport = isIn(
     g,
     'noTransport',
-    'Treated Without Transport',
-    'treatNoTransport'
+    n('Not Transported', 'Treatment or a refusal without transport bills A0998.'),
+    'tripClassification',
+    'entry.classification',
+    codes(
+      g,
+      'noTransportKinds',
+      n('Kinds Without Transport', 'Treated without transport, or refused.'),
+      'tripClassification',
+      ['treatNoTransport', 'refusal']
+    )
   );
   const rateCode = select(
     g,
@@ -439,7 +448,7 @@ const baseRateCode = (): GraphDef => {
     'Reason for the Code',
     'string',
     noTransport,
-    fixed('A0998: treated without transport'),
+    fixed('A0998: response and care without transport'),
     template(g, 'rateReason', 'Base Rate Reason', 'Base rate {code}: {key}', {
       code: rateCode,
       key

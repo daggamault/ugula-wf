@@ -1,4 +1,4 @@
-import { CLAIM } from '@ugula/billing';
+import { CLAIM, CLASSIFICATION_LABELS, CLASSIFICATIONS } from '@ugula/billing';
 import type { GraphDef } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import {
@@ -6,13 +6,17 @@ import {
   asWorkflow,
   breakRecord,
   CODE,
+  codes,
   d,
   ENCOUNTER,
   exit,
   flow,
   ID,
+  isCode,
+  isIn,
   joinLists,
   listOf,
+  n,
   PAYMENT,
   QUEUE,
   stage,
@@ -112,6 +116,109 @@ const reviewClaim = (): GraphDef => {
   return g.def;
 };
 
+const BILLABLE = ['emergency', 'scheduled', 'pronouncedDead', 'treatNoTransport', 'refusal'];
+
+const CHOSEN_KINDS = CLASSIFICATIONS.filter((c) => c !== 'unknown').map((value) => ({
+  value,
+  label: CLASSIFICATION_LABELS[value]
+}));
+
+const settleClassification = (): GraphDef => {
+  const g = stage(
+    [
+      d('classification', CODE.classification, 'Classification', 'What the rules decided.'),
+      d('subject', 'string', 'Subject', 'What the trip is, such as the PCR number.', true),
+      d('reasons', listOf('string'), 'Reasons', 'Why the rules decided as they did.')
+    ],
+    [
+      d('classification', CODE.classification, 'Classification', 'What kind of trip it was.'),
+      d('billable', 'boolean', 'Billable', 'Whether the trip is billed.')
+    ],
+    { settled: exit('Settled', 'The trip has a kind, from the rules or a biller.') },
+    [{ name: 'kind', type: CODE.classification, default: null }]
+  );
+  g.add('decided', 'std.var.set', {
+    label: 'Remember What the Rules Decided',
+    note: 'Starts from the rules; a biller replaces it only when the rules could not decide.',
+    config: { name: 'kind' }
+  });
+  g.add('unknown', 'std.flow.branch', {
+    label: 'Rules Could Not Decide',
+    note: 'An unknown trip goes to a biller instead of being guessed.'
+  });
+  isCode(
+    g,
+    'isUnknown',
+    n('Is Unknown', 'Whether the rules left the kind of trip unknown.'),
+    'tripClassification',
+    'entry.classification',
+    'unknown'
+  );
+  g.add('ask', 'std.human.task', {
+    label: 'Classify the Trip',
+    note: 'A biller reads the report and says what kind of trip it was.',
+    config: {
+      title: 'Classify the Trip',
+      queue: QUEUE,
+      instructions:
+        'The report does not say clearly enough what kind of trip this was, or it contradicts itself. Read the dispositions, times, destination and narrative, and choose what happened. Choose Not Billable when there was no patient to bill for.',
+      fields: [
+        {
+          name: 'classification',
+          type: CODE.classification,
+          label: 'Kind of Trip',
+          options: CHOSEN_KINDS,
+          required: ['classify']
+        }
+      ],
+      outcomes: ['classify'],
+      hints: { classify: 'Bill the trip as the kind chosen.' }
+    }
+  });
+  g.add('chosen', 'std.var.set', {
+    label: 'Remember What the Biller Chose',
+    note: 'The biller’s choice replaces unknown.',
+    config: { name: 'kind' }
+  });
+  g.add('kind', 'std.var.get', {
+    label: 'Kind of Trip',
+    note: 'What the rules or the biller decided.',
+    config: { name: 'kind' }
+  });
+  const billable = isIn(
+    g,
+    'billable',
+    n('Billable Kind of Trip', 'Whether this kind of trip is billed.'),
+    'tripClassification',
+    'kind.value',
+    codes(
+      g,
+      'billableKinds',
+      n(
+        'Billable Kinds of Trip',
+        'Transports, pronounced dead, treatment and refusal without transport.'
+      ),
+      'tripClassification',
+      BILLABLE
+    )
+  );
+  g.ret('return', 'settled');
+  g.wire('kind.value', 'return.classification');
+  g.wire(billable, 'return.billable');
+  g.wire('entry.exec', 'decided.exec');
+  g.wire('entry.classification', 'decided.value');
+  g.wire('decided.then', 'unknown.exec');
+  g.wire('isUnknown.result', 'unknown.condition');
+  g.wire('unknown.false', 'return.exec');
+  g.wire('unknown.true', 'ask.exec');
+  g.wire('entry.subject', 'ask.subject');
+  g.wire('entry.reasons', 'ask.context');
+  g.wire('ask.classify', 'chosen.exec');
+  g.wire('ask.classification', 'chosen.value');
+  g.wire('chosen.then', 'return.exec');
+  return g.def;
+};
+
 const buildClaim = (): GraphDef => {
   const g = stage(
     [d('encounter', T.encounter, 'Encounter', 'The encounter to bill.')],
@@ -135,6 +242,10 @@ const buildClaim = (): GraphDef => {
   breakRecord(g, 'trip', 'Encounter', ENCOUNTER, 'entry.encounter');
   breakRecord(g, 'payment', 'Payment', PAYMENT, 'trip.payment');
   g.add('classify', 'billing.trip-classification', { label: 'Trip Classification' });
+  g.add('settle', 'billing.settle-classification', {
+    label: 'Settle the Trip',
+    note: 'A biller classifies the trip when the rules could not.'
+  });
   g.add('billable', 'std.flow.branch', { label: 'Is Billable' });
   g.add('patient', 'billing.resolve-patient', { label: 'Resolve Patient' });
   g.add('service', 'billing.service-details', { label: 'Service Details' });
@@ -167,8 +278,12 @@ const buildClaim = (): GraphDef => {
   }
   g.wire('entry.encounter', 'places.encounter', 'payers.encounter');
   g.wire('trip.patient', 'patient.person');
-  g.wire('entry.exec', 'billable.exec');
-  g.wire('classify.billable', 'billable.condition');
+  g.wire('entry.exec', 'settle.exec');
+  g.wire('classify.classification', 'settle.classification');
+  g.wire('classify.reasons', 'settle.reasons');
+  g.wire('trip.pcrNumber', 'settle.subject');
+  g.wire('settle.settled', 'billable.exec');
+  g.wire('settle.billable', 'billable.condition');
   g.wire('billable.false', 'notBilled.exec');
   g.wire('billable.true', 'patient.exec');
   g.wire('patient.resolved', 'payers.exec');
@@ -177,7 +292,7 @@ const buildClaim = (): GraphDef => {
   g.wire('primary.item', 'primaryPayer.coverage');
   g.wire('primaryPayer.payerId', 'charges.payerId');
   g.wire(
-    'classify.classification',
+    'settle.classification',
     'charges.classification',
     'payers.classification',
     'checks.classification',
@@ -214,10 +329,10 @@ const buildClaim = (): GraphDef => {
     g.wire(`save.${outcome}`, `${outcome}.exec`);
     g.wire('save.claimId', `${outcome}.claimId`);
     g.wire('save.revision', `${outcome}.revision`);
-    g.wire('classify.classification', `${outcome}.classification`);
+    g.wire('settle.classification', `${outcome}.classification`);
     g.wire(reasons, `${outcome}.reasons`);
   }
-  g.wire('classify.classification', 'notBilled.classification');
+  g.wire('settle.classification', 'notBilled.classification');
   g.wire('classify.reasons', 'notBilled.reasons');
   return g.def;
 };
@@ -267,6 +382,12 @@ export const claimGraphs: SeedGraph[] = [
     'Review Claim',
     'Ends every claim on review by a biller, as the law requires before a claim goes to the clearinghouse: a Review the Claim task that only someone allowed to approve claims can complete. Approved makes the claim ready for the clearinghouse; On Hold keeps it back with a note. A claim revised during the review is decided in its own review, and the review of the earlier revision is cancelled.',
     reviewClaim()
+  ),
+  asStage(
+    'billing.settle-classification',
+    'Settle the Trip',
+    'Keeps the kind of trip the rules decided, or asks a biller to classify the trip when the rules could not decide, so a trip is never billed or dropped on a guess.',
+    settleClassification()
   ),
   asStage(
     'billing.build-claim',

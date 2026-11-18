@@ -41,6 +41,8 @@ export const ODOMETER = encounterModel('odometer');
 
 export const SIGNATURE = encounterModel('signature');
 
+export const ADDRESS = encounterModel('address');
+
 export const TRANSPORT_KINDS = ['emergency', 'scheduled'];
 
 export const listOf = (type: ValueType): ValueType => ({ list: type });
@@ -146,11 +148,21 @@ export const fixed = (value: Json): Fixed => ({ value });
 
 const outputOf = (id: string, pin: string): Port => `${id}.${pin}`;
 
+export type Noted = { label: string; note: string };
+
+export type Label = string | Noted;
+
+export const n = (label: string, note: string): Noted => ({ label, note });
+
+const named = (label: Label) => (typeof label === 'string' ? { label } : label);
+
+export const labelOf = (label: Label) => named(label).label;
+
 export const node = (
   g: Builder,
   id: string,
   type: string,
-  label: string,
+  label: Label,
   inputs: Record<string, Source | undefined> = {},
   config?: Json
 ) => {
@@ -159,7 +171,7 @@ export const node = (
     given.flatMap(([pin, from]) => (typeof from === 'string' ? [] : [[pin, from.value]]))
   );
   g.add(id, type, {
-    label,
+    ...named(label),
     ...(config === undefined ? {} : { config }),
     ...(Object.keys(values).length ? { values } : {})
   });
@@ -173,7 +185,7 @@ const numbered = (prefix: string, sources: Source[]) =>
 export const codes = (
   g: Builder,
   id: string,
-  label: string,
+  label: Label,
   kind: string,
   values: readonly string[]
 ) => {
@@ -184,7 +196,7 @@ export const codes = (
 export const isIn = (
   g: Builder,
   id: string,
-  label: string,
+  label: Label,
   kind: string,
   item: Port,
   list: Port
@@ -196,7 +208,7 @@ export const isIn = (
 export const isCode = (
   g: Builder,
   id: string,
-  label: string,
+  label: Label,
   kind: string,
   item: Port,
   value: string
@@ -205,12 +217,12 @@ export const isCode = (
   return outputOf(id, 'result');
 };
 
-export const isText = (g: Builder, id: string, label: string, item: Port, value: string) => {
+export const isText = (g: Builder, id: string, label: Label, item: Port, value: string) => {
   node(g, id, 'std.logic.equal', label, { a: item, b: fixed(value) }, { type: 'string' });
   return outputOf(id, 'result');
 };
 
-export const orZero = (g: Builder, id: string, label: string, value: Port) => {
+export const orZero = (g: Builder, id: string, label: Label, value: Port) => {
   node(g, id, 'std.logic.coalesce', label, { value, fallback: fixed(0) }, { type: 'number' });
   return outputOf(id, 'result');
 };
@@ -218,7 +230,7 @@ export const orZero = (g: Builder, id: string, label: string, value: Port) => {
 export const template = (
   g: Builder,
   id: string,
-  label: string,
+  label: Label,
   text: string,
   values: Record<string, Port>
 ) => {
@@ -226,17 +238,17 @@ export const template = (
   return outputOf(id, 'text');
 };
 
-export const isZero = (g: Builder, id: string, label: string, value: Port) => {
+export const isZero = (g: Builder, id: string, label: Label, value: Port) => {
   node(g, id, 'std.logic.equal', label, { a: value, b: fixed(0) }, { type: 'integer' });
   return outputOf(id, 'result');
 };
 
-export const not = (g: Builder, id: string, label: string, value: Port) => {
+export const not = (g: Builder, id: string, label: Label, value: Port) => {
   node(g, id, 'std.logic.not', label, { value });
   return outputOf(id, 'result');
 };
 
-export const isMissing = (g: Builder, id: string, label: string, value: Port) => {
+export const isMissing = (g: Builder, id: string, label: Label, value: Port) => {
   node(g, id, 'std.logic.is-null', label, { value });
   return outputOf(id, 'result');
 };
@@ -244,7 +256,7 @@ export const isMissing = (g: Builder, id: string, label: string, value: Port) =>
 export const atLeast = (
   g: Builder,
   id: string,
-  label: string,
+  label: Label,
   type: ValueType,
   value: Port,
   least: number
@@ -256,7 +268,7 @@ export const atLeast = (
 export const greaterThan = (
   g: Builder,
   id: string,
-  label: string,
+  label: Label,
   type: ValueType,
   value: Port,
   than: number
@@ -265,12 +277,12 @@ export const greaterThan = (
   return outputOf(id, 'result');
 };
 
-export const startsWith = (g: Builder, id: string, label: string, text: Port, part: string) => {
+export const startsWith = (g: Builder, id: string, label: Label, text: Port, part: string) => {
   node(g, id, 'std.text.starts-with', label, { text, part: fixed(part) });
   return outputOf(id, 'result');
 };
 
-const gates = (gate: 'and' | 'or') => (g: Builder, id: string, label: string, ports: Port[]) => {
+const gates = (gate: 'and' | 'or') => (g: Builder, id: string, label: Label, ports: Port[]) => {
   const [first] = ports;
   if (!first) throw new Error(`${id} needs a condition`);
   if (ports.length === 1) return first;
@@ -285,7 +297,7 @@ export const anyOf = gates('or');
 export const select = (
   g: Builder,
   id: string,
-  label: string,
+  label: Label,
   type: ValueType,
   condition: Port,
   whenTrue: Source,
@@ -298,7 +310,7 @@ export const select = (
 export const firstSet = (
   g: Builder,
   id: string,
-  label: string,
+  label: Label,
   type: ValueType,
   options: Source[]
 ) => {
@@ -307,32 +319,33 @@ export const firstSet = (
   return outputOf(id, 'value');
 };
 
-export const makeList = (g: Builder, id: string, label: string, type: ValueType, items: Port[]) => {
+export const makeList = (g: Builder, id: string, label: Label, type: ValueType, items: Port[]) => {
   node(g, id, 'std.list.make', label, numbered('item', items), { count: items.length, type });
   return outputOf(id, 'list');
 };
 
-export const joinLists = (
-  g: Builder,
-  id: string,
-  label: string,
-  type: ValueType,
-  lists: Port[]
-) => {
+export const joinLists = (g: Builder, id: string, label: Label, type: ValueType, lists: Port[]) => {
   node(g, id, 'std.list.join', label, numbered('list', lists), { count: lists.length, type });
   return outputOf(id, 'list');
 };
 
 export type Criterion = { id: string; label: string; reason: string; holds: Port };
 
-export const reasonsOf = (g: Builder, id: string, label: string, criteria: Criterion[]) =>
+export const reasonsOf = (g: Builder, id: string, label: Label, criteria: Criterion[]) =>
   makeList(
     g,
     id,
     label,
     'string',
     criteria.map((c) =>
-      select(g, `${c.id}Reason`, `Reason When ${c.label}`, 'string', c.holds, fixed(c.reason))
+      select(
+        g,
+        `${c.id}Reason`,
+        n(`Reason When ${c.label}`, 'Adds this reason when the test holds.'),
+        'string',
+        c.holds,
+        fixed(c.reason)
+      )
     )
   );
 
@@ -345,23 +358,31 @@ export const criteriaResult = (g: Builder, label: string, criteria: Criterion[])
   const holds = anyOf(
     g,
     'any',
-    `Any ${label} Criterion Holds`,
+    n(`Any ${label} Criterion Holds`, 'Holds when any one of the tests holds.'),
     criteria.map((c) => c.holds)
   );
   g.ret('return');
   g.wire(holds, 'return.holds');
-  g.wire(reasonsOf(g, 'reasons', `${label} Reasons`, criteria), 'return.reasons');
+  g.wire(
+    reasonsOf(
+      g,
+      'reasons',
+      n(`${label} Reasons`, 'Collects the reason of each test that holds.'),
+      criteria
+    ),
+    'return.reasons'
+  );
   return g.def;
 };
 
 export const breakRecord = (
   g: Builder,
   id: string,
-  label: string,
+  label: Label,
   model: Pick<Model, 'key' | 'name'>,
   from: Port
 ) => {
-  g.add(id, `${model.key}.break`, { label });
+  g.add(id, `${model.key}.break`, named(label));
   g.wire(from, `${id}.${model.name}`);
   return id;
 };
@@ -382,13 +403,13 @@ export const codeTable = (
     ...(fallback === undefined ? {} : { fallback })
   });
 
-export const lookup = (g: Builder, id: string, label: string, table: CodeTable, key: Port) =>
+export const lookup = (g: Builder, id: string, label: Label, table: CodeTable, key: Port) =>
   node(g, id, 'std.table.lookup', label, { key }, table.lookup);
 
 export const keepWhere = (
   g: Builder,
   id: string,
-  label: string,
+  label: Label,
   ruleKey: string,
   item: string,
   list: Port,
@@ -454,17 +475,18 @@ export const choiceRule = (
 export const choicesFor = (
   g: Builder,
   id: string,
-  label: string,
+  label: Label,
   ruleKey: string,
   field: string,
   candidates: Port
 ) => {
   g.add(`${id}List`, 'std.list.map-rule', {
-    label: `${label} as Choices`,
+    label: `${labelOf(label)} as Choices`,
+    note: 'Turns each candidate into a choice the person picks from.',
     config: { rule: ruleKey, version: 1, item: 'candidate' }
   });
   g.add(id, 'std.object.make', {
-    label,
+    ...named(label),
     config: { fields: [{ name: field, type: listOf(CHOICE) }] } as Json
   });
   g.wire(candidates, `${id}List.list`);

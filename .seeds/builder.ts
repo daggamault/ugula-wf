@@ -13,7 +13,7 @@ import {
 
 type Port = `${string}.${string}`;
 
-type NodeOptions = Pick<NodeInstance, 'label' | 'config'> & {
+type NodeOptions = Pick<NodeInstance, 'label' | 'config' | 'note'> & {
   values?: Record<string, Json>;
 };
 
