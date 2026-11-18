@@ -59,6 +59,11 @@ const buildClaim = (): GraphDef => {
   g.add('service', 'billing.service-details', { label: 'Service Details' });
   g.add('diagnoses', 'billing.diagnoses', { label: 'Diagnoses' });
   g.add('ambulance', 'billing.ambulance-details', { label: 'Ambulance Details' });
+  g.add('checks', 'billing.claim-checks', { label: 'Claim Checks' });
+  g.wire('entry.encounter', 'checks.encounter');
+  g.wire('service.serviceDate', 'checks.serviceDate');
+  g.wire('service.emergency', 'checks.emergency');
+  g.wire('diagnoses.diagnoses', 'checks.diagnoses');
   g.add('places', 'billing.origin-and-destination', { label: 'Origin and Destination' });
   g.add('payers', 'billing.determine-payers', { label: 'Determine Payers' });
   g.add('primary', 'std.list.first', { label: 'Primary Coverage' });
@@ -94,6 +99,7 @@ const buildClaim = (): GraphDef => {
     'classify.classification',
     'charges.classification',
     'payers.classification',
+    'checks.classification',
     'claim.classification'
   );
   g.wire('trip.transportMethod', 'charges.transportMethod');
@@ -117,7 +123,8 @@ const buildClaim = (): GraphDef => {
     'service.reasons',
     'places.reasons',
     'payers.reasons',
-    'charges.reasons'
+    'charges.reasons',
+    'checks.reasons'
   ]);
   g.wire(reasons, 'claim.reasons');
   g.wire('charges.charged', 'save.exec');

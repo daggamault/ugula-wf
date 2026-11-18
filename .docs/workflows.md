@@ -72,7 +72,7 @@ The API records the import and emits the event in one transaction; an upload is 
 Read Encounter → **Build Claim**: Trip Classification → Is Billable
 
 - No → Not Billable, with the classification and its reasons.
-- Yes → Resolve Patient → Determine Payers → Assign Charges → Make Claim → Save Claim (Needs Review; a revised encounter replaces its claim).
+- Yes → Resolve Patient → Determine Payers → Assign Charges → Make Claim (with Service Details, Diagnoses, Ambulance Details and the reasons of Payer Checks and Claim Checks) → Save Claim (Needs Review; a revised encounter replaces its claim).
 
 | Graph                    | Kind  | Built from                                                                                                                                                                                       |
 | ------------------------ | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -114,6 +114,11 @@ Read Encounter → **Build Claim**: Trip Classification → Is Billable
 | Line Modifiers           | rule  | Origin and destination letters, QL when pronounced dead, GM when more than one patient was transported                                                                                           |
 | Covered Miles            | rule  | Miles to the closest facility covered and the rest non-covered when the transport reason is B or C, else every loaded mile                                                                       |
 | Price Line               | stage | Find Fee times units to the cent, or no price with the reason                                                                                                                                    |
+| Claim Checks             | rule  | Signed Release, or Unable to Sign with a Facility Signature; a PCS for a non-emergency transport, no more than 60 days old; prior authorization for a dialysis transport; timely filing          |
+| Signed Release           | rule  | A release for billing with a signed status, per signature                                                                                                                                        |
+| Unable to Sign           | rule  | A release for billing the patient could not sign (unconscious, impaired and so on), per signature                                                                                                |
+| Facility Signature       | rule  | Signed by a healthcare provider, per signature                                                                                                                                                   |
+| Dialysis Diagnosis       | rule  | End-stage renal disease or dependence on dialysis, per diagnosis                                                                                                                                 |
 
 ## Customizing
 

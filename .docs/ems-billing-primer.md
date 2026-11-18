@@ -67,7 +67,8 @@ What the app does today is in [Workflows](workflows.md); everything else is rebu
 | Base rate (A0426-A0434), A0998 without transport, A0425 mileage, origin and destination modifier | Built: Charge Lines, Base Rate Code, Origin and Destination   |
 | Patient matching and payer directory matching                                                    | Built: Resolve Patient, Resolve Coverage                      |
 | Coordination of benefits order and Medicare Secondary Payer                                      | Built: Billing Order, Payer Checks; MSP questionnaire to read |
-| Claim checks (signature, PCS, transport reason, timely filing, ABN, prior authorization)         | To rebuild                                                    |
+| Claim checks: signature, PCS, prior authorization, timely filing                                 | Built: Claim Checks                                           |
+| Claim checks: ABN and transport reason by payer                                                  | To rebuild                                                    |
 | Eligibility (270/271) and insurance discovery                                                    | To rebuild; the X12 and clearinghouse foundations exist       |
 | 837P submission and acknowledgments (TA1, 999, 277CA)                                            | To rebuild; the X12 builders and readers exist                |
 | Claim status (276/277)                                                                           | To rebuild                                                    |

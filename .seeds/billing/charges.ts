@@ -39,6 +39,7 @@ import {
   stage,
   startsWith,
   T,
+  TRANSPORT_KINDS,
   template
 } from './shared.ts';
 
@@ -374,8 +375,6 @@ const PAYER_IN = d('payerId', ID.payer, 'Payer', 'The payer billed first, for it
 
 const reasonsPin = (what: string) => d('reasons', listOf('string'), 'Reasons', what);
 
-const TRANSPORTS = ['emergency', 'scheduled'];
-
 const NON_COVERED_REASONS = ['B', 'C'];
 
 const isClassification = (g: Builder, id: string, label: string, value: string) =>
@@ -667,7 +666,7 @@ const chargeLines = (): GraphDef => {
     'Transported',
     'tripClassification',
     'entry.classification',
-    codes(g, 'transports', 'Kinds of Transport', 'tripClassification', TRANSPORTS)
+    codes(g, 'transports', 'Kinds of Transport', 'tripClassification', TRANSPORT_KINDS)
   );
   const billsMiles = (id: string, label: string, miles: Port) =>
     allOf(g, id, label, [

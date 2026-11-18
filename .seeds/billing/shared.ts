@@ -39,6 +39,10 @@ export const TIMES = encounterModel('times');
 
 export const ODOMETER = encounterModel('odometer');
 
+export const SIGNATURE = encounterModel('signature');
+
+export const TRANSPORT_KINDS = ['emergency', 'scheduled'];
+
 export const listOf = (type: ValueType): ValueType => ({ list: type });
 
 export const code = (kind: string): ValueType => ({ code: kind });
@@ -58,6 +62,7 @@ export const T = {
   insurance: modelType(INSURANCE),
   medication: modelType(MEDICATION),
   procedure: modelType(PROCEDURE),
+  signature: modelType(SIGNATURE),
   claim: modelType(CLAIM),
   coverage: modelType(COVERAGE),
   chargeLine: modelType(CHARGE_LINE),

@@ -1,5 +1,6 @@
 import type { SeedGraph } from '../graphs.ts';
 import { chargeGraphs } from './charges.ts';
+import { checkGraphs } from './checks.ts';
 import { claimGraphs } from './claims.ts';
 import { importGraphs } from './imports.ts';
 import { patientGraphs } from './patients.ts';
@@ -13,6 +14,7 @@ export const billingGraphs: SeedGraph[] = [
   ...patientGraphs,
   ...payerGraphs,
   ...chargeGraphs,
+  ...checkGraphs,
   ...claimGraphs
 ];
 
