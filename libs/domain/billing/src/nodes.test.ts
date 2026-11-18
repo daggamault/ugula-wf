@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { type NodeDef, nodeDocumentationIssues, type Values } from '@ugula/graph';
 import { invokeNode } from '@ugula/graph/testing';
-import type { ClaimInput } from './claims.ts';
+import type { ClaimInput, ClaimReview } from './claims.ts';
 import { createBillingNodes } from './nodes.ts';
 import type { Patient } from './patients.ts';
 import type { BillingStores } from './stores.ts';
@@ -33,6 +33,7 @@ const fakeStores = () => {
   const patients: Patient[] = [JANE];
   const saved: ClaimInput[] = [];
   const addresses: [string, string | null][] = [];
+  const reviews: ClaimReview[] = [];
   const stores: BillingStores = {
     patients: {
       findCandidates: async (_, q) => patients.filter((p) => p.birthDate === q.birthDate),
@@ -66,11 +67,19 @@ const fakeStores = () => {
     claims: {
       saveClaim: async (_, claim) => {
         saved.push(claim);
-        return { id: 'c-1', outcome: saved.length > 1 ? 'replaced' : 'created' };
+        return {
+          id: 'c-1',
+          revision: saved.length,
+          outcome: saved.length > 1 ? 'replaced' : 'created'
+        };
+      },
+      reviewClaim: async (_, review) => {
+        reviews.push(review);
+        return review.revision === saved.length ? 'recorded' : 'superseded';
       }
     }
   };
-  return { stores, patients, saved, addresses };
+  return { stores, patients, saved, addresses, reviews };
 };
 
 const run = (stores: BillingStores, type: string, inputs: Values) => {
@@ -155,20 +164,59 @@ describe('Find Fee', () => {
   });
 });
 
+const CLAIM = {
+  encounterId: 'e-1',
+  patientId: 'p-1',
+  classification: 'emergency',
+  level: 'BLS',
+  emergency: true,
+  lines: [{ code: 'A0429', units: 1, unitCents: 50000, totalCents: 50000 }]
+};
+
+describe('Record Claim Review', () => {
+  const review = { claimId: 'c-1', decision: 'approved', reviewedBy: 'u-1' };
+
+  it('records the decision on the revision the biller saw, and not on a later one', async () => {
+    const { stores, reviews } = fakeStores();
+    await run(stores, 'claim.save', { claim: CLAIM });
+    assert.equal((await run(stores, 'claim.review', { ...review, revision: 1 })).pin, 'recorded');
+    await run(stores, 'claim.save', { claim: CLAIM });
+    const held = { ...review, revision: 1, decision: 'on_hold', note: ' Need the PCS ' };
+    assert.equal((await run(stores, 'claim.review', held)).pin, 'superseded');
+    assert.deepEqual(reviews, [
+      { ...review, revision: 1, note: null },
+      { ...held, note: 'Need the PCS' }
+    ]);
+  });
+
+  it('refuses a hold without a note and a review without a biller', async () => {
+    const { stores } = fakeStores();
+    await assert.rejects(
+      run(stores, 'claim.review', { ...review, revision: 1, decision: 'on_hold' }),
+      /needs a note/
+    );
+    await assert.rejects(
+      run(stores, 'claim.review', { ...review, revision: 1, reviewedBy: ' ' }),
+      /biller who reviewed/
+    );
+    await assert.rejects(
+      run(stores, 'claim.review', { ...review, revision: 1, decision: 'sent' }),
+      /sent is not a decision/
+    );
+  });
+});
+
 describe('Save Claim', () => {
   it('saves a valid claim and replaces it on the next save', async () => {
     const { stores, saved } = fakeStores();
-    const claim = {
-      encounterId: 'e-1',
-      patientId: 'p-1',
-      classification: 'emergency',
-      level: 'BLS',
-      emergency: true,
-      lines: [{ code: 'A0429', units: 1, unitCents: 50000, totalCents: 50000 }]
-    };
+    const claim = CLAIM;
     const first = await run(stores, 'claim.save', { claim });
-    assert.deepEqual([first.pin, first.outputs.claimId], ['created', 'c-1']);
-    assert.equal((await run(stores, 'claim.save', { claim })).pin, 'replaced');
+    assert.deepEqual(
+      [first.pin, first.outputs.claimId, first.outputs.revision],
+      ['created', 'c-1', 1]
+    );
+    const second = await run(stores, 'claim.save', { claim });
+    assert.deepEqual([second.pin, second.outputs.revision], ['replaced', 2]);
     assert.equal(saved[0]?.totalCents, 50000);
     await assert.rejects(
       run(stores, 'claim.save', { claim: { ...claim, level: 'ALS9' } }),

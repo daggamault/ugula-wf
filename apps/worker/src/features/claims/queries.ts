@@ -36,11 +36,17 @@ export const createClaimStore = (db: Kysely<Database>): ClaimStore => ({
           ...claimColumns(claim)
         })
         .onConflict((oc) =>
-          oc
-            .columns(['agency_id', 'encounter_id'])
-            .doUpdateSet({ ...claimColumns(claim), updated_at: sql`now()` })
+          oc.columns(['agency_id', 'encounter_id']).doUpdateSet({
+            ...claimColumns(claim),
+            status: 'needs_review',
+            revision: sql`claims.revision + 1`,
+            reviewed_by: null,
+            reviewed_at: null,
+            review_note: null,
+            updated_at: sql`now()`
+          })
         )
-        .returning(['id', 'agency_id', sql<boolean>`xmax = 0`.as('inserted')])
+        .returning(['id', 'agency_id', 'revision', sql<boolean>`xmax = 0`.as('inserted')])
         .executeTakeFirstOrThrow();
       await tx.deleteFrom('claim_lines').where('claim_id', '=', saved.id).execute();
       await tx.deleteFrom('claim_coverages').where('claim_id', '=', saved.id).execute();
@@ -86,6 +92,30 @@ export const createClaimStore = (db: Kysely<Database>): ClaimStore => ({
           .values(claim.diagnoses.map((code, i) => ({ claim_id: saved.id, position: i + 1, code })))
           .execute();
       }
-      return { id: saved.id, outcome: saved.inserted ? 'created' : 'replaced' };
-    })
+      return {
+        id: saved.id,
+        revision: saved.revision,
+        outcome: saved.inserted ? 'created' : 'replaced'
+      };
+    }),
+  reviewClaim: async (runId, review) => {
+    if (!isUuid(review.claimId)) throw new Error(`Claim ${review.claimId} does not exist`);
+    if (!isUuid(review.reviewedBy)) throw new Error(`User ${review.reviewedBy} does not exist`);
+    const decided = await db
+      .updateTable('claims')
+      .set({
+        status: review.decision,
+        reviewed_by: review.reviewedBy,
+        reviewed_at: sql`now()`,
+        review_note: review.note,
+        updated_at: sql`now()`
+      })
+      .where('id', '=', review.claimId)
+      .where('agency_id', '=', runAgency(db, runId))
+      .where('revision', '=', review.revision)
+      .where('status', '=', 'needs_review')
+      .returning('id')
+      .executeTakeFirst();
+    return decided ? 'recorded' : 'superseded';
+  }
 });

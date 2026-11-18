@@ -8,6 +8,7 @@ export const billingKinds: ValueKinds = {
     task: 'Task ID'
   },
   code: {
+    claimDecision: 'Claim Decision',
     hcpcs: 'HCPCS Code',
     icd10: 'ICD-10 Code',
     levelOfService: 'Level of Service',

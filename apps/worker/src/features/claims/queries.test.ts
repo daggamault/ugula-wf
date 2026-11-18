@@ -49,11 +49,12 @@ describe('createClaimStore', () => {
   it('saves the claim for its encounter and replaces its lines, payers and diagnoses', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('insert into "claims"')
-        ? [{ id: CLAIM_ID, agency_id: 't-1', inserted: true }]
+        ? [{ id: CLAIM_ID, agency_id: 't-1', revision: 1, inserted: true }]
         : []
     );
     assert.deepEqual(await createClaimStore(db).saveClaim('r1', CLAIM), {
       id: CLAIM_ID,
+      revision: 1,
       outcome: 'created'
     });
     assert.deepEqual(
@@ -72,13 +73,17 @@ describe('createClaimStore', () => {
       queries[0]?.sql ?? '',
       /on conflict \("agency_id", "encounter_id"\) do update set/
     );
+    assert.match(
+      queries[0]?.sql ?? '',
+      /"status" = \$\d+, "revision" = claims\.revision \+ 1, "reviewed_by" = \$\d+, "reviewed_at" = \$\d+, "review_note" = \$\d+/
+    );
     assert.deepEqual(queries[4]?.parameters, [CLAIM_ID, 1, 'A0427', ['RH'], 1, 80000, 80000]);
   });
 
   it('replaces an existing claim and saves no empty lists', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('insert into "claims"')
-        ? [{ id: CLAIM_ID, agency_id: 't-1', inserted: false }]
+        ? [{ id: CLAIM_ID, agency_id: 't-1', revision: 2, inserted: false }]
         : []
     );
     const saved = await createClaimStore(db).saveClaim('r1', {
@@ -88,8 +93,34 @@ describe('createClaimStore', () => {
       diagnoses: [],
       totalCents: 0
     });
-    assert.equal(saved.outcome, 'replaced');
+    assert.deepEqual([saved.outcome, saved.revision], ['replaced', 2]);
     assert.equal(queries.length, 4);
+  });
+
+  it('records a review only on the revision reviewed while it needs review', async () => {
+    const USER = '0195f2a4-0000-7000-8000-000000000005';
+    const review = {
+      claimId: CLAIM_ID,
+      revision: 2,
+      decision: 'on_hold' as const,
+      reviewedBy: USER,
+      note: 'Need the PCS'
+    };
+    const recorded = createRecordingDb(() => [{ id: CLAIM_ID }]);
+    assert.equal(await createClaimStore(recorded.db).reviewClaim('r1', review), 'recorded');
+    const [update] = recorded.queries;
+    assert.match(update?.sql ?? '', /^update "claims" set "status" = \$1, "reviewed_by" = \$2/);
+    assert.match(
+      update?.sql ?? '',
+      /where "id" = \$\d+ and "agency_id" = \(select "agency_id" from "workflow_runs" where "id" = \$\d+\) and "revision" = \$\d+ and "status" = \$\d+/
+    );
+    assert.deepEqual(update?.parameters.slice(0, 3), ['on_hold', USER, 'Need the PCS']);
+    const superseded = createRecordingDb(() => []);
+    assert.equal(await createClaimStore(superseded.db).reviewClaim('r1', review), 'superseded');
+    await assert.rejects(
+      createClaimStore(superseded.db).reviewClaim('r1', { ...review, reviewedBy: 'u-1' }),
+      /User u-1 does not exist/
+    );
   });
 
   it('refuses ids that are not ids before touching the database', async () => {

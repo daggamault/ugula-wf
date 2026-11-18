@@ -25,7 +25,7 @@ A user belongs to at most one organization. Email addresses are unique and store
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Admin           | Every permission                                                                                                                                    |
 | Billing Manager | Everything on patients, imports, claims, tasks, payers, facilities, fees and runs; reading settings, users, roles and workflows; `workflows:update` |
-| Biller          | Create, read and update on patients, imports, claims and tasks; reading everything else                                                             |
+| Biller          | Create, read and update on patients, imports, claims and tasks; approve claims for the clearinghouse (`claims:approve`); reading everything else    |
 | Viewer          | Reading everything                                                                                                                                  |
 
 - A membership (`memberships`) gives one user one role in one agency. Composite foreign keys make it impossible to join an agency or role outside your organization.

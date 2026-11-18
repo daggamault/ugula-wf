@@ -38,6 +38,12 @@ const buildClaimsTable = (db: Kysely<Database>) =>
     .addColumn('encounter_id', 'uuid', (col) => col.notNull())
     .addColumn('patient_id', 'uuid', (col) => col.notNull())
     .addColumn('status', 'text', (col) => col.notNull().defaultTo('needs_review'))
+    .addColumn('revision', 'integer', (col) => col.notNull().defaultTo(1))
+    .addColumn('reviewed_by', 'uuid', (col) =>
+      col.references('users.id').onDelete('restrict').onUpdate('cascade')
+    )
+    .addColumn('reviewed_at', 'timestamptz')
+    .addColumn('review_note', 'text')
     .addColumn('classification', 'text', (col) => col.notNull())
     .addColumn('service_date', 'date')
     .addColumn('level', 'text', (col) => col.notNull())
@@ -71,6 +77,11 @@ const buildClaimsTable = (db: Kysely<Database>) =>
     .addUniqueConstraint('claims_agency_id_encounter_id_unique', ['agency_id', 'encounter_id'])
     .addCheckConstraint('claims_number_check', dailyNumberCheck)
     .addCheckConstraint('claims_status_check', sql`status in (${list(CLAIM_STATUSES)})`)
+    .addCheckConstraint('claims_revision_check', sql`revision >= 1`)
+    .addCheckConstraint(
+      'claims_review_check',
+      sql`(status = 'needs_review') = (reviewed_by is null) and (reviewed_by is null) = (reviewed_at is null) and (status <> 'on_hold' or review_note <> '')`
+    )
     .addCheckConstraint(
       'claims_classification_check',
       sql`classification in (${list(CLASSIFICATIONS)})`

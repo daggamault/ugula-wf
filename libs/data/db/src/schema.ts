@@ -464,6 +464,10 @@ export type ClaimsTable = {
   encounter_id: string;
   patient_id: string;
   status: Generated<ClaimStatus>;
+  revision: Generated<number>;
+  reviewed_by: string | null;
+  reviewed_at: ColumnType<Date | null, Date | null, Date | null>;
+  review_note: string | null;
   classification: Classification;
   service_date: ColumnType<string | null, string | null, string | null>;
   level: ServiceLevel;

@@ -6,5 +6,10 @@ export const announceClaims = (store: ClaimStore, announce: Announce): ClaimStor
     const saved = await store.saveClaim(runId, claim);
     await announce(runId, { kind: 'claim', id: saved.id });
     return saved;
+  },
+  reviewClaim: async (runId, review) => {
+    const outcome = await store.reviewClaim(runId, review);
+    if (outcome === 'recorded') await announce(runId, { kind: 'claim', id: review.claimId });
+    return outcome;
   }
 });

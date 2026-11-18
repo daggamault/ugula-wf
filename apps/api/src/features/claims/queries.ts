@@ -117,7 +117,14 @@ export const findClaim = (db: Db, agencyId: string, id: string) =>
           .as('i'),
       (join) => join.onTrue()
     )
+    .leftJoin('users as reviewer', 'reviewer.id', 'c.reviewed_by')
     .select((eb) => [
+      'c.revision',
+      'c.reviewed_at',
+      'c.review_note',
+      sql<string | null>`nullif(concat_ws(' ', reviewer.first_name, reviewer.last_name), '')`.as(
+        'reviewed_by'
+      ),
       'i.id as import_id',
       'i.file_name as import_file_name',
       'e.revision as encounter_revision',

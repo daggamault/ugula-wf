@@ -14,6 +14,7 @@ import {
   joinLists,
   listOf,
   PAYMENT,
+  QUEUE,
   stage,
   T
 } from './shared.ts';
@@ -32,6 +33,85 @@ const CLAIM_REASONS = d(
   'Why the encounter was or was not billed this way.'
 );
 
+const REVISION_OUT = d(
+  'revision',
+  'integer',
+  'Revision',
+  'Which version of the claim was saved; a review decides one revision.',
+  true
+);
+
+const REVIEW_OUTCOMES = {
+  approved: exit('Approved', 'A biller approved the claim; it is ready for the clearinghouse.'),
+  held: exit('Held', 'A biller put the claim on hold, with a note saying why.'),
+  superseded: exit(
+    'Superseded',
+    'The claim was revised before the biller decided; the new revision has its own review.'
+  )
+};
+
+const reviewClaim = (): GraphDef => {
+  const g = stage(
+    [
+      d('claimId', ID.claim, 'Claim', 'The claim to review.'),
+      d('revision', 'integer', 'Revision', 'The revision of the claim to review.'),
+      d('subject', 'string', 'Subject', 'What the review is about, such as the PCR number.', true),
+      d(
+        'reasons',
+        listOf('string'),
+        'Reasons',
+        'Why the claim was built this way, and what the checks flagged.'
+      )
+    ],
+    [],
+    REVIEW_OUTCOMES
+  );
+  g.add('review', 'std.human.task', {
+    label: 'Review the Claim',
+    config: {
+      title: 'Review the Claim',
+      queue: QUEUE,
+      permission: 'claims:approve',
+      instructions:
+        'A biller must review every claim before it goes to the clearinghouse. Check the claim, the encounter and every reason, especially what the checks flagged. Approve it when it is ready to send, or put it on hold and say why.',
+      fields: [
+        {
+          name: 'note',
+          type: 'string',
+          label: 'Note',
+          required: ['hold']
+        }
+      ],
+      outcomes: ['approve', 'hold'],
+      hints: {
+        approve: 'Ready for the clearinghouse.',
+        hold: 'Not ready; the note says why.'
+      }
+    }
+  });
+  const record = (id: string, label: string, decision: string) => {
+    g.add(id, 'claim.review', { label, values: { decision } });
+    g.wire('entry.claimId', `${id}.claimId`);
+    g.wire('entry.revision', `${id}.revision`);
+    g.wire('review.completedBy', `${id}.reviewedBy`);
+    g.wire('review.note', `${id}.note`);
+    g.wire(`${id}.superseded`, 'superseded.exec');
+  };
+  record('approve', 'Record the Approval', 'approved');
+  record('hold', 'Record the Hold', 'on_hold');
+  g.ret('approved', 'approved');
+  g.ret('held', 'held');
+  g.ret('superseded', 'superseded');
+  g.wire('entry.exec', 'review.exec');
+  g.wire('entry.subject', 'review.subject');
+  g.wire('entry.reasons', 'review.context');
+  g.wire('review.approve', 'approve.exec');
+  g.wire('review.hold', 'hold.exec');
+  g.wire('approve.recorded', 'approved.exec');
+  g.wire('hold.recorded', 'held.exec');
+  return g.def;
+};
+
 const buildClaim = (): GraphDef => {
   const g = stage(
     [d('encounter', T.encounter, 'Encounter', 'The encounter to bill.')],
@@ -43,6 +123,7 @@ const buildClaim = (): GraphDef => {
         'The claim saved, ready for review, when the trip is billed.',
         true
       ),
+      REVISION_OUT,
       CLASSIFICATION_OUT,
       CLAIM_REASONS
     ],
@@ -132,6 +213,7 @@ const buildClaim = (): GraphDef => {
   for (const outcome of ['created', 'replaced']) {
     g.wire(`save.${outcome}`, `${outcome}.exec`);
     g.wire('save.claimId', `${outcome}.claimId`);
+    g.wire('save.revision', `${outcome}.revision`);
     g.wire('classify.classification', `${outcome}.classification`);
     g.wire(reasons, `${outcome}.reasons`);
   }
@@ -152,23 +234,40 @@ const fromEncounter = (event: string) => {
   g.trigger({ kind: 'event', event, where: {} });
   g.add('read', 'encounter.read', { label: 'Read Encounter' });
   g.add('build', 'billing.build-claim', { label: 'Build Claim' });
-  g.ret('billed');
+  g.add('review', 'billing.review-claim', { label: 'Review Claim' });
+  const billed = Object.keys(REVIEW_OUTCOMES);
+  for (const outcome of billed) g.ret(outcome);
   g.ret('notBilled');
   g.wire('entry.exec', 'read.exec');
   g.wire('entry.encounterId', 'read.encounterId');
   g.wire('read.then', 'build.exec');
   g.wire('read.encounter', 'build.encounter');
-  g.wire('build.saved', 'billed.exec');
+  g.wire('build.saved', 'review.exec');
+  g.wire('build.claimId', 'review.claimId');
+  g.wire('build.revision', 'review.revision');
+  g.wire('read.encounter', 'pcr.encounter');
+  g.add('pcr', 'encounter.break', { label: 'Encounter' });
+  g.wire('pcr.pcrNumber', 'review.subject');
+  g.wire('build.reasons', 'review.reasons');
   g.wire('build.notBillable', 'notBilled.exec');
-  for (const ret of ['billed', 'notBilled']) {
+  for (const outcome of billed) {
+    g.wire(`review.${outcome}`, `${outcome}.exec`);
+    g.wire('build.claimId', `${outcome}.claimId`);
+  }
+  for (const ret of [...billed, 'notBilled']) {
     g.wire('build.classification', `${ret}.classification`);
     g.wire('build.reasons', `${ret}.reasons`);
   }
-  g.wire('build.claimId', 'billed.claimId');
   return g.def;
 };
 
 export const claimGraphs: SeedGraph[] = [
+  asStage(
+    'billing.review-claim',
+    'Review Claim',
+    'Ends every claim on review by a biller, as the law requires before a claim goes to the clearinghouse: a Review the Claim task that only someone allowed to approve claims can complete. Approved makes the claim ready for the clearinghouse; On Hold keeps it back with a note. A claim revised during the review is decided in its own review.',
+    reviewClaim()
+  ),
   asStage(
     'billing.build-claim',
     'Build Claim',
@@ -178,13 +277,13 @@ export const claimGraphs: SeedGraph[] = [
   asWorkflow(
     'billing.encounter-to-claim',
     'Encounter to Claim',
-    'When an encounter is created, builds its claim and saves it for review, or records why the trip is not billed.',
+    'When an encounter is created, builds its claim, saves it and has a biller review it before it can go to the clearinghouse, or records why the trip is not billed.',
     fromEncounter('encounter.created')
   ),
   asWorkflow(
     'billing.revised-encounter-to-claim',
     'Revised Encounter to Claim',
-    'When a changed copy of a PCR revises an encounter, builds its claim again and saves it over the one under review.',
+    'When a changed copy of a PCR revises an encounter, builds its claim again, saves it over the one before as a new revision and has a biller review it again, even when the one before was approved.',
     fromEncounter('encounter.revised')
   )
 ];

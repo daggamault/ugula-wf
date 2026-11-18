@@ -6,7 +6,7 @@ describe('claim statuses', () => {
   it('labels every status', () => {
     assert.deepEqual(
       CLAIM_STATUSES.map((s) => CLAIM_STATUS_LABELS[s]),
-      ['Needs Review']
+      ['Needs Review', 'Approved', 'On Hold']
     );
   });
 });

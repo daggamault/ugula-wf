@@ -72,7 +72,7 @@ The API records the import and emits the event in one transaction; an upload is 
 Read Encounter → **Build Claim**: Trip Classification → Is Billable
 
 - No → Not Billable, with the classification and its reasons.
-- Yes → Resolve Patient → Determine Payers → Assign Charges → Make Claim (with Service Details, Diagnoses, Ambulance Details and the reasons of Payer Checks and Claim Checks) → Save Claim (Needs Review; a revised encounter replaces its claim).
+- Yes → Resolve Patient → Determine Payers → Assign Charges → Make Claim (with Service Details, Diagnoses, Ambulance Details and the reasons of Payer Checks and Claim Checks) → Save Claim (Needs Review; a revised encounter replaces its claim as a new revision, back to Needs Review even when approved) → **Review Claim**: every claim ends on a Review the Claim task, as the law requires before a claim goes to the clearinghouse. Only a user with `claims:approve` can complete it: Approve makes the claim Approved, ready for the clearinghouse; Hold makes it On Hold with a note. The decision is recorded only for the revision the biller saw; a claim revised during the review is Superseded and decided in its own review.
 
 | Graph                    | Kind  | Built from                                                                                                                                                                                       |
 | ------------------------ | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -114,6 +114,7 @@ Read Encounter → **Build Claim**: Trip Classification → Is Billable
 | Line Modifiers           | rule  | Origin and destination letters, QL when pronounced dead, GM when more than one patient was transported                                                                                           |
 | Covered Miles            | rule  | Miles to the closest facility covered and the rest non-covered when the transport reason is B or C, else every loaded mile                                                                       |
 | Price Line               | stage | Find Fee times units to the cent, or no price with the reason                                                                                                                                    |
+| Review Claim             | stage | Task Review the Claim (permission `claims:approve`) → Record Claim Review: Approved, Held, or Superseded when the claim was revised                                                              |
 | Claim Checks             | rule  | Signed Release, or Unable to Sign with a Facility Signature; a PCS for a non-emergency transport, no more than 60 days old; prior authorization for a dialysis transport; timely filing          |
 | Signed Release           | rule  | A release for billing with a signed status, per signature                                                                                                                                        |
 | Unable to Sign           | rule  | A release for billing the patient could not sign (unconscious, impaired and so on), per signature                                                                                                |

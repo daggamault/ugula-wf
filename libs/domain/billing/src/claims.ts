@@ -20,12 +20,47 @@ import {
 } from './claim-details.ts';
 import { isCents, textOrNull } from './values.ts';
 
-export const CLAIM_STATUSES = ['needs_review'] as const;
+export const CLAIM_STATUSES = ['needs_review', 'approved', 'on_hold'] as const;
 
 export type ClaimStatus = (typeof CLAIM_STATUSES)[number];
 
 export const CLAIM_STATUS_LABELS: Record<ClaimStatus, string> = {
-  needs_review: 'Needs Review'
+  needs_review: 'Needs Review',
+  approved: 'Approved',
+  on_hold: 'On Hold'
+};
+
+export const CLAIM_DECISIONS = ['approved', 'on_hold'] as const;
+
+export type ClaimDecision = (typeof CLAIM_DECISIONS)[number];
+
+export type ClaimReview = {
+  claimId: string;
+  revision: number;
+  decision: ClaimDecision;
+  reviewedBy: string;
+  note: string | null;
+};
+
+export const readClaimReview = (r: {
+  claimId: string | null;
+  revision: number | null;
+  decision: string | null;
+  reviewedBy: string | null;
+  note: string | null;
+}): ClaimReview => {
+  const claimId = textOrNull(r.claimId);
+  if (!claimId) throw new Error('A review needs its claim');
+  if (r.revision === null || !Number.isInteger(r.revision) || r.revision < 1) {
+    throw new Error('A review needs the revision of the claim reviewed');
+  }
+  const decision = r.decision as ClaimDecision;
+  if (!CLAIM_DECISIONS.includes(decision)) throw new Error(`${r.decision} is not a decision`);
+  const reviewedBy = textOrNull(r.reviewedBy);
+  if (!reviewedBy) throw new Error('A review needs the biller who reviewed the claim');
+  const note = textOrNull(r.note);
+  if (decision === 'on_hold' && !note) throw new Error('A claim on hold needs a note saying why');
+  return { claimId, revision: r.revision, decision, reviewedBy, note };
 };
 
 export type ClaimCoverage = {

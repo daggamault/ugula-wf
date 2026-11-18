@@ -1,5 +1,5 @@
 import { actionNode, branchNode, type NodeDef, pin } from '@ugula/graph';
-import { type ClaimValue, readClaim } from './claims.ts';
+import { type ClaimValue, readClaim, readClaimReview } from './claims.ts';
 import { CLAIM_TYPE } from './models.ts';
 import { nameKey } from './names.ts';
 import { type Demographics, matchPatient, readDemographics, toNewPatient } from './patients.ts';
@@ -233,13 +233,17 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
       title: 'Save Claim',
       category: 'Claim',
       description:
-        'Saves the claim for its encounter, ready for review. A claim already saved for the encounter is replaced. A new claim emits Claim Created.',
+        'Saves the claim for its encounter as Needs Review, for a biller to review. A claim already saved for the encounter is replaced, gets a new revision and needs review again, even when it was approved. A new claim emits Claim Created.',
       level: 'basic',
       keywords: ['store', 'claim', 'create', 'review'],
       effect: true,
       inputs: [pin('claim', CLAIM_TYPE, { description: 'The claim to save.' })],
       outputs: [
-        pin('claimId', { id: 'claim' }, { label: 'Claim', description: 'The claim saved.' })
+        pin('claimId', { id: 'claim' }, { label: 'Claim', description: 'The claim saved.' }),
+        pin('revision', 'integer', {
+          description:
+            'Which version of the claim this is, 1 for the first; a review is for one revision.'
+        })
       ],
       exits: {
         created: { label: 'Created', description: 'The encounter had no claim yet.' },
@@ -247,8 +251,59 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
       },
       compute: async ({ claim }, _, ctx) => {
         const saved = await storesOf().claims.saveClaim(ctx.runId, readClaim(claim as ClaimValue));
-        return { exit: saved.outcome, outputs: { claimId: saved.id } };
+        return { exit: saved.outcome, outputs: { claimId: saved.id, revision: saved.revision } };
       }
+    }),
+    branchNode({
+      type: 'claim.review',
+      title: 'Record Claim Review',
+      category: 'Claim',
+      description:
+        'Records the decision of the biller who reviewed a claim: Approved, ready for the clearinghouse, or On Hold with a note. Only the revision the biller saw is decided; a claim revised since then needs a review of its own.',
+      level: 'basic',
+      keywords: ['claim', 'review', 'approve', 'hold', 'biller', 'clearinghouse'],
+      effect: true,
+      inputs: [
+        pin('claimId', { id: 'claim' }, { label: 'Claim', description: 'The claim reviewed.' }),
+        pin('revision', 'integer', {
+          description: 'The revision of the claim the biller reviewed.'
+        }),
+        pin(
+          'decision',
+          { code: 'claimDecision' },
+          { description: 'Approved for the clearinghouse, or On Hold.' }
+        ),
+        pin('reviewedBy', 'string', {
+          label: 'Reviewed By',
+          description: 'The biller who reviewed the claim.'
+        }),
+        pin('note', 'string', {
+          optional: true,
+          description: 'Why the claim is on hold, or anything the biller noted.'
+        })
+      ],
+      outputs: [],
+      exits: {
+        recorded: { label: 'Recorded', description: 'The decision is on the claim.' },
+        superseded: {
+          label: 'Superseded',
+          description:
+            'The claim was revised after the review began; its new revision has its own review.'
+        }
+      },
+      compute: async (inputs, _, ctx) => ({
+        exit: await storesOf().claims.reviewClaim(
+          ctx.runId,
+          readClaimReview({
+            claimId: inputs.claimId ?? null,
+            revision: inputs.revision ?? null,
+            decision: inputs.decision ?? null,
+            reviewedBy: inputs.reviewedBy ?? null,
+            note: inputs.note ?? null
+          })
+        ),
+        outputs: {}
+      })
     })
   ];
 };

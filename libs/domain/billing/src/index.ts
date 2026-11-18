@@ -22,9 +22,12 @@ export {
   type TransportReason
 } from './claim-details.ts';
 export {
+  CLAIM_DECISIONS,
   CLAIM_STATUS_LABELS,
   CLAIM_STATUSES,
+  type ClaimDecision,
   type ClaimInput,
+  type ClaimReview,
   type ClaimStatus
 } from './claims.ts';
 export {

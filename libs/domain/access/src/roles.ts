@@ -33,7 +33,10 @@ export const BUILT_IN_ROLES: readonly { name: string; permissions: readonly Perm
   },
   {
     name: 'Biller',
-    permissions: [...grantsOf(WORK, ['create', 'read', 'update']), ...grantsOf(SETUP, ['read'])]
+    permissions: [
+      ...grantsOf(WORK, ['create', 'read', 'update', 'approve']),
+      ...grantsOf(SETUP, ['read'])
+    ]
   },
   { name: 'Viewer', permissions: grantsOf([...WORK, ...SETUP], ['read']) }
 ];

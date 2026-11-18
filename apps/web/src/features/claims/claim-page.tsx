@@ -5,6 +5,7 @@ import { ClaimDataView } from '../../shared/claims/claim-data.tsx';
 import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
 import { EncounterPanel } from '../../shared/claims/claim-encounter.tsx';
 import { PayersPanel } from '../../shared/claims/claim-payers.tsx';
+import { ClaimReviewPanel } from '../../shared/claims/claim-review.tsx';
 import { ClaimStatusBadge } from '../../shared/claims/claim-status-badge.tsx';
 import { ClaimSummaryPanel, ReasonsPanel } from '../../shared/claims/claim-summary.tsx';
 import { patientName } from '../../shared/format.ts';
@@ -82,8 +83,9 @@ export const ClaimView = ({
         <>
           <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
             <ClaimSummaryPanel claim={claim} />
-            <ReasonsPanel reasons={claim.reasons} />
+            <ClaimReviewPanel claim={claim} />
           </div>
+          <ReasonsPanel reasons={claim.reasons} />
           <EncounterPanel claim={claim} />
           <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
             <SectionPanel title="Charges">

@@ -1,4 +1,4 @@
-import type { ClaimInput } from './claims.ts';
+import type { ClaimInput, ClaimReview } from './claims.ts';
 import type { Address, NewPatient, Patient } from './patients.ts';
 import type { DirectoryPayer, PayerCandidate } from './payers.ts';
 
@@ -24,10 +24,11 @@ export type PayerStore = {
   findPayer: (runId: string, name: string) => Promise<FoundPayer>;
 };
 
-type SavedClaim = { id: string; outcome: 'created' | 'replaced' };
+type SavedClaim = { id: string; revision: number; outcome: 'created' | 'replaced' };
 
 export type ClaimStore = {
   saveClaim: (runId: string, claim: ClaimInput) => Promise<SavedClaim>;
+  reviewClaim: (runId: string, review: ClaimReview) => Promise<'recorded' | 'superseded'>;
 };
 
 export type BillingStores = {

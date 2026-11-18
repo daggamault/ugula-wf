@@ -193,7 +193,7 @@ describe('searchClaims', () => {
     await searchClaims(db, 't-1', { ...PAGE, sort: 'status', dir: 'asc' });
     assert.equal(
       listOf(queries)[0]?.sql,
-      `${CLAIM_IDS} order by array_position(array['needs_review']::text[], c.status::text) ` +
+      `${CLAIM_IDS} order by array_position(array['needs_review', 'approved', 'on_hold']::text[], c.status::text) ` +
         'asc nulls last, "c"."id" asc limit $2 offset $3'
     );
   });
