@@ -10,6 +10,8 @@ const run = async (type: string, inputs: Values, config: Json = {}) => {
   return invokeNode(def, { inputs, config });
 };
 
+const out = async (type: string, inputs: Values) => (await run(type, inputs)).outputs;
+
 describe('text nodes', () => {
   it('fills templates whose placeholders become inputs', async () => {
     const tpl = await run(
@@ -157,10 +159,71 @@ describe('text nodes', () => {
     assert.deepEqual(await out('std.text.ends-with', { text: 'A0427', part: '27' }), {
       result: true
     });
+    assert.deepEqual(await out('std.text.starts-with', { text: null, part: 'Y' }), {
+      result: false
+    });
     assert.deepEqual(await out('std.text.join', {}), { text: '' });
     assert.deepEqual(await out('std.text.pad', { text: '1234', length: 2, fill: '0' }), {
       result: '1234'
     });
+  });
+});
+
+describe('find phrases', () => {
+  const narrative =
+    'Pt denies chest pain. 18g IV established in L AC; no intubation. Patient was INTUBATED at the scene by fire.';
+
+  it('finds whole-word mentions in any case and skips negated ones', async () => {
+    assert.deepEqual(
+      await out('std.text.find-phrases', {
+        text: narrative,
+        phrases: ['chest pain', 'IV', 'intubat', 'intubated', 'cardioversion']
+      }),
+      { found: true, matches: ['IV', 'intubated'] }
+    );
+  });
+
+  it('counts negated mentions when asked', async () => {
+    assert.deepEqual(
+      await out('std.text.find-phrases', {
+        text: narrative,
+        phrases: ['chest pain'],
+        countNegated: true
+      }),
+      { found: true, matches: ['chest pain'] }
+    );
+  });
+
+  it('finds nothing in an empty text', async () => {
+    assert.deepEqual(await out('std.text.find-phrases', { text: null, phrases: ['IV'] }), {
+      found: false,
+      matches: []
+    });
+  });
+});
+
+describe('find pattern', () => {
+  it('gives the first match and its parts', async () => {
+    assert.deepEqual(
+      await out('std.text.find-pattern', {
+        text: 'Transported 12.4 Loaded Miles to General.',
+        pattern: '(\\d+(?:\\.\\d+)?)\\s*loaded miles'
+      }),
+      { found: true, match: '12.4 Loaded Miles', parts: ['12.4'] }
+    );
+  });
+
+  it('finds nothing without a match or a text', async () => {
+    const none = { found: false, match: null, parts: [] };
+    assert.deepEqual(await out('std.text.find-pattern', { text: 'abc', pattern: '\\d' }), none);
+    assert.deepEqual(await out('std.text.find-pattern', { text: null, pattern: '\\d' }), none);
+  });
+
+  it('refuses a pattern that is not valid', async () => {
+    await assert.rejects(
+      out('std.text.find-pattern', { text: 'abc', pattern: '(' }),
+      /not a valid/
+    );
   });
 });
 

@@ -57,16 +57,52 @@ const testNode = (key: string, title: string, fn: (s: string, part: string) => b
     type: `std.text.${key}`,
     title,
     category: CATEGORY,
-    description: `True when the text ${title.toLowerCase()} the given part.`,
+    description: `True when the text ${title.toLowerCase()} the given part; false when the text is empty.`,
     level: 'basic',
     keywords: ['text', 'search', 'match'],
     inputs: [
-      pin('text', 'string', { description: 'The text to look in.' }),
+      pin('text', 'string', { optional: true, description: 'The text to look in.' }),
       pin('part', 'string', { description: 'The part to look for.' })
     ],
     outputs: [pin('result', 'boolean', { description: 'Whether the part was found.' })],
-    compute: ({ text, part }) => ({ result: fn(text as string, part as string) })
+    compute: ({ text, part }) => ({ result: text === null ? false : fn(text, part as string) })
   });
+
+const MAX_SEARCHED = 20_000;
+
+const NEGATION =
+  /\b(?:no|not|non|denies|denied|deny|without|negative for|refused|refuses|declined|declines|never|unable to|absent|free of)\b/i;
+
+const NEGATION_WORDS = 5;
+
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const phrasePattern = (phrase: string) =>
+  new RegExp(`\\b${phrase.trim().split(/\s+/).map(escapeRegex).join('\\s+')}\\b`, 'gi');
+
+const sentencesOf = (text: string) => text.slice(0, MAX_SEARCHED).split(/[.;!?\n]+/);
+
+const isNegated = (sentence: string, at: number) =>
+  NEGATION.test(sentence.slice(0, at).trim().split(/\s+/).slice(-NEGATION_WORDS).join(' '));
+
+export const phrasesIn = (text: string, phrases: readonly string[], skipNegated: boolean) =>
+  phrases.filter(
+    (phrase) =>
+      phrase.trim() !== '' &&
+      sentencesOf(text).some((sentence) =>
+        [...sentence.matchAll(phrasePattern(phrase))].some(
+          (m) => !skipNegated || !isNegated(sentence, m.index)
+        )
+      )
+  );
+
+const patternOf = (pattern: string) => {
+  try {
+    return new RegExp(pattern, 'i');
+  } catch {
+    return fail(`Find Pattern: "${pattern}" is not a valid pattern`);
+  }
+};
 
 export const textNodes: NodeDef[] = [
   pureNode<v.InferOutput<typeof templateConfig>>({
@@ -136,6 +172,69 @@ export const textNodes: NodeDef[] = [
   testNode('contains', 'Contains', (s, p) => s.includes(p)),
   testNode('starts-with', 'Starts with', (s, p) => s.startsWith(p)),
   testNode('ends-with', 'Ends with', (s, p) => s.endsWith(p)),
+  pureNode({
+    type: 'std.text.find-phrases',
+    title: 'Find Phrases',
+    category: CATEGORY,
+    description:
+      'Finds which phrases a free text, such as a narrative, mentions as whole words in any case. A mention does not count where a negation such as no, denies or without comes shortly before it in the same sentence, unless negated mentions are counted.',
+    level: 'basic',
+    keywords: ['text', 'narrative', 'search', 'mention', 'words', 'negation'],
+    inputs: [
+      pin('text', 'string', { optional: true, description: 'The text to look in.' }),
+      pin(
+        'phrases',
+        { list: 'string' },
+        { optional: true, description: 'The phrases to look for, such as "intubated".' }
+      ),
+      pin('countNegated', 'boolean', {
+        default: false,
+        label: 'Count Negated Mentions',
+        description: 'Whether a phrase counts even where a negation comes before it.'
+      })
+    ],
+    outputs: [
+      pin('found', 'boolean', { description: 'Whether any phrase is mentioned.' }),
+      pin(
+        'matches',
+        { list: 'string' },
+        { description: 'The phrases mentioned, in the order given.' }
+      )
+    ],
+    compute: ({ text, phrases, countNegated }) => {
+      const wanted = (phrases ?? []).filter((p): p is string => typeof p === 'string');
+      const matches = text === null ? [] : phrasesIn(text, wanted, !countNegated);
+      return { found: matches.length > 0, matches };
+    }
+  }),
+  pureNode({
+    type: 'std.text.find-pattern',
+    title: 'Find Pattern',
+    category: CATEGORY,
+    description:
+      'Finds the first place a free text matches a pattern (a regular expression, in any case), such as "(\\d+(\\.\\d+)?) loaded miles", and gives the match and what each part in parentheses matched.',
+    level: 'basic',
+    keywords: ['text', 'narrative', 'regex', 'regular expression', 'extract', 'match'],
+    inputs: [
+      pin('text', 'string', { optional: true, description: 'The text to look in.' }),
+      pin('pattern', 'string', { description: 'The pattern to find.' })
+    ],
+    outputs: [
+      pin('found', 'boolean', { description: 'Whether the pattern matched.' }),
+      pin('match', 'string', { optional: true, description: 'The text that matched, or nothing.' }),
+      pin(
+        'parts',
+        { list: 'string' },
+        { description: 'What each part in parentheses matched, in order.' }
+      )
+    ],
+    compute: ({ text, pattern }) => {
+      const m = text?.slice(0, MAX_SEARCHED).match(patternOf(pattern as string)) ?? null;
+      return m
+        ? { found: true, match: m[0], parts: m.slice(1).map((p) => p ?? '') }
+        : { found: false, match: null, parts: [] };
+    }
+  }),
   pureNode({
     type: 'std.text.replace',
     title: 'Replace',
